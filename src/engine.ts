@@ -1,5 +1,6 @@
 import init, { Performance } from './wasm/drum_engine';
-import type { MidiInfo, PerformancePlan, RigProfile, Selection } from './types';
+import type { KitPiece, MidiInfo, PerformancePlan, RigProfile, Selection } from './types';
+import { applyKitLayout, validateKitLayout } from './kit-calibration';
 export class EngineClient {
   private worker: Worker | null = null;
   private reject: ((reason: Error) => void) | null = null;
@@ -7,11 +8,17 @@ export class EngineClient {
   private performance: Performance | null = null;
   private sourcePlan: PerformancePlan | null = null;
   private profile: RigProfile | null = null;
+  private layout: KitPiece[] | null = null;
   setProfile(profile: RigProfile): PerformancePlan | null {
+    return this.setSetup(profile, this.layout);
+  }
+  setSetup(profile: RigProfile, layout: readonly KitPiece[] | null): PerformancePlan | null {
     // Construct before committing: a rejected profile retains the previous evaluator.
-    const next = this.sourcePlan ? Performance.from_json_with_profile(JSON.stringify(this.sourcePlan), JSON.stringify(profile)) : null;
+    const validated = layout ? validateKitLayout(layout) : null;
+    const source = this.sourcePlan && validated ? applyKitLayout(this.sourcePlan, validated) : this.sourcePlan;
+    const next = source ? Performance.from_json_with_profile(JSON.stringify(source), JSON.stringify(profile)) : null;
     const plan = next ? JSON.parse(next.plan_json()) as PerformancePlan : null;
-    this.profile = profile;
+    this.profile = structuredClone(profile); this.layout = validated;
     if (next) { this.performance?.free(); this.performance = next; }
     return plan;
   }
@@ -36,14 +43,16 @@ export class EngineClient {
     const plan = await this.request<PerformancePlan>('plan', bytes, selection);
     this.ready ??= init();
     try { await this.ready; } catch (error) { this.ready = null; throw error; }
+    const laidOut = this.layout ? applyKitLayout(plan, this.layout) : plan;
     const performance = this.profile
-      ? Performance.from_json_with_profile(JSON.stringify(plan), JSON.stringify(this.profile))
-      : Performance.from_json(JSON.stringify(plan));
+      ? Performance.from_json_with_profile(JSON.stringify(laidOut), JSON.stringify(this.profile))
+      : Performance.from_json(JSON.stringify(laidOut));
     const calibrated = JSON.parse(performance.plan_json()) as PerformancePlan;
     this.sourcePlan = plan;
     this.performance?.free(); this.performance = performance;
     return calibrated;
   }
   evaluate(time: number) { return this.profile ? this.performance?.evaluate_rig_at(time) : this.performance?.evaluate_at(time); }
-  dispose() { this.cancel(); this.performance?.free(); this.performance = null; }
+  clearPerformance() { this.performance?.free(); this.performance = null; this.sourcePlan = null; }
+  dispose() { this.cancel(); this.clearPerformance(); }
 }

@@ -679,6 +679,11 @@ fn parallel_bend_pole_keeps_unequal_bone_lengths_at_rest_and_contact() {
     profile.bend_poles[3] = [0.0, 0.0, 1.0];
     let mut plan = plan_for(vec![(0, note(36, 100, 9)), (480, end())]);
     plan.hits[0].target = [0.0, 0.0, 0.60];
+    plan.kit
+        .iter_mut()
+        .find(|piece| piece.id == Instrument::Kick)
+        .unwrap()
+        .position = plan.hits[0].target;
     let motion = Motion::with_profile(plan, profile.clone()).unwrap();
     assert_eq!(motion.plan.hits[0].limb, Some(3));
     for time in [-0.5, -0.11, 0.0, 0.09, 0.3] {
@@ -693,4 +698,142 @@ fn parallel_bend_pole_keeps_unequal_bone_lengths_at_rest_and_contact() {
             [0.0, 0.0, 0.60]
         ) < 1e-6
     );
+}
+
+#[test]
+fn idle_feet_use_calibrated_pedals_even_without_pedal_notes() {
+    let mut plan = plan_for(vec![(0, note(38, 100, 9)), (960, end())]);
+    for piece in &mut plan.kit {
+        if matches!(piece.id, Instrument::Kick | Instrument::PedalHat) {
+            piece.position[2] -= 0.06;
+        }
+    }
+    for tall in [false, true] {
+        let profile = calibrated_profile(tall);
+        let motion = Motion::with_profile(plan.clone(), profile).unwrap();
+        for (limb, instrument) in [(2, Instrument::PedalHat), (3, Instrument::Kick)] {
+            let anchor = plan
+                .kit
+                .iter()
+                .find(|piece| piece.id == instrument)
+                .unwrap();
+            for time in [-PRE_ROLL, -0.1, 0.0, 0.5, 1.0] {
+                let pose = motion.evaluate_rig(time);
+                assert!(distance(pose_point(&pose, limb, 3), anchor.position) < 1e-6);
+                assert_eq!(
+                    &pose[limb * 12..limb * 12 + 12],
+                    &motion.evaluate_rig(-PRE_ROLL)[limb * 12..limb * 12 + 12]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn pedal_strokes_rotate_only_at_ankles_and_preserve_contacts_through_seek() {
+    let plan = plan_for(vec![
+        (0, note(36, 120, 9)),
+        (0, note(44, 80, 9)),
+        (240, note(36, 70, 9)),
+        (0, note(44, 110, 9)),
+        (960, note(36, 127, 9)),
+        (0, note(44, 127, 9)),
+        (480, end()),
+    ]);
+    for tall in [false, true] {
+        let profile = calibrated_profile(tall);
+        let motion = Motion::with_profile(plan.clone(), profile.clone()).unwrap();
+        let idle = motion.evaluate_rig(-PRE_ROLL);
+        let times = [-PRE_ROLL, -0.08, 0.0, 0.125, 0.25, 0.5, 1.17, 1.25, 1.6];
+        let poses: Vec<_> = times
+            .iter()
+            .map(|time| motion.evaluate_rig(*time))
+            .collect();
+        for i in [8, 3, 6, 0, 7, 4, 1, 5, 2] {
+            assert_eq!(poses[i], motion.evaluate_rig(times[i]));
+            for limb in 2..4 {
+                // The complete hip/knee/ankle chain remains planted, including
+                // preparation and quick repetitions, rather than flying to it.
+                assert_eq!(
+                    &poses[i][limb * 12..limb * 12 + 9],
+                    &idle[limb * 12..limb * 12 + 9]
+                );
+                let q = std::array::from_fn(|j| poses[i][57 + limb * 4 + j] as f64);
+                let rendered = motion::add(pose_point(&poses[i], limb, 2), profile.offset(limb, q));
+                assert!(distance(rendered, pose_point(&poses[i], limb, 3)) < 1e-6);
+            }
+        }
+        for limb in 2..4 {
+            assert_ne!(
+                poses[1][57 + limb * 4..61 + limb * 4],
+                idle[57 + limb * 4..61 + limb * 4]
+            );
+            assert!(pose_point(&poses[1], limb, 3)[1] > pose_point(&idle, limb, 3)[1]);
+        }
+        for hit in &motion.plan.hits {
+            assert_eq!(
+                hit.limb,
+                Some(if hit.instrument == Instrument::Kick {
+                    3
+                } else {
+                    2
+                })
+            );
+            assert!(
+                distance(
+                    pose_point(&motion.evaluate_rig(hit.time), hit.limb.unwrap(), 3),
+                    hit.target,
+                ) < 1e-6
+            );
+        }
+    }
+}
+
+#[test]
+fn unreachable_idle_pedals_are_diagnosed_without_stretching_or_accumulating() {
+    let plan = plan_for(vec![(0, note(38, 100, 9)), (960, end())]);
+    let mut profile = calibrated_profile(false);
+    for limb in 2..4 {
+        profile.roots[limb][1] = 1.6;
+        profile.rest_tips[limb] = if limb == 2 {
+            [-0.22, 0.08, 0.55]
+        } else {
+            [0.20, 0.08, 0.62]
+        };
+    }
+    let motion = Motion::with_profile(plan, profile.clone()).unwrap();
+    assert_eq!(
+        motion
+            .plan
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "RIG_UNREACHABLE_PEDAL")
+            .count(),
+        2
+    );
+    let repeated = Motion::with_profile(motion.plan.clone(), profile.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&motion.plan).unwrap(),
+        serde_json::to_value(&repeated.plan).unwrap()
+    );
+    let pose = motion.evaluate_rig(-PRE_ROLL);
+    for limb in 2..4 {
+        assert!(distance(pose_point(&pose, limb, 3), profile.rest_tips[limb]) > 0.5);
+        for (a, b, length) in [
+            (0, 1, profile.lengths[limb][0]),
+            (1, 2, profile.lengths[limb][1]),
+        ] {
+            assert!(
+                (distance(pose_point(&pose, limb, a), pose_point(&pose, limb, b)) - length).abs()
+                    < 1e-6
+            );
+        }
+    }
+}
+
+#[test]
+fn profile_rejects_pedal_hits_that_disagree_with_fixed_kit_contacts() {
+    let mut plan = plan_for(vec![(0, note(36, 100, 9)), (480, end())]);
+    plan.hits[0].target[2] += 0.1;
+    assert!(Motion::with_profile(plan, calibrated_profile(false)).is_err());
 }

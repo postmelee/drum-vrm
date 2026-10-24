@@ -133,7 +133,10 @@ impl RigProfile {
                     "리그 손발 {limb}의 길이·그립·단위 회전이 유효하지 않습니다."
                 ));
             }
-            if !self.reachable(limb, self.rest_tips[limb]) {
+            // Pedals are desired kit contacts, so user seat calibration can
+            // legitimately make a foot unreachable. Motion clamps the leg IK
+            // and reports that condition instead of rejecting the whole rig.
+            if limb < 2 && !self.reachable(limb, self.rest_tips[limb]) {
                 return Err(format!(
                     "리그 손발 {limb}의 준비 자세가 도달 범위를 벗어납니다."
                 ));

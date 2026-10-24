@@ -70,6 +70,20 @@ fn preferred_limb(instrument: Instrument) -> usize {
     }
 }
 
+/// Feet live on the kit's pedal contacts, including songs with no pedal notes.
+/// A profile-only fallback supports authored plans without a complete kit.
+fn pedal_contact(plan: &PerformancePlan, profile: &RigProfile, limb: usize) -> Vec3 {
+    let instrument = if limb == 2 {
+        Instrument::PedalHat
+    } else {
+        Instrument::Kick
+    };
+    plan.kit
+        .iter()
+        .find(|piece| piece.id == instrument)
+        .map_or(profile.rest_tips[limb], |piece| piece.position)
+}
+
 #[derive(Clone, Copy)]
 struct LimbState {
     time: f64,
@@ -118,7 +132,16 @@ pub fn assign(plan: &mut PerformancePlan) {
 fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) {
     let mut states = std::array::from_fn(|limb| LimbState {
         time: -PRE_ROLL,
-        target: profile.map_or_else(|| rest_tip(limb), |p| p.rest_tips[limb]),
+        target: profile.map_or_else(
+            || rest_tip(limb),
+            |p| {
+                if limb >= 2 {
+                    pedal_contact(plan, p, limb)
+                } else {
+                    p.rest_tips[limb]
+                }
+            },
+        ),
     });
     let mut start = 0;
     while start < plan.hits.len() {
@@ -353,8 +376,36 @@ impl Motion {
         validate_plan(&plan)?;
         // Replace only planner-owned diagnostics. Parsing/mapping evidence survives
         // repeated calibration, while stale reach failures cannot accumulate.
-        plan.diagnostics
-            .retain(|d| !matches!(d.code.as_str(), "UNRESOLVED_HIT" | "RIG_UNREACHABLE_HIT"));
+        plan.diagnostics.retain(|d| {
+            !matches!(
+                d.code.as_str(),
+                "UNRESOLVED_HIT" | "RIG_UNREACHABLE_HIT" | "RIG_UNREACHABLE_PEDAL"
+            )
+        });
+        for limb in 2..4 {
+            let anchor = pedal_contact(&plan, &profile, limb);
+            let instrument = if limb == 2 {
+                Instrument::PedalHat
+            } else {
+                Instrument::Kick
+            };
+            if plan
+                .hits
+                .iter()
+                .any(|hit| hit.instrument == instrument && distance(hit.target, anchor) > 1e-6)
+            {
+                return Err("페달 타격과 키트의 고정 접촉 위치가 일치하지 않습니다.".into());
+            }
+            if !profile.reachable(limb, anchor) {
+                plan.diagnostics.push(Diagnostic::new(
+                    "RIG_UNREACHABLE_PEDAL",
+                    format!(
+                        "{} 페달에 발이 닿지 않습니다. 좌석 또는 페달 위치를 조절하세요. 다리 길이는 늘리지 않습니다.",
+                        if limb == 2 { "왼쪽" } else { "오른쪽" }
+                    ),
+                ));
+            }
+        }
         assign_for_profile(&mut plan, Some(&profile));
         plan.calibration_id.clone_from(&profile.id);
         Self::assemble(plan, Some(profile))
@@ -433,6 +484,31 @@ impl Motion {
         }
     }
 
+    /// Small toe-up preparation around a fixed ankle, with zero pitch at every
+    /// immutable impact time and at rest. Squared sine keeps angular velocity
+    /// continuous at the boundaries; rapid repetitions share one release arc.
+    fn pedal_pitch_at(&self, limb: usize, time: f64) -> f64 {
+        let hits = &self.limbs[limb];
+        let at = hits.partition_point(|id| self.plan.hits[*id].time <= time);
+        let previous = at.checked_sub(1).map(|i| &self.plan.hits[hits[i]]);
+        let next = hits.get(at).map(|id| &self.plan.hits[*id]);
+        if previous.is_some_and(|hit| (time - hit.time).abs() < 1e-9) {
+            return 0.0;
+        }
+        let Some(next) = next else {
+            return 0.0;
+        };
+        let interval = previous.map_or(f64::INFINITY, |hit| next.time - hit.time);
+        let window = if interval <= 0.32 { interval } else { 0.16 };
+        let until = next.time - time;
+        if until >= window {
+            return 0.0;
+        }
+        let phase = 1.0 - until / window;
+        let amplitude = 0.18 * (0.35 + 0.65 * next.velocity as f64 / 127.0);
+        -amplitude * (PI * phase).sin().powi(2)
+    }
+
     pub fn evaluate(&self, song_time: f64) -> Vec<f32> {
         let mut pose = self.evaluate_rig(song_time);
         pose.truncate(POSE_FLOATS);
@@ -453,13 +529,27 @@ impl Motion {
             if let Some(profile) = &self.profile {
                 *rotation = pitch_rotation(
                     profile.contact_rotations[limb],
-                    -pitch * if limb < 2 { 0.70 } else { 0.18 },
+                    if limb < 2 {
+                        -pitch * 0.70
+                    } else {
+                        self.pedal_pitch_at(limb, time)
+                    },
                 );
                 let offset = profile.offset(limb, *rotation);
                 let root = profile.roots[limb];
+                let desired_end = if limb < 2 {
+                    sub(tip, offset)
+                } else {
+                    // Keep hip/knee/ankle fixed while the foot rotates. A rig's
+                    // actual ankle-to-sole offset controls the toe contact arc.
+                    sub(
+                        pedal_contact(&self.plan, profile, limb),
+                        profile.offset(limb, profile.contact_rotations[limb]),
+                    )
+                };
                 let (middle, end) = two_bone_lengths(
                     root,
-                    sub(tip, offset),
+                    desired_end,
                     profile.bend_poles[limb],
                     profile.lengths[limb],
                 );

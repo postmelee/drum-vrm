@@ -1,26 +1,24 @@
 ---
-name: 개발 작업
-about: 목적과 검증 가능한 완료 조건이 있는 작업
+name: Development task
+about: A concrete problem with verifiable completion criteria
 title: ""
 labels: enhancement
 ---
 
-## 목적
+## Outcome
 
-사용자에게 어떤 동작이 달라지는지 설명합니다.
+Describe the problem and the intended behavior.
 
-## 범위와 선행 조건
+## Scope
 
-- 관련 마일스톤:
-- 선행 이슈:
-- 설계·출처 문서:
+Include relevant dependencies, design/source references and exclusions.
 
-## 완료 조건
+## Acceptance
 
-- [ ] 재현 가능한 입력과 기대 결과를 명시합니다.
-- [ ] 필요한 검사와 실제 결과를 기록합니다.
-- [ ] 문서·출처·인수인계 내용을 갱신합니다.
+- [ ] Define a reproducible input and expected result.
+- [ ] Record appropriate checks, actual results and remaining limits.
+- [ ] Update affected documentation and provenance.
 
-## 검증 기록
+## Evidence
 
-커밋/PR, 브라우저·버전, 명령, 결과, 남은 제한을 기록합니다.
+Link the implementation PR and tested commit. Include environment details when relevant.

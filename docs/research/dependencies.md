@@ -1,3 +1,5 @@
+> Research record preserved from [baseline 66951cd](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/dependencies.md). Dated findings and statements of implementation status below belong to that record; use the [current specifications](../../specs/README.md) and [model guide](../models.md) for current behavior.
+
 # 기반 기술·라이선스 조사 기록
 
 확인일: **2026-10-24 (Asia/Seoul)** · 상태: 채택 후보 조사 완료, 구현/최종 버전 고정 전

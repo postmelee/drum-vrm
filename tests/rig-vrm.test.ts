@@ -5,7 +5,7 @@ import { createRestRigPose } from '../src/rig-humanoid';
 import { VRMHumanoidRigAdapter } from '../src/rig-vrm';
 
 /** Authored bone-only fixture. No downloaded model, texture, skin, or motion. */
-function generatedVRM(proportion = 1) {
+function generatedVRM(proportion = 1, withFingers = false) {
   const source = new Group(), bones: Partial<Record<VRMHumanBoneName, Bone>> = {};
   const add = (name: VRMHumanBoneName, parent: VRMHumanBoneName | null, world: [number, number, number]) => {
     const node = new Bone(), ancestor = parent ? bones[parent]! : source;
@@ -23,6 +23,17 @@ function generatedVRM(proportion = 1) {
     add(`${side}UpperArm`, 'chest', [sign * .14, 1.27, 0]);
     add(`${side}LowerArm`, `${side}UpperArm`, [sign * .39, 1.27, 0]);
     add(`${side}Hand`, `${side}LowerArm`, [sign * .61, 1.27, 0]);
+    if (withFingers) {
+      for (const [index, finger] of ['Index', 'Middle', 'Ring', 'Little'].entries()) {
+        const prefix = `${side}${finger}`;
+        add(`${prefix}Proximal` as VRMHumanBoneName, `${side}Hand`, [sign * .665, 1.27, .022 - index * .014]);
+        add(`${prefix}Intermediate` as VRMHumanBoneName, `${prefix}Proximal` as VRMHumanBoneName, [sign * .693, 1.27, .022 - index * .014]);
+        add(`${prefix}Distal` as VRMHumanBoneName, `${prefix}Intermediate` as VRMHumanBoneName, [sign * .713, 1.27, .022 - index * .014]);
+      }
+      add(`${side}ThumbMetacarpal`, `${side}Hand`, [sign * .635, 1.265, .030]);
+      add(`${side}ThumbProximal`, `${side}ThumbMetacarpal`, [sign * .660, 1.265, .044]);
+      add(`${side}ThumbDistal`, `${side}ThumbProximal`, [sign * .680, 1.265, .044]);
+    }
     add(`${side}UpperLeg`, 'hips', [sign * .09, .85, 0]);
     add(`${side}LowerLeg`, `${side}UpperLeg`, [sign * .09, .47, 0]);
     add(`${side}Foot`, `${side}LowerLeg`, [sign * .09, .10, 0]);
@@ -46,6 +57,26 @@ function matrices(rig: VRMHumanoidRigAdapter): number[] {
 }
 
 describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
+  it.each([.86, 1.12])('fits a diagonal grip from measured %s finger geometry with arbitrary raw rest bases', proportion => {
+    const {vrm} = generatedVRM(proportion, true), rig = new VRMHumanoidRigAdapter(vrm, `generated-fingers-${proportion}`);
+    const profile = rig.getProfile(), pose = createRestRigPose(profile);
+    expect(Math.abs(profile.gripOffsets[0][0])).toBeGreaterThan(.03 * proportion);
+    expect(profile.gripOffsets[0][0]).toBeCloseTo(-profile.gripOffsets[1][0], 6);
+    for (const side of ['left', 'right'] as const) {
+      const socket = rig.root.getObjectByName(`${side}HandToolSocket`)!;
+      const proximal = socket.worldToLocal(vrm.humanoid.getRawBoneNode(`${side}IndexProximal`)!.getWorldPosition(new Vector3()));
+      const distal = socket.worldToLocal(vrm.humanoid.getRawBoneNode(`${side}IndexDistal`)!.getWorldPosition(new Vector3()));
+      const grip = new Vector3(...profile.gripOffsets[side === 'left' ? 0 : 1]); grip.x *= -1;
+      proximal.sub(grip); distal.sub(grip);
+      expect(proximal.x * distal.x + proximal.y * distal.y).toBeLessThan(0);
+      expect(Math.hypot(distal.x, distal.y)).toBeGreaterThan(.005);
+      expect(vrm.humanoid.getNormalizedBoneNode(`${side}ThumbMetacarpal`)!.quaternion.angleTo(new Quaternion())).toBeGreaterThan(.01);
+    }
+    const before = matrices(rig), calibration = rig.getCalibration(), moved = rig.setCalibration({seatHeight: .55, seatForward: .12});
+    rig.applyPose(createRestRigPose(moved)); expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
+    rig.setCalibration(calibration); rig.applyPose(pose); expect(matrices(rig)).toEqual(before);
+    expect(rig.getProfile().lengths).toEqual(profile.lengths); rig.dispose();
+  });
   it.each([.86, 1.12])('preserves %s proportions, nonidentity raw rest bases and node constraints through seeking', proportion => {
     const {vrm, helper, bones} = generatedVRM(proportion);
     expect(bones.leftHand!.getWorldQuaternion(new Quaternion()).angleTo(new Quaternion())).toBeGreaterThan(.2);
@@ -111,11 +142,30 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
       expect(vrm.humanoid.getNormalizedBoneNode(`${side}ThumbDistal`)).toBeNull();
     }
     const rig = new VRMHumanoidRigAdapter(vrm, 'generated-no-fingers'), profile = rig.getProfile();
-    expect(profile.gripOffsets[0][0]).toBeCloseTo(0); expect(profile.gripOffsets[1][0]).toBeCloseTo(0);
+    for (const grip of profile.gripOffsets.slice(0, 2)) expect(new Vector3(...grip).length()).toBeLessThan(.09);
     rig.applyPose(createRestRigPose(profile));
     expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
     expect(rig.root.getObjectByName('leftHandActualStickTip')).toBeDefined();
     expect(rig.root.getObjectByName('rightHandActualStickTip')).toBeDefined();
+    rig.dispose();
+  });
+
+  it.each(['zero-segments', 'coincident-proximals', 'parallel-palm-basis'])('keeps optional %s finger geometry finite with a generic fallback', variant => {
+    const {vrm} = generatedVRM(1, true);
+    for (const side of ['left', 'right'] as const) for (const finger of ['Index', 'Middle', 'Ring', 'Little'] as const) {
+      for (const segment of ['Proximal', 'Intermediate', 'Distal'] as const) {
+        const name = `${side}${finger}${segment}` as VRMHumanBoneName;
+        for (const node of [vrm.humanoid.getNormalizedBoneNode(name)!, vrm.humanoid.getRawBoneNode(name)!]) {
+          if (variant === 'zero-segments' || segment === 'Proximal') node.position.set(0, 0, variant === 'parallel-palm-basis' ? .05 : 0);
+        }
+      }
+    }
+    const rig = new VRMHumanoidRigAdapter(vrm, `generated-${variant}`);
+    for (const palmOrientation of ['up', 'inward', 'down'] as const) {
+      const profile = rig.setCalibration({...rig.getCalibration(), palmOrientation}); rig.applyPose(createRestRigPose(profile));
+      expect(matrices(rig).every(Number.isFinite)).toBe(true);
+      expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
+    }
     rig.dispose();
   });
 });

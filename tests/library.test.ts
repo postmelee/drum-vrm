@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { buildLibraryKit, type LibraryPreset } from '../src/model-library';
+import { alignInstrumentBody, cloneLibraryBody } from '../src/instrument-body';
+import { disposeModel, resolvePieceVisual } from '../src/model-procedural';
 import { applyHitResponse, bindHitResponse } from '../src/hit-response';
-import { fitLibraryStandHardware } from '../src/scene';
-import type { Vec3 } from '../src/types';
+import type { KitPiece, Vec3 } from '../src/types';
 
 const sources = [
   ['library', 'innerscene-drum-kit.glb', '3cf8d568b604e99ce63ee82829d7f25044d996ed6cd42c39bc7f226919d1a5a7'],
@@ -84,28 +85,23 @@ describe('bundled instrument libraries', () => {
     expect(kit.kick!.userData.contact[1]).toBeGreaterThan(.025);
     expect(kit.snare!.userData.contact[1]).toBeGreaterThan(.5);
     for (const group of Object.values(kit)) for (const child of group.children) expect(['surface', 'shell', 'hardware', 'pedal']).toContain(child.userData.hitResponseRole);
-    const minimumUsedY = (mesh: THREE.Mesh, world = false): number => {
-      const positions = mesh.geometry.getAttribute('position'), index = mesh.geometry.index;
-      let minimum = Infinity; const point = new THREE.Vector3();
-      for (let n = 0; n < (index?.count ?? positions.count); n++) {
-        point.fromBufferAttribute(positions, index ? index.getX(n) : n);
-        if (world) point.applyMatrix4(mesh.matrixWorld);
-        minimum = Math.min(minimum, point.y);
+    // All supported presets render only body geometry; source-specific stands
+    // and footboards never enter the shared kit hardware layer.
+    for (const id of ['kick', 'snare', 'hihat', 'tomHigh', 'tomMid', 'tomLow', 'crash', 'ride'] as const) {
+      for (const scale of [.65, 1.4]) {
+        const body = cloneLibraryBody(kit[id]!), pivot = new THREE.Group(); pivot.add(body);
+        body.traverse(node => expect(['hardware', 'pedal']).not.toContain(node.userData.hitResponseRole));
+        const piece: KitPiece = { id, label: id, position: [.3, id === 'kick' ? .08 : 1.1, .7], radius: .23 };
+        alignInstrumentBody(body, pivot, piece, resolvePieceVisual(preset, id, { scale, rotation: 35 }));
+        if (id !== 'kick') {
+          expect(pivot.userData.approximateContact, `${preset}/${id}/${scale}`).toBe(false);
+          const target = new THREE.Vector3(...piece.position);
+          const ray = new THREE.Raycaster(target.clone().add(new THREE.Vector3(0, 1, 0)), new THREE.Vector3(0, -1, 0));
+          const surfaces: THREE.Object3D[] = []; body.traverse(node => { if (node instanceof THREE.Mesh && node.userData.hitResponseRole === 'surface') surfaces.push(node); });
+          expect(ray.intersectObjects(surfaces.length ? surfaces : [body], true)[0].point.y, `${preset}/${id}/${scale}`).toBeCloseTo(target.y, 5);
+        }
+        disposeModel(pivot);
       }
-      return minimum;
-    };
-    for (const id of ['snare', 'hihat', 'tomHigh', 'tomMid', 'tomLow', 'crash', 'ride'] as const) {
-      const group = kit[id]!, contact = group.userData.contact as Vec3;
-      const hardware = group.children.filter(child => child.userData.hitResponseRole === 'hardware') as THREE.Mesh[];
-      const footed = hardware.filter(mesh => Math.abs(minimumUsedY(mesh)) < .025);
-      fitLibraryStandHardware(group, contact[1], 1.15, 1.2);
-      hardware.filter(mesh => !footed.includes(mesh)).forEach(mesh => expect(mesh.scale.toArray()).toEqual([1, 1, 1]));
-      const fitting = new THREE.Group(); fitting.scale.setScalar(1.2); fitting.position.set(.3, 1.15, .4);
-      group.position.set(-contact[0], -contact[1], -contact[2]); fitting.add(group); fitting.updateMatrixWorld(true);
-      expect(group.localToWorld(new THREE.Vector3(...contact)).distanceTo(new THREE.Vector3(.3, 1.15, .4))).toBeLessThan(1e-7);
-      footed.forEach(mesh => expect(Math.abs(minimumUsedY(mesh, true)), `${preset}/${id} hardware reaches the floor`).toBeLessThan(1e-6));
-      for (const child of group.children.filter(node => node.userData.hitResponseRole !== 'hardware')) expect(child.scale.toArray()).toEqual([1, 1, 1]);
-      fitting.remove(group); group.position.set(0, 0, 0);
     }
     for (const id of ['snare', 'hihat', 'tomLow', 'crash', 'ride'] as const) {
       expect(kit[id]!.children.some(child => child.userData.hitResponseRole === 'hardware'), `${preset}/${id} has static hardware`).toBe(true);

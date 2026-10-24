@@ -1,8 +1,14 @@
+> Research record preserved from [baseline 66951cd](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/references.md). Dated findings and statements of implementation status below belong to that record; use the [current specifications](../../specs/README.md) and [model guide](../models.md) for current behavior.
+
 # 선행 연구·구현·데이터 참고자료
 
 검토일: **2026-10-24 (Asia/Seoul)**. 대상 대화: `6adb2413-1850-83ec-9448-bea937287b82`, 「드럼 MIDI 3D 구현」의 두 사용자 요청과 두 답변 전체.
 
 이 문서는 계획의 근거를 다시 찾을 수 있도록 원저자·기관·저장소의 링크와 확인 범위를 기록한다. 대화의 주장 자체를 증거로 삼지 않았다. 논문, 소스 코드, 학습 가중치, 데이터, 모델·텍스처·음원은 서로 다른 배포물이므로 각각 조건을 확인한다. 아래 **채택 판단은 이 프로젝트의 구현 결정**이며, 미확인은 부재를 뜻하지 않는다.
+
+## Performance instruction and expression foundation
+
+The bilingual [performance source register (EN)](../performance-foundations.md) / [연주 자료 대장 (KO)](../performance-foundations.ko.md) adds instructional references I01–I03 with author credits, source locators, rights boundaries and current/planned status. [ADR 0006](../decisions/0006-technique-and-expression-foundation.md) maps instruction to independently proposed technique/support/contact rules and a future constrained 0–100 expression policy. R01–R07 below remain the canonical paper/code/data register; do not duplicate their license/adoption claims into a new unmaintained catalog. A source is not a reproduced implementation or a bundled asset.
 
 ## 이번 단계의 결정
 
