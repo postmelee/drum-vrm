@@ -21,10 +21,10 @@ DAW에서 만든 드럼 MIDI를 브라우저에서 3D 드러머의 연주 영상
 
 | 버전 | 제공 범위 |
 | --- | --- |
-| [공개 v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | MIDI 재생·출력, 기본 스켈레톤, 자체 도형/Innerscene 키트와 정적 드럼 GLB 교체. [검증 환경과 결과](docs/verification/studio-0.2.md). |
-| 이 저장소의 개발 빌드 | VRM 불러오기, 좌석·타점·그립 조절, 공통 하드웨어, 연주자 시점, 타격 반응, Batoski/smoj 키트도 포함합니다. 이 추가 기능은 공개 사이트에 없습니다. |
+| [Pages 빌드](https://postmelee.github.io/drum-vrm/) | 사용자가 승인한 main 빌드에 위 기능이 포함됩니다. 배포 커밋은 [성공한 Pages 작업](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml)에서 확인하세요. Pages 배포는 릴리스 태그 없이도 진행할 수 있습니다. |
+| [태그 v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | 과거 릴리스: MIDI 재생·출력, 기본 스켈레톤, 자체 도형/Innerscene 키트와 정적 드럼 GLB 교체. [당시 검증](docs/verification/studio-0.2.md). |
 
-안내 문서는 저장소 빌드를 설명합니다. 공개 사이트의 제공 범위는 릴리스 안내에서, 상세 개발 검사는 연결된 [검증 기록](docs/README.ko.md#검증)에서 확인할 수 있습니다.
+안내 문서는 이 저장소 빌드를 설명합니다. 더 최신 로컬 변경이 공개되었다고 판단하기 전에 배포 커밋을 확인하세요. 상세 개발 검사는 연결된 [검증 기록](docs/README.ko.md#검증)에서 확인할 수 있습니다.
 
 ## 사용 방법
 

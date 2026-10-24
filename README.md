@@ -21,10 +21,10 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 
 | Version | Availability |
 | --- | --- |
-| [Public v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Verified environment and results](docs/verification/studio-0.2.md). |
-| This repository's development build | Also includes VRM import, seat/contact/grip controls, shared hardware, player view, hit feedback and Batoski/smoj kits. These additions are not on the public site. |
+| [Pages build](https://postmelee.github.io/drum-vrm/) | The owner-approved main build includes the features above. See the [successful Pages workflow runs](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml) for the deployed commit. Pages deployments can occur without a release tag. |
+| [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
-The guides describe the repository build. Release notes identify what is available on the public site; detailed development checks remain in the linked [verification records](docs/README.md#verification).
+The guides describe this repository build. Check the deployed commit before assuming a newer local change is public; detailed development checks remain in the linked [verification records](docs/README.md#verification).
 
 ## Use the app
 
