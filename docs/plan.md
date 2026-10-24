@@ -1,5 +1,7 @@
 # 개발 계획과 GitHub 작업 지도
 
+Latest assessment: [snare ready pose and body-to-kit fit](research/snare-ready-and-kit-fit.md). The current >0.42 s generic-rest policy explains repeated snare departures; actual avatar dimensions vary while initial kit dimensions/placement are fixed. Proposed order: #18 measured placement baseline → #20 instrument-specific ready points plus target-dependent wrist/forearm strokes → #14/#20 explicit crossed/open/mirrored style and clearance. Add bounded compact-kit fitting where placement alone is insufficient. This is a proposed follow-up, not implemented behavior; keep it separate from the completed PR #34 foundations.
+
 기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.2.0 공개 유지, PR #33 병합 후 공통 보정·페달·하드웨어 PR #34 검토 중·미배포**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
 
 Palm-direction follow-up in PR #34: shared up/inward/down controls and reference wrist alignment are implemented, with up as the requested default. [Verification](verification/palm-orientation-unreleased.md) separates the improved rest pose from remaining large hi-hat wrist bends; target-dependent orientation/wrist limits remain #20 and are the next motion-quality priority. This is not release approval.

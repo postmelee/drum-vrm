@@ -1,5 +1,9 @@
 # 현재 상태와 다음 작업
 
+## Latest assessment — snare ready pose and kit fit
+
+The owner requested a status report and a recommendation after observing repeated snare approaches and possible body/kit disproportion. [The engineering assessment](research/snare-ready-and-kit-fit.md) traces the cause to the >0.42 s generic-rest return policy and fixed-direction reference wrists. VRM dimensions are preserved, while the initial kit layout/dimensions and stick length are common constants. The existing visual scale does not fit target reach. Prioritize a measured #18 placement baseline, then #20 instrument-specific ready points and target-dependent wrist/forearm motion as one solution, followed by explicit playing styles/clearance. Existing #18/#20 acceptance criteria track this proposal without a duplicate issue. No runtime changes were made for this assessment; PR #34 remains open, and release/Pages approval remains required.
+
 갱신일: 2026-10-24 (Asia/Seoul). 상태: **v0.2.0 공개 유지, PR #33 병합 완료·미배포, 공통 보정·페달·하드웨어 PR #34 검토 중·미배포**.
 
 ## 현재 우선순위와 릴리스 경계
