@@ -8,14 +8,13 @@ Turn drum MIDI into a video of a 3D drummer, entirely in your browser. Rust/WASM
 
 Upload MIDI, review the preparation results, play or seek, then export video with synthesized drum audio. Your selected MIDI and models are processed locally in the browser. The app does not reproduce the original DAW's sound.
 
-## Find the right guide
+## Documentation map
 
 ```mermaid
 flowchart LR
-  Start["Start here"] --> Learn["First video"]
-  Start --> Do["Task guides"]
-  Start --> Look["Formats and controls"]
-  Start --> Why["How it works"]
+  Start["Drum VRM"] --> Guides["docs: use and understand"]
+  Start --> Design["specs: technical design and decisions"]
+  Start --> Records["mydocs: research and verification records"]
 ```
 
 - **Learn:** [Create your first video](docs/tutorials/first-video.md).
@@ -23,7 +22,7 @@ flowchart LR
 - **Look up:** [Supported model files](docs/reference/model-formats.md), [MIDI and output limits](docs/reference/midi-and-export.md), and [drum presets](docs/reference/presets.md).
 - **Understand:** [Architecture](docs/explanation/architecture.md) and [performance principles](docs/explanation/performance-principles.md).
 - **Explore the technical design:** [Body/kit calibration](specs/architecture/calibration.md), [rig compatibility](specs/architecture/rig-compatibility.md), [performance and expression](specs/architecture/performance-expression.md), and [dependency choices](specs/architecture/dependencies.md).
-- **Contribute:** [Run locally](docs/how-to/local-development.md), [design specifications](specs/README.md), and [issues](https://github.com/postmelee/drum-vrm/issues).
+- **Contribute:** [Run locally](docs/how-to/local-development.md), [design specifications](specs/README.md), [research and work records](mydocs/README.md), and [issues](https://github.com/postmelee/drum-vrm/issues).
 
 [Browse all documentation](docs/README.md)
 

@@ -2,7 +2,7 @@
 
 Start with the relevant GitHub issue and its linked plan. This index routes work; it does not duplicate issue status or test results.
 
-- [Documentation migration #36](plans/task_m3_36.md), [implementation plan](plans/task_m3_36_impl.md), [owner decisions](feedback/task_m3_36_feedback.md), [preservation inventory](report/migrations/README.md).
+- [Documentation migration #36](plans/task_m3_36.md), [implementation plan](plans/task_m3_36_impl.md), [owner decisions](feedback/task_m3_36_feedback.md), [preservation inventory](report/migrations/README.md), [final report](report/task_m3_36_report.md).
 - [Bootstrap PR #37](https://github.com/postmelee/drum-vrm/pull/37) establishes the framework; [PR #34](https://github.com/postmelee/drum-vrm/pull/34) contains the prerequisite rig changes.
 - [Daily boards](orders/README.md) ([2026-10-25](orders/20261025.md)), [plans](plans/README.md), [stage evidence](working/README.md), [reports](report/README.md).
 - [Historical verification](report/verification/README.md), [requirements and approvals](report/history/README.md), [research](tech/research/README.md), [unimplemented proposals](tech/proposals/README.md).

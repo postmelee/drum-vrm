@@ -1,0 +1,665 @@
+{
+  "checked_at": "2026-10-25 (Asia/Seoul)",
+  "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+  "migration_stage_commit": "be35c7c",
+  "scope": "Documentation and repository tooling. No new MIDI/avatar/media acceptance or public deployment.",
+  "generation": {
+    "runs": [
+      "> drum-vrm@0.2.0 licenses\n> node scripts/licenses.mjs\n\nLicense notices generated for 19 npm and 21 Rust packages, plus 3 bundled 3D assets.",
+      "> drum-vrm@0.2.0 licenses\n> node scripts/licenses.mjs\n\nLicense notices generated for 19 npm and 21 Rust packages, plus 3 bundled 3D assets."
+    ],
+    "outputsIdenticalAcrossTwoRuns": true,
+    "hashes": {
+      "THIRD_PARTY_NOTICES.md": "de92a1e608959d4af663895e3d8255cb147127ad8ce1f3f2a35b696fda76fbf3",
+      "public/licenses.txt": "5c90e5ca05bf91184f8ad3cb9d6aa8fdf37c575b68b3016147900dcc1a32fd80",
+      "public/models/NOTICE.txt": "2436f8a209f13486c2fd417b2ead77cd1968bc977394b75f6220dcf757d3ab3f",
+      "docs/reference/dependencies/locked.md": "3140d27ceb972f191c6843f275a719f6f0ec2e19c2a841541ea61feba33cf39c"
+    },
+    "protectedInputsUnchanged": [
+      "LICENSE",
+      "public/models/batoski-provenance.json",
+      "public/models/smoj-provenance.json",
+      "public/models/batoski-drum-kit.glb",
+      "public/models/smoj-drum-kit.glb",
+      "public/models/innerscene-drum-kit.glb",
+      "public/models/innerscene-LICENSE.txt",
+      "public/models/innerscene-provenance.json",
+      "public/models/CC-BY-3.0.txt"
+    ],
+    "runtimeAndPagesWorkflowUnchanged": true
+  },
+  "negative_cases": {
+    "checker_sha256": "e12091c1c4790dc4c7a2a9f8d86c52892105cf3e807a952e7ea010bdc41b8f83",
+    "cases": [
+      {
+        "case": "baseline",
+        "exitCode": 0,
+        "expected": 0
+      },
+      {
+        "case": "missing-reference-target",
+        "exitCode": 1,
+        "expected": 1
+      },
+      {
+        "case": "undefined-reference",
+        "exitCode": 1,
+        "expected": 1
+      },
+      {
+        "case": "mismatched-fences",
+        "exitCode": 1,
+        "expected": 1
+      },
+      {
+        "case": "inline-code-example",
+        "exitCode": 0,
+        "expected": 0
+      },
+      {
+        "case": "symlink-outside-root",
+        "exitCode": 1,
+        "expected": 1
+      },
+      {
+        "case": "missing-docs-root",
+        "exitCode": 1,
+        "expected": 1
+      },
+      {
+        "case": "untracked-generated-output",
+        "exitCode": 1,
+        "expected": 1
+      },
+      {
+        "case": "tracked-generated-outputs",
+        "exitCode": 0,
+        "expected": 0
+      }
+    ]
+  },
+  "mermaid": {
+    "mermaid": "11.12.1",
+    "browser": "155.0.8059.86",
+    "diagrams": 14,
+    "sources": [
+      {
+        "path": "docs/README.ko.md",
+        "sha256": "3f52efd155461f75db35d7bb8b063c67dcfc76a43c80f75fb9b330e8349a0d6e"
+      },
+      {
+        "path": "docs/README.md",
+        "sha256": "2840dbeac63c8e1b6e07e2254cb1f45494be5e4129d61afd0e94b0fc3bb2e5ac"
+      },
+      {
+        "path": "docs/explanation/architecture.ko.md",
+        "sha256": "09847dd15438f02835296013d428c4104831d15fedbbb65bcfbf75b9a6539c1d"
+      },
+      {
+        "path": "docs/explanation/architecture.md",
+        "sha256": "a0e16b23b31998e32ee2f082396eccb6cc6ad1360df9a88d3722155c7a0bb6cc"
+      },
+      {
+        "path": "docs/reference/sources/README.ko.md",
+        "sha256": "6123f7ce423a92eb4cde0031be3fe18da045771d84f16cb28238e0711651231e"
+      },
+      {
+        "path": "docs/reference/sources/README.md",
+        "sha256": "7dca01886d653b6a73be8acaf087ca2b2e27e62b0b189bf5b72b9aa22c2011c7"
+      },
+      {
+        "path": "specs/README.md",
+        "sha256": "61e626d463f85e61f8395f841b25233914e23d623606ce7e5291de56342eae0c"
+      },
+      {
+        "path": "specs/architecture/calibration.md",
+        "sha256": "3bf11efa9f81e8ba6c97397ce2d9b09324e698cf7b995b203e207b062f642bfe"
+      },
+      {
+        "path": "specs/architecture/dependencies.md",
+        "sha256": "cda00ff06b9f4aed379572d72e952be45308f2e4ef6163df860d7a542b0896bf"
+      },
+      {
+        "path": "specs/architecture/overview.md",
+        "sha256": "c7e676d416bc01ddefd5928a1df76edf91e0f6dd659403512bb611a8d28d26b4"
+      },
+      {
+        "path": "specs/architecture/performance-expression.md",
+        "sha256": "8cd4ba54a4c2a88e30a66925c99b0d608341441a66e2e632e485b1f562713ca9"
+      },
+      {
+        "path": "specs/architecture/rig-compatibility.md",
+        "sha256": "c8083a9985b93e3437588e867b0bfde264ba90a43f0ef0a4593eeb97c68bb4a6"
+      },
+      {
+        "path": "README.md",
+        "sha256": "e35783726f1a022c4f06b3d43a99c08f16bda299ed7cbaf009608a54aaa81681"
+      },
+      {
+        "path": "README.ko.md",
+        "sha256": "0d23168374b25b3e8add41de1523420cf5bd671a9466a9dd0420f5c7e9591cfd"
+      }
+    ]
+  },
+  "external_scope": "Maintained README/docs/specs plus Diataxis/Hyper-Waterfall sources; histories and generated dependency inventory excluded. Binary URLs used HEAD. Reachability only; no rights or model-compatibility conclusion.",
+  "external_counts": {
+    "reachable": 74,
+    "access-denied": 8,
+    "tls-verification-failed": 2
+  },
+  "external_urls": [
+    {
+      "url": "https://postmelee.github.io/drum-vrm/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/issues",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://vroid.com/en/studio",
+      "status": 403,
+      "method": "GET",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://hub.vroid.com/en/",
+      "status": 403,
+      "method": "GET",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://github.com/vrm-c/vrm-specification/tree/master/samples",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://booth.pm/",
+      "status": 403,
+      "method": "GET",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://vroid.pixiv.help/hc/en-us/articles/15760756822297-I-want-to-learn-more-about-the-VRM-export-feature",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://vrm.dev/en/univrm1/migrate_vrm0/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://vroid.pixiv.help/hc/en-us/articles/23731198070809-About-file-formats-used-by-VRoid-Studio",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://vroid.pixiv.help/hc/en-us/articles/39513464329881-What-is-VRM",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://vrm.dev/licenses/1.0/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://vroid.pixiv.help/hc/en-us/articles/4405813333657-Can-I-use-the-models-created-with-VRoid-Studio-Stable-Ver-for-commercial-purposes",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/pull/33",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/pull/34",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/studio-0.2.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/vrm-studio-unreleased.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/calibration-unreleased.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/palm-orientation-unreleased.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://data.yamaha.com/files/download/other_assets/7/1224887/DTX_DrumScore_Instruction_eng.pdf",
+      "status": 200,
+      "method": "HEAD",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://hub.yamaha.com/music-educators/instruments/perc/a-guide-to-proper-stick-grips/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://hub.yamaha.com/music-educators/instruments/perc/snare-drum-basics-pedagogy/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://doi.org/10.1145/3769047.3769066",
+      "status": 403,
+      "method": "GET",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://www.theodoroskyriakou.com/projects/drums/index.html",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://www.theodoroskyriakou.com/projects/drums/Paper.pdf",
+      "status": 200,
+      "method": "HEAD",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://creativecommons.org/licenses/by/4.0/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://mmip.cs.ucy.ac.cy/",
+      "status": null,
+      "method": "GET",
+      "classification": "tls-verification-failed"
+    },
+    {
+      "url": "https://mmip.cs.ucy.ac.cy/License.html",
+      "status": null,
+      "method": "GET",
+      "classification": "tls-verification-failed"
+    },
+    {
+      "url": "https://doi.org/10.1111/cgf.70025",
+      "status": 403,
+      "method": "GET",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://zenodo.org/records/15830081",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://doi.org/10.1007/978-3-7091-6240-8_2",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://research.utwente.nl/en/publications/implementation-of-a-3d-virtual-drummer/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://research.utwente.nl/files/83238062/Kragtwijk2001implementation.pdf",
+      "status": 403,
+      "method": "HEAD",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://link.springer.com/chapter/10.1007/978-3-7091-6240-8_2",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://studios.disneyresearch.com/2026/08/18/generalized-audio-driven-synthesis-of-precise-drummer-motion/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://arxiv.org/abs/2608.19055v1",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://doi.org/10.48550/arXiv.2608.19055",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/jamesa08/MIDIAnimator/tree/059b1e2b80baf6171762f3d6a3c3f938d44ed46c",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/LICENSE.txt",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/MIDIAnimator/__init__.py",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/Cargo.toml",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/src/utils/fcurve.rs",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/src/utils/animation.rs",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/wayne0419/ARDrum-VirtualHand/tree/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/LICENSE",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/TransformRecorder.cs",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/TransformPlayBacker.cs",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/HandMovementPathRenderer.cs",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://www.apache.org/licenses/LICENSE-2.0",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://magenta.tensorflow.org/datasets/groove",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://storage.googleapis.com/magentadata/datasets/groove/groove-v1.0.0-midionly.zip",
+      "status": 200,
+      "method": "HEAD",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/vrm-c/vrm-specification/tree/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/README.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/vrm-c/vrm-specification/tree/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/Seed-san",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/Seed-san/README.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm",
+      "status": 200,
+      "method": "HEAD",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://hub.vroid.com/en/characters/2843975675147313744/models/5644550979324015604",
+      "status": 403,
+      "method": "GET",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://hub.vroid.com/en/characters/7939147878897061040/models/2292219474373673889",
+      "status": 403,
+      "method": "GET",
+      "classification": "access-denied"
+    },
+    {
+      "url": "https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0006-technique-and-expression-foundation.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/performance-foundations.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/performance-foundations.ko.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0004-vrm-humanoid-and-grip.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/models.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/models.ko.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0002-mvp-scope-and-export.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0003-minimal-studio-and-models.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0005-calibration-pedals-hardware.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/issues/18",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/issues/14",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/issues/20",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/calibration.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/calibration.ko.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0001-engine-and-rig-boundary.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://www.mozilla.org/en-US/MPL/2.0/FAQ/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm-1.0/humanoid.md",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMHumanoid.html",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://diataxis.fr/",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/hyper-waterfall/releases/tag/v0.3.0",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/hyper-waterfall/blob/v0.3.0/templates/manifest.json",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    },
+    {
+      "url": "https://github.com/postmelee/hyper-waterfall/blob/v0.3.0/LICENSE",
+      "status": 200,
+      "method": "GET",
+      "classification": "reachable"
+    }
+  ],
+  "documentation_check": {
+    "preservedHistoricalBodies": 28,
+    "files": 175,
+    "projectFilesChecked": 133,
+    "relativeLinks": 839,
+    "bilingualPairs": 28,
+    "mermaidBlocks": 14,
+    "errors": []
+  }
+}

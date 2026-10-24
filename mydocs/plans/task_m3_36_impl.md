@@ -36,3 +36,5 @@ The [task plan](task_m3_36.md) owns the location judgment. The migration ledger 
 
 - [Stage 1: baseline and authority](../working/task_m3_36_stage1.md).
 - [Stage 2: ownership and preservation](../working/task_m3_36_stage2.md).
+- [Stage 3: integrated verification](../working/task_m3_36_stage3.md).
+- [Final report](../report/task_m3_36_report.md).

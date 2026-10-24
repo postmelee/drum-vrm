@@ -8,14 +8,13 @@
 
 MIDI를 불러와 준비 결과를 확인하고, 재생하거나 원하는 시점을 탐색한 뒤 합성 드럼 소리가 포함된 영상을 출력합니다. 선택한 MIDI와 모델은 브라우저 안에서 처리합니다. 원본 DAW의 음색을 재현하지는 않습니다.
 
-## 필요한 안내 찾기
+## 문서 구조
 
 ```mermaid
 flowchart LR
-  Start["시작"] --> Learn["첫 영상"]
-  Start --> Do["작업별 사용법"]
-  Start --> Look["형식과 컨트롤"]
-  Start --> Why["동작 원리"]
+  Start["Drum VRM"] --> Guides["docs: 사용법과 동작 원리"]
+  Start --> Design["specs: 기술 설계와 결정"]
+  Start --> Records["mydocs: 연구와 검증 기록"]
 ```
 
 - **배우기:** [첫 영상 만들기](docs/tutorials/first-video.ko.md).
@@ -23,7 +22,7 @@ flowchart LR
 - **조회하기:** [지원 모델 파일](docs/reference/model-formats.ko.md), [MIDI·출력 제한](docs/reference/midi-and-export.ko.md), [드럼 프리셋](docs/reference/presets.ko.md).
 - **이해하기:** [구조](docs/explanation/architecture.ko.md)와 [연주 표현의 원칙](docs/explanation/performance-principles.ko.md).
 - **기술 설계 살펴보기:** [체형·키트 보정](specs/architecture/calibration.md), [리그 호환성](specs/architecture/rig-compatibility.md), [연주·표현](specs/architecture/performance-expression.md), [의존성 선택](specs/architecture/dependencies.md).
-- **기여하기:** [로컬 실행](docs/how-to/local-development.ko.md), [설계 명세](specs/README.md), [이슈](https://github.com/postmelee/drum-vrm/issues).
+- **기여하기:** [로컬 실행](docs/how-to/local-development.ko.md), [설계 명세](specs/README.md), [연구·작업 기록](mydocs/README.md), [이슈](https://github.com/postmelee/drum-vrm/issues).
 
 [문서 전체 탐색](docs/README.ko.md)
 

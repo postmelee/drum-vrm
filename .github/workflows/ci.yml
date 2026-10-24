@@ -70,6 +70,12 @@ jobs:
       - name: Generate dependency notices
         run: npm run licenses
 
+      - name: Check documentation and generated notice drift
+        run: |
+          npm run docs:check
+          git ls-files --error-unmatch THIRD_PARTY_NOTICES.md public/licenses.txt public/models/NOTICE.txt docs/reference/dependencies/locked.md > /dev/null
+          git diff --exit-code -- THIRD_PARTY_NOTICES.md public/licenses.txt public/models/NOTICE.txt docs/reference/dependencies/locked.md
+
       - name: Typecheck and build the production site
         run: npm run build:web
 
