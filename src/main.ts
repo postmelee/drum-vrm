@@ -160,6 +160,7 @@ function showModelInfo(info: VRMInspection | null) {
   for (const text of [`VRM ${info.version} · 모델 ${info.modelVersion} · 필수 본 ${info.required}/15`, `손가락 본 L ${info.fingers.left}/15 · R ${info.fingers.right}/15`, `제작자: ${info.authors.join(', ') || '미기재'}`]) {
     const p = document.createElement('p'); p.className='hint'; p.textContent=text; host.append(p);
   }
+  if(info.fingers.left<15 || info.fingers.right<15) { const p=document.createElement('p'); p.className='hint'; p.textContent='일부 손가락 본이 없어 그립 표현이 제한됩니다. 스틱 부착과 연주는 유지됩니다.'; host.append(p); }
   for (const warning of info.metadataWarnings) { const p=document.createElement('p'); p.className='hint'; p.textContent=warning; host.append(p); }
   const details = document.createElement('details'), summary = document.createElement('summary'); summary.textContent='모델 이용 조건'; details.append(summary);
   for (const [label, value] of info.terms) { const p=document.createElement('p'); p.className='hint'; p.textContent=`${label}: ${value}`; details.append(p); }

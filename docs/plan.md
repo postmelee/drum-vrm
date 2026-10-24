@@ -8,10 +8,10 @@ The owner requested a research-first assessment of studio controls, additional f
 
 | Priority | Work | Issue / milestone | Boundary |
 | --- | --- | --- | --- |
-| Now | Preserve Korean README, add English, record batch-release policy and audit | [#27](https://github.com/postmelee/drum-vrm/issues/27) / M3 | Documentation/review PR; no release |
-| Next, small PRs | Lucide SVG controls; player camera; optional hit response | [#28](https://github.com/postmelee/drum-vrm/issues/28) / M3 | Icons can start independently; player camera requires a left/right fixture; response must preserve contact and seek/export determinism |
-| Parallel | Batoski then smoj preset adaptation; investigate electronic kit | [#29](https://github.com/postmelee/drum-vrm/issues/29) / M3 | Only verified model rights/files enter implementation; electronic file remains unverified |
-| Foundation before naturalness | Rendered contact baseline, wrist/grip orientation, versioned rig profile | [#30](https://github.com/postmelee/drum-vrm/issues/30) + #17 / M3 | Pull minimal measurement out of #23 and basic grip out of #20; preserve their broader backlog |
+| Complete (#31) | Preserve Korean README, add English, record batch-release policy and audit | [#27](https://github.com/postmelee/drum-vrm/issues/27) / M3 | Documentation/review PR; no release |
+| Complete (#32) | Lucide SVG controls; player camera; optional hit response | [#28](https://github.com/postmelee/drum-vrm/issues/28) / M3 | Icons can start independently; player camera requires a left/right fixture; response must preserve contact and seek/export determinism |
+| Complete (#32) | Batoski then smoj preset adaptation; investigate electronic kit | [#29](https://github.com/postmelee/drum-vrm/issues/29) / M3 | Only verified model rights/files enter implementation; electronic file remains unverified |
+| Implemented (#33), unreleased | Rendered contact baseline, wrist/grip orientation, versioned rig profile | [#30](https://github.com/postmelee/drum-vrm/issues/30) + #17 / M3 | Pull minimal measurement out of #23 and basic grip out of #20; preserve their broader backlog |
 | After the foundation | Two-body seat/grip/target/pedal calibration | #18 / M3 | Preserve source-event timing, recompute body-dependent reach/assignment as needed |
 | Next production phase | WAV sync, mapping/hand editing, persistence, higher-resolution output | #13–#16 / M3 | Keep open; stabilize model/rig settings before project persistence; validate current output before raising resolution |
 | Later | Advanced expression, motion baking, learned models, platform expansion, full inspection tools | #19–#23 / M4 | Literature review can happen now; model adoption follows a measured baseline and verified code/data/weight terms |
