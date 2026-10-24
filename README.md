@@ -2,7 +2,9 @@
 
 DAW에서 만든 드럼 MIDI를 3D 드러머의 연주 영상으로 바꾸는 브라우저 도구입니다. Rust/WASM이 MIDI와 연주 동작을 계산하고 Three.js가 확장 가능한 기본 리그를 렌더링합니다.
 
-**현재 상태: 2026-10-24 사용자 승인에 따라 MVP를 구현했으며, 브라우저 인수 검증과 GitHub Pages 배포를 진행하고 있습니다. 공개 테스트 주소는 배포 검증 후 기록합니다.**
+**MVP 배포 완료 · [지금 테스트하기](https://postmelee.github.io/drum-vrm/) · [v0.1.0 릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.1.0)**
+
+Chrome 155/macOS에서 실제 파일 업로드부터 오디오 포함 영상 다운로드까지 확인했습니다. [검증 기록](docs/verification/mvp-0.1.md)에 환경·측정값·미검증 범위를 기록합니다.
 
 ## 첫 MVP
 
@@ -56,7 +58,7 @@ npm run preview
 
 ## 실행 환경과 제한
 
-첫 검증 대상은 WebGL·WASM·Web Audio·WebCodecs를 제공하는 데스크톱 Chromium입니다. 영상 출력은 HTTPS 또는 localhost의 secure context가 필요하며, 운영체제와 브라우저가 실제 제공하는 코덱에 따라 달라집니다. MP4(H.264/AAC), WebM(VP9/Opus), WebM(VP8/Opus)를 실제 설정과 짧은 시험 인코딩으로 확인합니다. 오디오 실패를 무음 성공으로 바꾸지 않습니다.
+첫 검증 대상은 WebGL·WASM·Web Audio·WebCodecs를 제공하는 데스크톱 Chromium입니다. 영상 출력은 HTTPS 또는 localhost의 secure context가 필요하며, 운영체제와 브라우저가 실제 제공하는 코덱에 따라 달라집니다. MP4(H.264/AAC), WebM(VP9/Opus), WebM(VP8/Opus)를 실제 설정과 짧은 시험 출력의 길이·decoded onset까지 확인합니다. 검증 환경에서 AAC 지연이 기준을 넘으면 VP9/Opus WebM을 선택합니다. 오디오 실패를 무음 성공으로 바꾸지 않습니다.
 
 MVP 리그는 고정된 기본 체형과 규칙 기반 동작입니다. 밀집 타격·빠른 이동·도달 불가능한 타점은 진단하며, 모든 MIDI를 사람처럼 연주한다고 보장하지 않습니다. PCM과 압축된 출력 파일을 메모리에 보관하므로 긴 곡의 메모리 사용량은 늘어납니다. 5분 입력 상한은 모든 기기에서의 성능 보장이 아니며 Safari·Firefox·모바일 전체 호환성과 최대 길이 성능은 별도 검증 대상입니다.
 
@@ -74,6 +76,6 @@ MVP 리그는 고정된 기본 체형과 규칙 기반 동작입니다. 밀집 �
 
 ## 배포와 라이선스
 
-GitHub Pages 배포는 승인되었습니다. 인수 검증 후 정적 `dist/`를 배포하고 실제 URL·commit SHA·검증 환경을 handoff와 이슈에 기록합니다. 예정 주소 `https://postmelee.github.io/drum-vrm/`는 배포 완료를 뜻하지 않습니다.
+2026-10-24 [Pages](https://postmelee.github.io/drum-vrm/) 배포 및 공개 주소 핵심 경로 검증을 완료했습니다. 배포 commit은 `9ddc2bf2450600e1eaca5bd405a4221e254ce83b`, [배포 run](https://github.com/postmelee/drum-vrm/actions/runs/40060762280)은 성공했습니다. [릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.1.0)에 실제 정적 artifact와 SHA-256을 보존합니다. 후속 배포는 main에서 `gh workflow run pages.yml --ref main`을 실행하며 전체 CI가 먼저 통과해야 합니다.
 
 자체 소스는 [MIT](LICENSE)입니다. 제3자 라이선스는 각각 유지하며 [배포 고지](public/licenses.txt)에 정확한 버전·소스·원문을 제공합니다. Mediabunny는 MPL-2.0이며 대응 소스의 고정 버전 URL을 고지에 포함합니다. 외부 캐릭터·음원 샘플·텍스처·모션 데이터·모델 가중치는 포함하지 않습니다. 참고 연구의 라이선스를 관련 데이터나 가중치의 사용 허가로 확대하지 않습니다.

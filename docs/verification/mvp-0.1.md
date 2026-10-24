@@ -1,6 +1,6 @@
 # MVP 0.1 검증 기록
 
-검증일: **2026-10-24 (Asia/Seoul)**. 이 기록은 실행한 자동 검사, 로컬 브라우저 동작, 내려받은 영상 파일을 구분한다. **Pages 설정은 구성되었지만 공개 배포 전이며, 최종 재시도 검증은 진행 중**이며 아래 미완료 항목을 완료 기록으로 바꾸지 않는다.
+검증일: **2026-10-24 (Asia/Seoul)**. 이 기록은 실행한 자동 검사, 로컬 브라우저 동작, 내려받은 영상 파일을 구분한다. **Pages 배포와 공개 주소의 업로드→재생→영상 다운로드 검증을 완료했다.** 아래에 확인 범위와 미검증 항목을 구분한다.
 
 ## 환경과 기준
 
@@ -13,9 +13,9 @@
 | 기본 시간축 | pre-roll 0.5초, 곡 30초, tail 0.25초, 30fps |
 | 기대 출력 | 1280×720, 923프레임, `923/30 = 30.766666…`초, 합성 오디오 |
 | 승인 | [2026-10-24 사용자 구현·MIT·검증 후 Pages 배포 승인](../approval.md) |
-| 구현 commit / PR | `dc76cc0`, [PR #24](https://github.com/postmelee/drum-vrm/pull/24); CI 실행 중이며 결과는 별도 기록 |
-| 최종 배포 commit SHA | 배포 후 기록 예정 |
-| 공개 테스트 URL | 배포 후 실제 접속 검증 결과와 함께 기록 예정 |
+| 구현 commit / PR | [PR #24](https://github.com/postmelee/drum-vrm/pull/24) 병합; PR 및 배포 CI 성공 |
+| 최종 배포 commit SHA | `9ddc2bf2450600e1eaca5bd405a4221e254ce83b` |
+| 공개 테스트 URL | [postmelee.github.io/drum-vrm](https://postmelee.github.io/drum-vrm/) |
 
 다른 운영체제·브라우저·코덱의 결과로 일반화하지 않는다. Safari·Firefox·모바일 전체 호환성과 모든 5분 입력의 실기기 성능은 검증하지 않았다.
 
@@ -118,15 +118,15 @@ ffmpeg -hide_banner -i "$VIDEO_PATH" -t 1 \
 
 | PRD | 현재 증거 | 추가 확인/범위 |
 |---|---|---|
-| A01–A03 | 데모/실제 업로드 준비, 193/135타격, 템포·트랙·채널 자동 검사 | 공개 Pages에서 반복 |
+| A01–A03 | 데모/실제 업로드 준비, 193/135타격, 템포·트랙·채널 자동 검사 | 공개 Pages에서 채널2·두 템포·30초135타격 반복 확인 |
 | A04–A05 | 손상 파일 UI 복구, native 미지원/velocity0/미매핑·상한 검사 | 정확한10MiB 유효 파일과 모든 UI 경계 사례는 별도 |
 | A06–A07 | 기본 연주 시각 확인, native 양손/양발 타점 접촉, adapter 스틱 끝 계약 | 일반 플레이어 전체 재생의 최종 관찰 기록 |
 | A08 | 정규화/합성/프레임 시간 자동 검사, WebM 첫 decoded onset +6.146ms | 모든 타격의 지각적 동기화 측정은 아님 |
 | A09–A11 | 불가능 동시 타격 보존·진단, 시각별 결정성·역방향 평가, pause/seek UI | 사용자 DAW 패턴의 품질 피드백은 후속 |
 | A12 | 실제923프레임·720p30 A/V WebM, 길이/전체 decode/비어 있지 않은 접촉 프레임 | 일반 플레이어 전체 육안·청취 최종 기록 |
-| A13 | codec probe 취소 UI 복구 및 취소 자동 검사 | 분석/본 인코딩 취소·재출력 반복 진행 중 |
-| A14 | 로컬 production build | 공개 URL·새로고침·WASM/Worker·업로드/출력 및 배포 SHA 기록 대기 |
-| A15 | 잠금 의존성 고지, 로컬 파일 처리 코드 경계 | 공개 배포물 고지와 네트워크 동작 확인 |
+| A13 | codec probe 취소 UI 복구 및 취소 자동 검사 | 5000타격 합성 취소→데모 재준비, 프레임 인코딩 중 취소, 재출력 및 명시적 무음 MP4 확인 |
+| A14 | 로컬 production build | 공개 Pages 새로고침·업로드·재생·출력 통과; 아래 배포 기록 참조 |
+| A15 | 잠금 의존성 고지, 로컬 파일 처리 코드 경계 | 공개 라이선스 고지 SHA 일치; 파일 처리의 외부 전송 없음은 소스 경계로 확인 |
 | A16 | 변경 kit 데이터/복사,57-float 검증, 스틱 접촉과 임의 순서 pose 계약 | 임의 VRM/체형 자동 보정은 후속 |
 
 ## 제한과 후속 기록
@@ -134,4 +134,18 @@ ffmpeg -hide_banner -i "$VIDEO_PATH" -t 1 \
 - 최종 mux/encoder flush가 시작된 단계에서는 취소 요청 후 브라우저 작업의 정리를 기다릴 수 있다. 즉시 프로세스를 강제 종료한다고 약속하지 않으며 완료 다운로드로 표시하지 않는다.
 - 5분48kHz stereo Float32 PCM 한 벌은 계산상 약110MiB다. 합성/AudioBuffer 복사와 압축 출력이 추가된다. 최대5분의 실제 UI 인코딩·peak memory·완료 시간을 아직 전체 측정하지 않았다.
 - Safari·Firefox·모바일, 모든 운영체제의 MP4/AAC·WebM codec 조합은 미검증이다. runtime gate가 실패하면 지원 제한을 표시한다.
-- 최종 일반 플레이어 확인, 취소/재시도, CI/Pages 배포와 공개 URL 테스트가 끝나면 이 문서에 환경·SHA·결과를 추가하고 #11/#12에 연결한다.
+- 일반 플레이어의 추가 관찰이나 새 환경 검증 시 아래 완료 기록에 결과를 추가한다. CI/Pages·취소·공개 경로 결과는 아래에 기록했다.
+
+## 공개 배포 완료 · 2026-10-24
+
+- URL: [Drum VRM](https://postmelee.github.io/drum-vrm/)
+- 배포 commit: `9ddc2bf2450600e1eaca5bd405a4221e254ce83b` (PR #24)
+- [PR CI](https://github.com/postmelee/drum-vrm/actions/runs/40060627630)·[배포 build 및 deploy](https://github.com/postmelee/drum-vrm/actions/runs/40060762280): 성공
+- 실제 공개 주소를 새로고침한 뒤 `two-tempos-channel2-30s.mid` 업로드 → 135타격/2템포/30초 준비 → 재생·일시정지·15.5초 탐색 → 오디오 포함 영상 추출·다운로드 완료. console error/warn 없음.
+- 공개 사이트 다운로드: VP9/Opus,1280×720,30fps,923프레임,48kHz stereo,30.780000초,8,304,632 bytes. `ffmpeg -v error -i FILE -f null -` 전체 decode 무오류. 같은 silence threshold의 첫 onset0.506542초(목표0.5초 대비+6.542ms).
+- 로컬 추가 UI: simultaneous fixture의 지원5타격/미매핑99번1개/미배정1개 진단, 명시적 무음 H264 MP453프레임·1.766667초 및 audio track 없음,5000타격/300초 합성 취소 후 데모 복구, codec probe 및 본 인코딩 중 취소·재출력 통과.
+- 배포된 `licenses.txt`는 로컬 생성본과 SHA-256 일치: `f706ef0e0791dd8cfcac12b4ee2e67b6324e6e7eb5b7d5712eb3572eb7d8a12c`.
+- [v0.1.0 릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.1.0)에 실제 배포 artifact를 보존. `drum-vrm-v0.1.0-pages.tar.gz` SHA-256: `629f083369e4b6d0348bced4fb246d94162a86f821aa34caba8db90710667cf0`.
+- 첫 배포이므로 이전 artifact는 없다. 후속 회귀의 기준은 이 릴리스이며 main을 이 앱 소스로 복구하고 Pages workflow를 실행하거나 보존 artifact를 재배포한다.
+
+검증의 한계: 브라우저 프리뷰와 추출 프레임의 시각 확인 및 전체 영상/오디오 decode를 수행했다. 외부 일반 플레이어의 전체 육안·청취 비교는 완료했다고 주장하지 않는다(브라우저 도구가 로컬 file URL 재생을 차단함). Safari/Firefox/모바일,5분 전체 영상 인코딩 및 모든 타격의 지각적 싱크 검증은 후속이다.
