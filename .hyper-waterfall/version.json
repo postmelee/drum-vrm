@@ -1,0 +1,759 @@
+{
+  "schemaVersion": "0.1.0",
+  "frameworkVersion": "0.3.0",
+  "source": "github-release",
+  "releaseTag": "v0.3.0",
+  "locale": "en",
+  "installedAt": "2026-10-24T22:34:30Z",
+  "updatedAt": "2026-10-24T22:34:30Z",
+  "sourceRepository": "https://github.com/postmelee/hyper-waterfall",
+  "sourceCommit": "83836828a4da24385d0410515d35ee43946b981f",
+  "releaseUrl": "https://github.com/postmelee/hyper-waterfall/releases/tag/v0.3.0",
+  "manifest": {
+    "source": "templates/manifest.json",
+    "sha256": "ff025c24a49bb7bb93057a2dde612c277506842bcbc5cb7614b7cb17466e5d87",
+    "gitBlob": "3822ad0a2a412077f182ef87f30acc1f7602af57",
+    "declaredChecksumStatus": "pending-release",
+    "verification": "Pinned Git blob and locally computed SHA-256; no upstream release checksum is published."
+  },
+  "license": {
+    "expression": "MIT",
+    "source": "https://github.com/postmelee/hyper-waterfall/blob/83836828a4da24385d0410515d35ee43946b981f/LICENSE",
+    "sha256": "68d099ba578c90e5caf21ef1b35ebde3409f4e42d81dadc60159425029dc7e4b",
+    "noticePreservedAt": "LICENSE",
+    "verification": "The existing project LICENSE is byte-identical to the upstream MIT copyright and permission notice."
+  },
+  "projectRuleLocation": "AGENTS.md#mandatory-rules-before-changes",
+  "managedFiles": [
+    {
+      "target": "AGENTS.md",
+      "source": "templates/locales/en/AGENTS.md",
+      "kind": "file",
+      "updatePolicy": "merge",
+      "sourceGitBlob": "89907b75e5b71af8528a48b2b46b41f6d425916c",
+      "sourceSha256": "0bfd964ad9fffe740cc4bccfaf558b2589318b8be89ee6b42fb44aa2a0fa9566",
+      "installedSha256": "62064cf6f64a470371c3df71dabb81512f10deeb2510defaf9c68aa281ccc2d9",
+      "bytes": 9323,
+      "placeholders": [
+        "{BASE_BRANCH}",
+        "{PROJECT_OVERVIEW}",
+        "{PROJECT_SPECIFIC_RULES}",
+        "{PROJECT_SPECIFIC_REQUIRED_DOCUMENTS}"
+      ],
+      "preexistingSha256": "fe902e8ce6b71faebe5cdb135514ff9fce98e097ef9ca10be178985b06843818",
+      "action": "replace-approved"
+    },
+    {
+      "target": "CLAUDE.md",
+      "source": "templates/locales/en/CLAUDE.md",
+      "kind": "file",
+      "updatePolicy": "merge",
+      "sourceGitBlob": "0d913441a1b359ac3faf92860fe3fd2eae64616b",
+      "sourceSha256": "1cb8f8ff7285272631b1004e60fa2daddc58c21f1c4dab0cdd16addf1d51d1f4",
+      "installedSha256": "1cb8f8ff7285272631b1004e60fa2daddc58c21f1c4dab0cdd16addf1d51d1f4",
+      "bytes": 251,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": ".github/ISSUE_TEMPLATE/task.yml",
+      "source": "templates/locales/en/.github/ISSUE_TEMPLATE/task.yml",
+      "kind": "file",
+      "updatePolicy": "merge",
+      "sourceGitBlob": "7f4da971fbf20e19003e9d564359c54ecff73097",
+      "sourceSha256": "2da35119f7828f196d99f8c8f88fe7ea6dd6fbdc83801977a7ee71dad868e8d1",
+      "installedSha256": "2da35119f7828f196d99f8c8f88fe7ea6dd6fbdc83801977a7ee71dad868e8d1",
+      "bytes": 3287,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": ".github/pull_request_template.md",
+      "source": "templates/locales/en/.github/pull_request_template.md",
+      "kind": "file",
+      "updatePolicy": "merge",
+      "sourceGitBlob": "0882cf2517362a7b33b013b947e8a258cfd5a351",
+      "sourceSha256": "2a9b96bf8eb8f739beb2302b2054d322d827feda70f1f67f68194825e7cdb783",
+      "installedSha256": "67ef177811bd44427a2073752ebcc74f5be940d8a2d77e84813c0e1c9c8c0573",
+      "bytes": 3314,
+      "placeholders": [
+        "{REPO_SLUG}"
+      ],
+      "preexistingSha256": "96f12827b6d845de3b92af1d5520c257c973d2d3f879910b13869d5accaaa259",
+      "action": "replace-approved"
+    },
+    {
+      "target": "mydocs/_templates/README.md",
+      "source": "templates/locales/en/mydocs/_templates/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "16dbdd9fbc9dbe8d793ddd1144f6d65a3e73be9e",
+      "sourceSha256": "6a74b329f8a7dbc5d2f73f35abd9b7dffa512c9b374c2d99149389686bfe0e8c",
+      "installedSha256": "6a74b329f8a7dbc5d2f73f35abd9b7dffa512c9b374c2d99149389686bfe0e8c",
+      "bytes": 1124,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/external_pr_report.md",
+      "source": "templates/locales/en/mydocs/_templates/external_pr_report.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "cc0f8a869d25a1a11c293ac7a44ea4ee2823e925",
+      "sourceSha256": "565a519f71d557dd196c202a1e4cc417f883b44d91b61de88bf21e5dbaa072c5",
+      "installedSha256": "565a519f71d557dd196c202a1e4cc417f883b44d91b61de88bf21e5dbaa072c5",
+      "bytes": 1190,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/external_pr_review.md",
+      "source": "templates/locales/en/mydocs/_templates/external_pr_review.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "4c57f39da749ea6e8a8eeaeec0c813ac292f1ec5",
+      "sourceSha256": "f1f6d5df92e2895ba74db6ed6d9f64308728f06b68279a35053f29ba512e0249",
+      "installedSha256": "f1f6d5df92e2895ba74db6ed6d9f64308728f06b68279a35053f29ba512e0249",
+      "bytes": 1342,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/external_pr_review_impl.md",
+      "source": "templates/locales/en/mydocs/_templates/external_pr_review_impl.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "6feb9c9abad032b376b46f5deb0bd85d0201f82e",
+      "sourceSha256": "4aae471cfdc6a77d1c0caa099ed9448262acb234e770fd6b30af1f47398d18df",
+      "installedSha256": "4aae471cfdc6a77d1c0caa099ed9448262acb234e770fd6b30af1f47398d18df",
+      "bytes": 1258,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/feedback.md",
+      "source": "templates/locales/en/mydocs/_templates/feedback.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "225b0bbced4d343590d2ea189949e10f6126c11d",
+      "sourceSha256": "2efd1b4c4bd252e8f8af305a00aa0de8840036299d6fb8e1c86271c71fd9d165",
+      "installedSha256": "2efd1b4c4bd252e8f8af305a00aa0de8840036299d6fb8e1c86271c71fd9d165",
+      "bytes": 1387,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/final_report.md",
+      "source": "templates/locales/en/mydocs/_templates/final_report.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "d6f8d9dcefc6405be2aef2081cd2379baa713ea5",
+      "sourceSha256": "62238848eee2633dc3363c3486714528d79bc573cdfa803c3a18e49492da5aef",
+      "installedSha256": "cd05a82767081b7475fbaad1b86ff6bf0701f010cfa796e2104534c066c97893",
+      "bytes": 2009,
+      "placeholders": [
+        "{REPO_SLUG}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/orders.md",
+      "source": "templates/locales/en/mydocs/_templates/orders.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "6335aaef4b6e71c3702b044333fea4e50e490c83",
+      "sourceSha256": "4d9eb566e7492b3a412680ec2df76a852fc7a2f0fc534219148674b4227b1ddf",
+      "installedSha256": "4d9eb566e7492b3a412680ec2df76a852fc7a2f0fc534219148674b4227b1ddf",
+      "bytes": 1814,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/stage_report.md",
+      "source": "templates/locales/en/mydocs/_templates/stage_report.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "1c6be255db3a6278e02e3a33864c647af7ef851e",
+      "sourceSha256": "60c15d2d312bdb143c5d55f54d39ca373386c33827610ea207e9c5c72295217b",
+      "installedSha256": "dc334c3d9a06eccea6eea20090b4b311805d3fe2a98cd07a93173eee89bb6087",
+      "bytes": 1255,
+      "placeholders": [
+        "{REPO_SLUG}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/task_impl_plan.md",
+      "source": "templates/locales/en/mydocs/_templates/task_impl_plan.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "1177e4e1deada3cc042105525064405547beeef5",
+      "sourceSha256": "cedb438be9b1f0c272f6884ff9bc861cde72f8fefd000643d04ba80a4bf80593",
+      "installedSha256": "1702489b82bb900afddcf86cb53145cb4ac51d87976f21e4b9fd5f893c73b35e",
+      "bytes": 2778,
+      "placeholders": [
+        "{REPO_SLUG}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/task_plan.md",
+      "source": "templates/locales/en/mydocs/_templates/task_plan.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "1d0ea39fc3663c4d6278a52bef1a4c942313bdf4",
+      "sourceSha256": "67ebf6a525c2003f4ae626053cd96a57cdc199e2c68597b24b693e0831746889",
+      "installedSha256": "4deb9e3673e5b39df13f14e92375df2f0e6bd82c88f34ad40951c4200f2886c2",
+      "bytes": 3143,
+      "placeholders": [
+        "{REPO_SLUG}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/tech_note.md",
+      "source": "templates/locales/en/mydocs/_templates/tech_note.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "a457d168cc311c1829f15f7be4fa8aa28f36ef77",
+      "sourceSha256": "7a76426c0cf2affc0b3d4b2745cf51fd36cc4ada2ee5a97d7ff24bfc6c6c8a1f",
+      "installedSha256": "7a76426c0cf2affc0b3d4b2745cf51fd36cc4ada2ee5a97d7ff24bfc6c6c8a1f",
+      "bytes": 1277,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/_templates/troubleshooting.md",
+      "source": "templates/locales/en/mydocs/_templates/troubleshooting.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "f1de7637236e8ec88ceac83ee5febda15a3db428",
+      "sourceSha256": "2beab2c036111d64f83465773c9db903f50eea075f231674f273f8e026cb8b0d",
+      "installedSha256": "2beab2c036111d64f83465773c9db903f50eea075f231674f273f8e026cb8b0d",
+      "bytes": 1355,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/README.md",
+      "source": "templates/locales/en/mydocs/manual/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "93a5b891c362d05e55f07f328fbb80c47c07b577",
+      "sourceSha256": "ab43e6c319a192b66036835fe19670bd45a08e84b5ad4c26efdafb2fab081f3d",
+      "installedSha256": "ab43e6c319a192b66036835fe19670bd45a08e84b5ad4c26efdafb2fab081f3d",
+      "bytes": 1328,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/agent_code_hyperfall_rule_conflict.md",
+      "source": "templates/locales/en/mydocs/manual/agent_code_hyperfall_rule_conflict.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "0996ea39efa965d59d7b09ad7f8ca2a87ca58e08",
+      "sourceSha256": "684a7cb592abdb0f3ed97e9d6747663aeb36bdb64549cf67d4d4242731a0e517",
+      "installedSha256": "684a7cb592abdb0f3ed97e9d6747663aeb36bdb64549cf67d4d4242731a0e517",
+      "bytes": 2186,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/document_structure_guide.md",
+      "source": "templates/locales/en/mydocs/manual/document_structure_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "ee473b9fa76f14cb7d218c2a9b7f81325e7b2dcf",
+      "sourceSha256": "5529d5aa1f0d54f16cbcb63fce2e349e6c8edcd7930b07d619299b5a3e2ecaf0",
+      "installedSha256": "5529d5aa1f0d54f16cbcb63fce2e349e6c8edcd7930b07d619299b5a3e2ecaf0",
+      "bytes": 18341,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/external_pr_review_guide.md",
+      "source": "templates/locales/en/mydocs/manual/external_pr_review_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "47bc9835282bc56a5460440dfe3cadb3051043a1",
+      "sourceSha256": "2c54e9f8801ffcfd959de1a0a7f564f79ef1bb5a38ef9e154160074771549c58",
+      "installedSha256": "2c54e9f8801ffcfd959de1a0a7f564f79ef1bb5a38ef9e154160074771549c58",
+      "bytes": 2385,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/framework_lifecycle_guide.md",
+      "source": "templates/locales/en/mydocs/manual/framework_lifecycle_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "92fc706a6e9fa6466748a5d6970cc9b07268e191",
+      "sourceSha256": "8ba695a1ab4b493d07def5873df163ac07269db8f0f10acce2dc3cda7df7e8cd",
+      "installedSha256": "bfd49603362ed8738dca9aa17e728c9405dbbebc6f9da8fc9b0ee73817cb2dea",
+      "bytes": 5090,
+      "placeholders": [
+        "{BASE_BRANCH}",
+        "{RELEASE_BRANCH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/git_workflow_guide.md",
+      "source": "templates/locales/en/mydocs/manual/git_workflow_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "f20febc9935d434591a9e1e03e8027d6d133565d",
+      "sourceSha256": "c46334b4b49e8e5d25dd971fb5014a4d6143891a66d8159cf896c1a93deb0c50",
+      "installedSha256": "752e0664c87d3d8dfccb25d3de6716d283e94d4ab0371b5b65ddc4353a6441e2",
+      "bytes": 7474,
+      "placeholders": [
+        "{REPO_SLUG}",
+        "{REPO_NAME}",
+        "{BASE_BRANCH}",
+        "{RELEASE_BRANCH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/internal_pr_guide.md",
+      "source": "templates/locales/en/mydocs/manual/internal_pr_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "8ab8741d32d50ad077a474ec5492f6c8c9523eab",
+      "sourceSha256": "6e0a5a8b7e6401811e258a8fd4ec21aa2abcf98522495bf315732ee2c2b6f7b3",
+      "installedSha256": "f7b4008b17807239cae382ef9f8ff2ed188620767fda1b2e04d9fabb1f8fd3a1",
+      "bytes": 6746,
+      "placeholders": [
+        "{REPO_SLUG}",
+        "{BASE_BRANCH}",
+        "{PR_TEMPLATE_PATH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/pr_command_guide.md",
+      "source": "templates/locales/en/mydocs/manual/pr_command_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "51615323b86c06fc5b61a738e47d7ce2aca859ef",
+      "sourceSha256": "646e92cc82de258c42034dbbdcdf2441baa9266610a6f805ea130694c6f2c28b",
+      "installedSha256": "dcf8fca2c9faed5da6af4fecb495b9143cfc458b668253ef350cf30aee7b199d",
+      "bytes": 2822,
+      "placeholders": [
+        "{REPO_SLUG}",
+        "{BASE_BRANCH}",
+        "{PR_TEMPLATE_PATH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/pr_process_guide.md",
+      "source": "templates/locales/en/mydocs/manual/pr_process_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "0a82974feb33d83f94f5d3df79a364e392ee85aa",
+      "sourceSha256": "9dd234836a9058dae3de6deb3b52b4ab0a8d0388bc41365698bec3d2344a367c",
+      "installedSha256": "7aac335d99c22f5e95b6145cb121cbfe975c204c743dc40d5907e273db8b141b",
+      "bytes": 3212,
+      "placeholders": [
+        "{REPO_NAME}",
+        "{BASE_BRANCH}",
+        "{PR_TEMPLATE_PATH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/release_update_protocol.md",
+      "source": "templates/locales/en/mydocs/manual/release_update_protocol.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "9f5924e1eddb8475dd70b5220c45bee19b3879e2",
+      "sourceSha256": "931455ef88fc9321ff2a0d7e625b15a6ee7ce5ded147664b2d5fee3e5cd7533a",
+      "installedSha256": "a87c5e6cafc258c6d73bb73a15cbadc3c97331980610ed20d17c79b246e2573a",
+      "bytes": 4857,
+      "placeholders": [
+        "{BASE_BRANCH}",
+        "{RELEASE_BRANCH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/manual/task_workflow_guide.md",
+      "source": "templates/locales/en/mydocs/manual/task_workflow_guide.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "bd2a25bf326623f9743a6dd406d9811902f302da",
+      "sourceSha256": "d0c709d8953956ed8f848141972e7f976ebc450cb385f26c2f20b78833400142",
+      "installedSha256": "4a3226b22eb0c399609b50c217bb7449109173bb1a20a7cd4cde58391203e758",
+      "bytes": 8838,
+      "placeholders": [
+        "{BASE_BRANCH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/README.md",
+      "source": "templates/locales/en/mydocs/skills/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "ab9a2046edfd408ecfceb6464d9ae8abf42d475b",
+      "sourceSha256": "da0efb0801beee14d0111196d4133d25efb558a05e3e7f776bf82f14b91e815c",
+      "installedSha256": "da0efb0801beee14d0111196d4133d25efb558a05e3e7f776bf82f14b91e815c",
+      "bytes": 1206,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/external-pr-review/SKILL.md",
+      "source": "templates/locales/en/mydocs/skills/external-pr-review/SKILL.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "8f83ab6f7d957c51530e43279d29e6dfc891c1c0",
+      "sourceSha256": "1cba25ded3c2ced3e7e008971be5e48b03b6a081f75b5695678576e715cc2324",
+      "installedSha256": "b6ac96b705ab5db2d556f1ff412fd60aa701540af6b79d12d19780c401f9897b",
+      "bytes": 3823,
+      "placeholders": [
+        "{BASE_BRANCH}",
+        "{PROJECT_VALIDATION_GUIDE}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/pr-merge-cleanup/SKILL.md",
+      "source": "templates/locales/en/mydocs/skills/pr-merge-cleanup/SKILL.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "f840b04d6069ed29434631d03083a9a5c1311f18",
+      "sourceSha256": "6f3323e7b0829fd7c3bc86afcce9e4eb078beda07256a7cfc17d708f44229c9e",
+      "installedSha256": "9ece9868e1c8f5aba1128d3aec14082312f5c231e83aaf2711e2baabe997e568",
+      "bytes": 2479,
+      "placeholders": [
+        "{BASE_BRANCH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/task-final-report/SKILL.md",
+      "source": "templates/locales/en/mydocs/skills/task-final-report/SKILL.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "96d6d2237cc086ef2ca536979d89b16fe523efdb",
+      "sourceSha256": "bad692f961b6e5c423f8ed60164f08c2ec7e856ad8f28dcb87e42c58d1260bb1",
+      "installedSha256": "9755844f0459356d3f1ecce2642c795cdea6f8f034ec98266f275da5f6c9ab4f",
+      "bytes": 5379,
+      "placeholders": [
+        "{REPO_SLUG}",
+        "{BASE_BRANCH}",
+        "{PR_TEMPLATE_PATH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/task-register/SKILL.md",
+      "source": "templates/locales/en/mydocs/skills/task-register/SKILL.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "d20d1a0aa4b80f4c0e4247edb364accd904ae300",
+      "sourceSha256": "295ada15ff42ba977529967e5026dfa568e178e0daebd431e90483cbc96068eb",
+      "installedSha256": "20ede446e544e235158023995a34f1fa7795333c82723be1a7e1a87b0eab4ec0",
+      "bytes": 6118,
+      "placeholders": [
+        "{REPO_SLUG}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/task-stage-report/SKILL.md",
+      "source": "templates/locales/en/mydocs/skills/task-stage-report/SKILL.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "75e2dc51f1a4ddca818dce4ef2dbb11f5e63b031",
+      "sourceSha256": "c897fad121c5ca047a1506518ce4cca4f175f76db4546d87a66095c805cd65ca",
+      "installedSha256": "c897fad121c5ca047a1506518ce4cca4f175f76db4546d87a66095c805cd65ca",
+      "bytes": 2624,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/task-start/SKILL.md",
+      "source": "templates/locales/en/mydocs/skills/task-start/SKILL.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "1d41ac9eb33c9270ac6df7aef7eb3c942e5924db",
+      "sourceSha256": "e0ef4f76b1466ebf4494174291628bf1783c543e8d65f980d7b2d21a31061b26",
+      "installedSha256": "b769093758bf3f4c2a82726c02aeae22e6caa4354b7ee234bc5cdb15cc2dba9d",
+      "bytes": 2808,
+      "placeholders": [
+        "{BASE_BRANCH}"
+      ],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/skills/todo/SKILL.md",
+      "source": "templates/locales/en/mydocs/skills/todo/SKILL.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "61eec5d01b7d1426f07f7e7d41bd1252ebe7e996",
+      "sourceSha256": "b5d1b8e7da3287cbd6750402627430dff6b61dd77d3d4139cfd51fb0491fcb31",
+      "installedSha256": "b5d1b8e7da3287cbd6750402627430dff6b61dd77d3d4139cfd51fb0491fcb31",
+      "bytes": 5148,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/orders/.gitkeep",
+      "source": "templates/mydocs/orders/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/plans/archives/.gitkeep",
+      "source": "templates/mydocs/plans/archives/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/working/.gitkeep",
+      "source": "templates/mydocs/working/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/report/.gitkeep",
+      "source": "templates/mydocs/report/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/feedback/.gitkeep",
+      "source": "templates/mydocs/feedback/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/tech/.gitkeep",
+      "source": "templates/mydocs/tech/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/troubleshootings/.gitkeep",
+      "source": "templates/mydocs/troubleshootings/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/pr/archives/.gitkeep",
+      "source": "templates/mydocs/pr/archives/.gitkeep",
+      "kind": "file",
+      "updatePolicy": "preserve",
+      "sourceGitBlob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "sourceSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "installedSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/orders/README.md",
+      "source": "templates/locales/en/mydocs/orders/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "834b631b6a6246b862ed0576f5f2eb43ec3e2387",
+      "sourceSha256": "78fa9ae2d456fe2ce477b0c2c52c138b2af940d63f70652a0bfb4d5eb2353149",
+      "installedSha256": "78fa9ae2d456fe2ce477b0c2c52c138b2af940d63f70652a0bfb4d5eb2353149",
+      "bytes": 813,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/plans/README.md",
+      "source": "templates/locales/en/mydocs/plans/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "f22105583f3f71d33f95d95581905dac095c0392",
+      "sourceSha256": "61c5c6b60ecb12569b8d42312b891f6acd42a64ee4911e110a231799c3a6b070",
+      "installedSha256": "61c5c6b60ecb12569b8d42312b891f6acd42a64ee4911e110a231799c3a6b070",
+      "bytes": 1048,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/working/README.md",
+      "source": "templates/locales/en/mydocs/working/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "22538faac2096609f4c1d472fdd3908cb92e1687",
+      "sourceSha256": "328ba5a3988fb2a2be78cdae4f113cc8d1e00a92f7f060286c033e6163058033",
+      "installedSha256": "328ba5a3988fb2a2be78cdae4f113cc8d1e00a92f7f060286c033e6163058033",
+      "bytes": 962,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/report/README.md",
+      "source": "templates/locales/en/mydocs/report/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "6c081cedfbed2d735ef480dfef9cebd27637612b",
+      "sourceSha256": "ed27a60c1ed25c0b741ce299dc0fe764f51c2292d11e3fcd04f5b1fe7fc2a1f0",
+      "installedSha256": "ed27a60c1ed25c0b741ce299dc0fe764f51c2292d11e3fcd04f5b1fe7fc2a1f0",
+      "bytes": 911,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/feedback/README.md",
+      "source": "templates/locales/en/mydocs/feedback/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "b73dcce54149b7b63d2a17c716c9d247616c6178",
+      "sourceSha256": "7f1a6fbe381c8cf36e5a3e88781a99711a7e5bd982a302d91d2557aa73337706",
+      "installedSha256": "7f1a6fbe381c8cf36e5a3e88781a99711a7e5bd982a302d91d2557aa73337706",
+      "bytes": 846,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/tech/README.md",
+      "source": "templates/locales/en/mydocs/tech/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "7fb4686c2ba37199905a0f0ccc833aab21e4e590",
+      "sourceSha256": "0291d19cfab8b68106216ed3e2f8748cfe30d23ba24aa5b59669913a491008d9",
+      "installedSha256": "0291d19cfab8b68106216ed3e2f8748cfe30d23ba24aa5b59669913a491008d9",
+      "bytes": 1114,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/troubleshootings/README.md",
+      "source": "templates/locales/en/mydocs/troubleshootings/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "99735f10f31ba2e45aefe7dd911618a87d4c7a03",
+      "sourceSha256": "dda9e543b72e607ee9d387a51bd8c86ce84e240e1ebb505ea86285bcd8a9748b",
+      "installedSha256": "dda9e543b72e607ee9d387a51bd8c86ce84e240e1ebb505ea86285bcd8a9748b",
+      "bytes": 944,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    },
+    {
+      "target": "mydocs/pr/README.md",
+      "source": "templates/locales/en/mydocs/pr/README.md",
+      "kind": "file",
+      "updatePolicy": "overwrite",
+      "sourceGitBlob": "9a8b40fee51fde2cfd2387a8e29ef8c2fb20f4f3",
+      "sourceSha256": "166733768d9b95be1226f586e1ad8593601abaa552392a62262823f89b98d6fa",
+      "installedSha256": "166733768d9b95be1226f586e1ad8593601abaa552392a62262823f89b98d6fa",
+      "bytes": 1167,
+      "placeholders": [],
+      "preexistingSha256": null,
+      "action": "create"
+    }
+  ],
+  "symlinks": [
+    {
+      "target": ".agents/skills",
+      "kind": "symlink",
+      "linkTarget": "../mydocs/skills",
+      "updatePolicy": "symlink"
+    },
+    {
+      "target": ".claude/skills",
+      "kind": "symlink",
+      "linkTarget": "../mydocs/skills",
+      "updatePolicy": "symlink"
+    }
+  ]
+}
