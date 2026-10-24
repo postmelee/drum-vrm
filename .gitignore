@@ -4,3 +4,6 @@ target/
 dist/
 .DS_Store
 *.log
+src/wasm/
+test-results/
+playwright-report/

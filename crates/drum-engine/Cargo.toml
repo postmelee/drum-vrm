@@ -1,0 +1,16 @@
+[package]
+name = "drum-engine"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Deterministic MIDI drum planning and pose evaluation for Drum VRM"
+repository = "https://github.com/postmelee/drum-vrm"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+midly = { version = "=0.5.3", default-features = false, features = ["std", "strict"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.154"
+wasm-bindgen = "=0.2.127"
