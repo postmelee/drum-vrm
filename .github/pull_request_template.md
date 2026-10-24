@@ -4,11 +4,11 @@ Describe the concrete problem and resulting behavior. Related issue(s):
 
 ## Validation
 
-Record executed checks, browser/output evidence, and untested limits.
+Record checks actually performed, their results and remaining limits. Link the tested commit or browser/output evidence when relevant; do not present planned checks as completed.
 
 ## Documentation and provenance
 
-Update design/handoff/license records as needed. User-facing changes require matching English and Korean documentation. For external code, data, or assets, link the exact source/version and applicable terms.
+Update affected design, usage and license records. Public guidance and technical explanations require matching English and Korean documentation. For external code, data or assets, link the exact source/version and applicable terms.
 
 ## Release status
 

@@ -1,3 +1,5 @@
+> Research record preserved from [baseline 66951cd](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/drum-assets.md). Dated findings and statements of implementation status below belong to that record; use the [current specifications](../../specs/README.md) and [model guide](../models.md) for current behavior.
+
 # 드럼 프리셋 모델·Logic Pro 화면 참고 조사
 
 조사일: 2026-10-24 · 관련 실행 이슈: [#25](https://github.com/postmelee/drum-vrm/issues/25)

@@ -1,3 +1,5 @@
+> Research record preserved from [baseline 66951cd](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/drum-kit-integration.md). Dated findings and statements of implementation status below belong to that record; use the [current specifications](../../specs/README.md) and [model guide](../models.md) for current behavior.
+
 # Bundled kit integration — 2026-10-24
 
 Issue #29 adds two different original model kits alongside Innerscene. These are distinct source geometries, not finish variants of the existing procedural kit. The preset IDs are `library` (Innerscene), `batoski`, and `smoj`. All three use the same `loadLibraryKit(preset)` adapter boundary. The engine knows instrument roles and contacts, not source object names.

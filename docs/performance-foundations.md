@@ -1,33 +1,18 @@
 # Performance foundations and sources
 
-**English** · [한국어](performance-foundations.ko.md)
+**English** · [한국어](performance-foundations.ko.md) · [Documentation](README.md)
 
-Updated 2026-10-24. This is the project's research direction, not a list of supported controls. Technique profiles and a 0–100 expression control are **planned**. Current implementation and limitations are recorded in [the handoff](handoff.md) and [calibration guide](calibration.md).
+We study drumming instruction alongside animation research, then design and test our own motion rules. A readable performance should preserve the music, fit the performer's body and make the chosen technique visible.
 
-## Principles
+The [performance-expression design](../specs/architecture/performance-expression.md) connects posture, grip, heel-down/heel-up and coordinated playing to planned technique profiles and a 0–100 visual expression control. Those controls are **planned**, not supported settings. Current planted-foot ankle motion is an approximation; the [calibration guide](calibration.md) explains available controls and their limits.
 
-We study drumming instruction alongside animation research, then design and test our own motion rules. A readable performance should preserve the music, fit the performer's body, and make the chosen technique visible. More expression must remain compatible with contact, timing and the next action.
+## Research principles
 
-- Preserve source MIDI notes, times and velocities. Visual expression does not change the sound.
-- Fit seat, instruments and contact points from measured body proportions, using the same process for every avatar.
-- Keep required preparation, contact, rebound and balance at every expression setting.
-- Select grip, sticking style and pedal technique separately from expressive movement.
-- Measure actual attached tools, joint posture and clearance; attractive motion or accurate contact alone is insufficient.
-- Distinguish what a source teaches, our interpretation, implemented behavior and measured results.
+- Preserve source MIDI notes, times and velocities. Optional visual emphasis must leave time and space for contact and recovery.
+- Use measured body proportions and the same fitting process for every avatar. Technique choices and expression amount are separate.
+- Distinguish source instruction, project interpretation, implemented behavior and measured evidence. Educational examples are not universal joint-limit measurements.
 
-Instructional examples are starting points for particular contexts, not universal joint limits. The [engineering contract](decisions/0006-technique-and-expression-foundation.md) maps these principles to planned data and checks.
-
-## Planned expression control
-
-| Amount | Intended visual behavior |
-| --- | --- |
-| 0 | Economical movement, with all motion needed to play the notes intact. |
-| 50 | Moderate preparation, rebound and phrase emphasis. |
-| 100 | Larger feasible gestures around selected accents, with time and space for recovery. |
-
-These are design targets, not a measured emotion scale or implemented presets. A quiet note keeps its musical role; 100 does not make every stroke large. When space or time is insufficient, reduce optional movement first. Grip and heel-down/heel-up are separate technique choices; the slider does not automatically switch them.
-
-An emphasized first beat may receive a larger preparation or recovery, informed by the score and explicit user cues. A bar's first beat is not automatically a phrase climax. Two existing simultaneous crash events can eventually drive two hands and two cymbals. Adding a second strike to one event requires an explicit arrangement edit. The current kit maps crashes to one role, so distinct physical cymbals need additional mapping work.
+The detailed rules, acceptance checks and design decisions belong in the [technical design](../specs/architecture/performance-expression.md), so this page remains the entry point to the original sources and their credits.
 
 ## Instructional source register
 
@@ -47,11 +32,4 @@ The existing [research and reuse register](research/references.md) preserves aut
 
 Use the [rig/motion audit](research/rig-and-studio-audit.md), [VRM model register](research/vrm-models.md), [drum asset register](research/drum-assets.md), and [snare/kit-fit assessment](research/snare-ready-and-kit-fit.md) for standards, models and current gaps. Code, papers, data, weights and assets retain separate provenance and permissions.
 
-## Delivery order and evidence
-
-1. **#18:** measured body/kit fit and reliable ready/contact frames.
-2. **#20:** natural basic strokes, target-dependent wrists and instrument-specific waiting positions.
-3. **#14/#20:** explicit grips/sticking/pedal techniques, physical instrument instances and coordinated supports.
-4. **#20/#23:** constrained expression 0–100 and comparison records; **#15** later saves the settings and cues.
-
-Compare restrained/expressive cases on the same MIDI and different bodies, measuring time, contact, posture, reach and clearance. Sequential playback, random seeking and exported frames must agree. Current planted-foot ankle motion is an approximation; full heel-down/heel-up mechanics and expression control are not implemented. This documentation does not authorize release or Pages deployment.
+[Technical design](../specs/architecture/performance-expression.md) · [Character models](models.md) · [Calibration](calibration.md)
