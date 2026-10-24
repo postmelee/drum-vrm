@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      upload_pages:
+        description: Upload the verified dist directory for the Pages workflow.
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Rust, WASM, and browser build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out the requested commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6, verified 2026-10-24
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6, verified 2026-10-24
+        with:
+          node-version: '24.15.0'
+          cache: npm
+
+      - name: Install the pinned Rust toolchain
+        run: rustup toolchain install 1.94.1 --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+
+      - name: Verify Rust formatting, tests, and lint
+        run: |
+          cargo fmt --all -- --check
+          cargo test --workspace --locked
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Install checksum-verified wasm-pack 0.15.0
+        shell: bash
+        run: |
+          archive="$RUNNER_TEMP/wasm-pack.tar.gz"
+          curl --fail --location --retry 3 \
+            'https://github.com/wasm-bindgen/wasm-pack/releases/download/v0.15.0/wasm-pack-v0.15.0-x86_64-unknown-linux-musl.tar.gz' \
+            --output "$archive"
+          printf '%s  %s\n' 'c09f971ecaed9a2efc80fdcea7a00ef6b53c7fadc8c57d1f61b53a6aa66b668a' "$archive" | sha256sum --check --strict
+          tar -xzf "$archive" -C "$RUNNER_TEMP"
+          install "$RUNNER_TEMP/wasm-pack-v0.15.0-x86_64-unknown-linux-musl/wasm-pack" "$HOME/.cargo/bin/wasm-pack"
+          wasm-pack --version
+
+      - name: Install locked browser dependencies
+        run: npm ci
+
+      - name: Build locked WebAssembly
+        run: npm run build:wasm -- -- --locked
+
+      - name: Run browser-side unit tests
+        run: npm test
+
+      - name: Generate dependency notices
+        run: npm run licenses
+
+      - name: Typecheck and build the production site
+        run: npm run build:web
+
+      - name: Upload verified Pages artifact
+        if: ${{ inputs.upload_pages }}
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4, verified 2026-10-24
+        with:
+          path: dist
+          retention-days: 1
+

@@ -1,0 +1,171 @@
+import { readFile, readdir, writeFile, mkdir, access } from 'node:fs/promises';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const json = async path => JSON.parse(await readFile(path, 'utf8'));
+const rootPackage = await json(join(root, 'package.json'));
+const npmLock = await json(join(root, 'package-lock.json'));
+const exists = async path => { try { await access(path); return true; } catch { return false; } };
+const sourceRepo = value => (typeof value === 'string' ? value : value?.url ?? '').replace(/^git\+/, '').replace(/\.git$/, '');
+// midly's published include list omits LICENSE. This exact upstream text was
+// verified at the crate's recorded .cargo_vcs_info.json commit on 2026-10-24.
+const midlyCommit = '816cb2a585b4d5d1fd7aeb0cb35668f21dc00869';
+const midlyLicenseUrl = `https://raw.githubusercontent.com/negamartin/midly/${midlyCommit}/LICENSE`;
+const midlyLicense = `This is free and unencumbered software released into the public domain.
+
+Anyone is free to copy, modify, publish, use, compile, sell, or
+distribute this software, either in source code form or as a compiled
+binary, for any purpose, commercial or non-commercial, and by any
+means.
+
+In jurisdictions that recognize copyright laws, the author or authors
+of this software dedicate any and all copyright interest in the
+software to the public domain. We make this dedication for the benefit
+of the public at large and to the detriment of our heirs and
+successors. We intend this dedication to be an overt act of
+relinquishment in perpetuity of all present and future rights to this
+software under copyright law.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+OTHER DEALINGS IN THE SOFTWARE.
+
+For more information, please refer to <http://unlicense.org>`;
+
+async function licenseFiles(directory, explicit) {
+  const names = (await readdir(directory)).filter(name => /^(unlicen[sc]e|licen[sc]e|copying|notice|copyright)([._-].*)?$/i.test(name));
+  if (explicit && !names.includes(explicit)) names.push(explicit);
+  const contents = [];
+  for (const name of names.sort()) {
+    try { contents.push({ name, text: (await readFile(join(directory, name), 'utf8')).trimEnd() }); } catch { /* Non-file entries. */ }
+  }
+  if (!contents.length) throw new Error('Dependency has no readable license file; review its published source before release.');
+  return contents;
+}
+
+async function resolveInstalled(name, from) {
+  let directory = from;
+  while (directory.startsWith(root)) {
+    const candidate = join(directory, 'node_modules', name);
+    if (await exists(join(candidate, 'package.json'))) return candidate;
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  throw new Error(`Missing installed runtime dependency: ${name}. Run npm ci first.`);
+}
+
+const npmPackages = [];
+const seen = new Set();
+async function visitNpm(name, from) {
+  const directory = await resolveInstalled(name, from);
+  const key = relative(root, directory).replaceAll('\\', '/');
+  if (seen.has(key)) return;
+  seen.add(key);
+  const pkg = await json(join(directory, 'package.json'));
+  const locked = npmLock.packages[key];
+  if (!locked || locked.version !== pkg.version || !locked.integrity || !locked.resolved) {
+    throw new Error(`Missing or mismatched lock evidence for ${name}.`);
+  }
+  npmPackages.push({
+    name: pkg.name, version: pkg.version, license: pkg.license, source: locked.resolved,
+    checksum: locked.integrity, repository: sourceRepo(pkg.repository),
+    scope: pkg.name.startsWith('@types/') ? 'Type declarations; no browser runtime code' : 'Browser runtime',
+    licenses: await licenseFiles(directory),
+  });
+  for (const dependency of Object.keys(pkg.dependencies ?? {}).sort()) await visitNpm(dependency, directory);
+  for (const dependency of Object.keys(pkg.optionalDependencies ?? {}).sort()) {
+    try { await visitNpm(dependency, directory); } catch (error) {
+      if (!String(error).includes('Missing installed runtime dependency')) throw error;
+    }
+  }
+}
+for (const name of Object.keys(rootPackage.dependencies ?? {}).sort()) await visitNpm(name, root);
+npmPackages.sort((a, b) => a.name.localeCompare(b.name));
+
+if (!await exists(join(root, 'Cargo.lock'))) throw new Error('Cargo.lock is required; resolve the locked Rust dependencies first.');
+const cargoLock = await readFile(join(root, 'Cargo.lock'), 'utf8');
+const cargoChecksums = new Map();
+for (const section of cargoLock.split('[[package]]').slice(1)) {
+  const value = name => section.match(new RegExp(`^${name} = "([^"]+)"`, 'm'))?.[1];
+  cargoChecksums.set(`${value('name')}@${value('version')}`, value('checksum'));
+}
+let metadata;
+try {
+  metadata = JSON.parse(execFileSync('cargo', ['metadata', '--format-version', '1', '--locked', '--offline', '--filter-platform', 'wasm32-unknown-unknown'], {
+    cwd: root, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+  }));
+} catch {
+  throw new Error('Locked offline cargo metadata failed. Install the pinned Rust toolchain and fetch/build locked dependencies first.');
+}
+const resolvedIds = new Set(metadata.resolve.nodes.map(node => node.id));
+const cargoPackages = [];
+for (const pkg of metadata.packages.filter(pkg => pkg.source?.startsWith('registry+') && resolvedIds.has(pkg.id))) {
+  const checksum = cargoChecksums.get(`${pkg.name}@${pkg.version}`);
+  if (!checksum) throw new Error(`Missing Cargo.lock checksum for ${pkg.name}@${pkg.version}`);
+  let licenses;
+  let licenseSource;
+  if (pkg.name === 'midly' && pkg.version === '0.5.3') {
+    const vcs = await json(join(dirname(pkg.manifest_path), '.cargo_vcs_info.json'));
+    if (vcs.git.sha1 !== midlyCommit || pkg.license !== 'Unlicense') throw new Error('midly license exception no longer matches source evidence.');
+    licenses = [{ name: 'LICENSE (upstream commit; omitted from crate archive)', text: midlyLicense }];
+    licenseSource = midlyLicenseUrl;
+  } else {
+    licenses = await licenseFiles(dirname(pkg.manifest_path), pkg.license_file);
+  }
+  cargoPackages.push({
+    name: pkg.name, version: pkg.version, license: pkg.license ?? 'See license file',
+    source: `https://crates.io/api/v1/crates/${pkg.name}/${pkg.version}/download`,
+    checksum: `sha256:${checksum}`, repository: sourceRepo(pkg.repository),
+    scope: 'Rust WASM dependency closure, including build/proc-macro dependencies',
+    licenses, licenseSource,
+  });
+}
+cargoPackages.sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
+
+const rustVersion = execFileSync('rustc', ['--version', '--verbose'], { cwd: root, encoding: 'utf8' });
+const rustCommit = rustVersion.match(/^commit-hash: (\w+)$/m)?.[1];
+const rustRelease = rustVersion.match(/^release: ([\w.]+)$/m)?.[1];
+if (!rustCommit || !rustRelease) throw new Error('Cannot identify Rust standard library source.');
+const sysroot = execFileSync('rustc', ['--print', 'sysroot'], { cwd: root, encoding: 'utf8' }).trim();
+const rustNoticePath = join(sysroot, 'share/doc/rust/COPYRIGHT-library.html');
+const rustHeading = `\n${'='.repeat(78)}\nRUST STANDARD LIBRARY ${rustRelease}\n${'='.repeat(78)}\nSource commit: ${rustCommit}\n`;
+let rustSection;
+if (await exists(rustNoticePath)) {
+  const rustHtml = await readFile(rustNoticePath, 'utf8');
+  // The toolchain notice contains the complete license texts and copyright inventory.
+  const rustNotices = rustHtml.replace(/<[^>]*>/g, '').replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&amp;', '&')
+    .replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+  rustSection = `${rustHeading}Source: https://github.com/rust-lang/rust/tree/${rustCommit}/library\nToolchain-provided COPYRIGHT-library.html rendered as text. The inventory includes platform-specific components and is conservative for wasm32.\n\n${rustNotices}\n`;
+} else {
+  // Minimal CI toolchains omit rust-docs. Reuse only the already-reviewed notice
+  // for the exact compiler release AND commit, never another toolchain's text.
+  const previous = await readFile(join(root, 'public/licenses.txt'), 'utf8').catch(() => '');
+  const index = previous.indexOf(rustHeading);
+  if (index < 0) throw new Error('Rust standard-library notices missing for this compiler. Install rust-docs and regenerate.');
+  rustSection = previous.slice(index);
+}
+
+const mediabunnyPackage = npmPackages.find(pkg => pkg.name === "mediabunny");
+if (!mediabunnyPackage) throw new Error("Mediabunny license inventory is missing.");
+const intro = `Drum VRM — third-party notices\n\nApplication source: MIT; https://github.com/postmelee/drum-vrm\n\nGenerated from package-lock.json, installed npm package license files, Cargo.lock, and locked offline cargo metadata.\nThe npm inventory is the production dependency closure (declaration-only dependencies are labeled).\nThe Rust inventory conservatively includes build/proc-macro dependencies; inclusion does not mean every crate is linked into the final WASM.\nBuild/test-only npm dependencies are separately pinned in package-lock.json and are not shipped as application runtime code.\n\nMediabunny ${mediabunnyPackage.version} is used without modifying its covered source files. Its MPL-2.0 license remains in force.\nExact corresponding source, including src/ and the original LICENSE, is available without charge from:\n${mediabunnyPackage.source}\nThe package integrity below identifies the published source archive used for this build.\nThis application's separate source files are MIT licensed; no relicensing of third-party components is implied.\n\nNo external drum samples, soundfonts, character models, textures, motion datasets, or model weights are included.\n`;
+const group = (title, packages) => `\n${'='.repeat(78)}\n${title}\n${'='.repeat(78)}\n` + packages.map(pkg =>
+  `\n${pkg.name} ${pkg.version}\nLicense expression: ${pkg.license}\nScope: ${pkg.scope}\nSource archive: ${pkg.source}\nLock checksum: ${pkg.checksum}\nRepository: ${pkg.repository || '(not declared)'}\n${pkg.licenseSource ? `License text source: ${pkg.licenseSource}\n` : ''}` +
+  pkg.licenses.map(license => `\n--- ${license.name} ---\n${license.text}\n`).join(''),
+).join('\n');
+const notices = intro + group('NPM PRODUCTION DEPENDENCY CLOSURE', npmPackages) + group('RUST LOCKED DEPENDENCY CLOSURE', cargoPackages) + rustSection;
+const table = packages => packages.map(pkg => `| ${pkg.name} | ${pkg.version} | ${pkg.license} | [archive](${pkg.source}) | \`${pkg.checksum}\` |`).join('\n');
+const dependencyDoc = `# 실제 도입 의존성 잠금과 라이선스\n\n이 파일과 배포 고지는 \`npm run licenses\`로 생성한다. 네트워크 조회에 의존하지 않고 설치된 파일·lockfile·\`cargo metadata --locked --offline\`을 대조한다. 버전이나 체크섬이 맞지 않거나 원본 라이선스 파일이 없으면 실패한다. 절대 로컬 경로는 배포 문서에 포함하지 않는다.\n\n## 브라우저 패키지\n\nproduction 의존성의 전이 폐쇄를 기록한다. \`@types/\` 두 패키지는 타입 선언이며 브라우저 실행 코드가 아니다. 개발·검사 도구(Vite, TypeScript, Vitest, @types/three 등)는 \`package-lock.json\`의 별도 dev 의존성으로 고정하며 아래 런타임 목록과 구분한다.\n\n| 패키지 | 버전 | 라이선스 | 정확한 소스 | lock integrity |\n|---|---|---|---|---|\n${table(npmPackages)}\n\n## Rust 패키지\n\n\`wasm32-unknown-unknown\` 기준 Cargo 해석 그래프의 registry 패키지다. proc-macro/build 구성요소도 보수적으로 포함하며 모두가 WASM에 링크된다는 뜻은 아니다. crate 원본 archive와 Cargo.lock SHA-256을 제공한다. Rust 표준 라이브러리는 고정된 \`rust-toolchain.toml\`의 툴체인 구성요소로 사용한다.\n\n| crate | 버전 | 라이선스 | 정확한 소스 | Cargo.lock checksum |\n|---|---|---|---|---|\n${table(cargoPackages)}\n\n## 배포 조건과 범위\n\n- 원본 라이선스/저작권 문구는 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md)와 배포물 \`licenses.txt\`에 그대로 포함한다. dual-license crate는 원본에 있는 양쪽 라이선스 모두 보존한다.\n- Mediabunny의 MPL-2.0 covered source는 수정하지 않았다. 정확한 npm archive에는 \`src/\`와 원본 LICENSE가 포함되며, 사용자가 별도 비용 없이 해당 버전의 대응 소스를 받을 수 있다. 자체 앱 파일은 MIT다.\n- 외부 샘플·캐릭터·텍스처·모션·데이터·가중치는 도입하지 않았다. 참고 조사 링크는 실행 코드 도입과 별개다.\n- 이 고지는 실제 설치 패키지와 잠금 체크섬을 근거로 한다. 확인하지 않은 Git tag/commit은 기재하지 않는다. 버전 변경 시 설치·잠금·고지를 함께 갱신한다.\n`;
+await mkdir(join(root, 'public'), { recursive: true });
+await writeFile(join(root, 'public/licenses.txt'), notices);
+await writeFile(join(root, 'THIRD_PARTY_NOTICES.md'), `# Third-party notices\n\nThe same notices are distributed as [licenses.txt](public/licenses.txt). Generated by \`npm run licenses\`.\n\n\`\`\`text\n${notices}\`\`\`\n`);
+const evidenceNotes = `\n## 원본 고지 예외와 툴체인\n\nmidly 0.5.3 crate의 include 목록은 LICENSE를 누락한다. crate 내부 \`.cargo_vcs_info.json\`의 commit \`${midlyCommit}\`를 확인한 뒤 [그 commit의 LICENSE](${midlyLicenseUrl}) 원문을 생성기에 보관했다. 버전·commit·license 표현식이 모두 같을 때만 이 예외를 적용한다.\n\nRust ${rustRelease}의 표준 라이브러리 고지도 설치 툴체인의 \`COPYRIGHT-library.html\`에서 추출하여 함께 배포한다. 소스 commit은 \`rustc --version --verbose\`에서 확인한 \`${rustCommit}\`다. rust-docs가 없는 최소 CI 환경에서는 이 릴리스와 commit이 정확히 같은 기존 배포 고지만 재사용한다. 새로운 툴체인은 rust-docs를 설치해 다시 생성해야 한다.\n`;
+await writeFile(join(root, 'docs/research/dependency-lock.md'), dependencyDoc + evidenceNotes);
+console.log(`License notices generated for ${npmPackages.length} npm and ${cargoPackages.length} Rust packages.`);

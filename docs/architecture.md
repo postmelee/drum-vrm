@@ -1,158 +1,140 @@
 # 아키텍처와 구현 경계
 
-상태: **구현 승인 전 설계안** · 기준일: 2026-10-24 (Asia/Seoul)
+상태: **사용자 승인 후 MVP 구현, 통합·배포 검증 진행 중** · 기준일: 2026-10-24 (Asia/Seoul)
 
-이 문서는 원 대화 전체의 방향을 현재 MVP 범위로 구체화한다. 아래 인터페이스, 수치, 성능 기준은 **구현 제안/인수 목표**이며 실행 검증 결과가 아니다. 라이브러리의 공개 기능과 라이선스 확인 결과는 [의존성 조사](research/dependencies.md)에 분리한다. 원 대화의 코드 조각은 완성된 구현으로 취급하지 않는다.
+현재 구현은 아래 파일을 기준으로 설명한다. 수용 기준의 통과 여부는 [PRD](product-requirements.md)와 실제 검사 기록으로 판단하며, 구현된 경로와 검증이 끝난 경로를 구분한다. 후속 설계는 별도로 표시한다. 기술 조사와 원본 라이선스 근거는 [의존성 조사](research/dependencies.md)에 보존한다.
 
-## 1. MVP와 확장 범위
+## 1. MVP 범위와 입력 상한
 
-MVP는 MIDI 파일 선택 → 사전 분석 → 기본 휴머노이드 리그와 드럼 표시 → 재생·일시정지·탐색 → 합성 드럼 소리가 포함된 **1280×720, 30fps 영상** 다운로드를 완성한다. 사람형 리그는 직접 만든 구·원통·관절로 구성하며 외부 캐릭터·모션·샘플 없이 시험할 수 있어야 한다. 재생 버튼을 누르기 전에는 연주하지 않는다.
+MVP는 MIDI 파일 선택 → 사전 분석 → 기본 휴머노이드와 드럼 표시 → 재생·일시정지·탐색 → 합성 드럼 오디오를 포함한 **1280×720, 30fps 영상** 다운로드다. 사람형 리그, 드럼 메시, 30초 데모와 합성 음향을 직접 만들었다. 재생 전에는 준비 자세를 표시한다.
 
-MIDI 입력의 초기 상한은 **10 MiB(10,485,760바이트), 곡 시간 5분**으로 제안한다. 주된 MVP 인수 시나리오는 30초 연주다. 파싱한 전체 이벤트 수·트랙 수·한 시점의 밀집도에도 별도 상한을 두고, 승인 후 첫 측정에서 수치를 고정한다. 파싱 도중 상한을 검사하며 초과 입력은 이유를 표시하고 취소할 수 있어야 한다. 이 제한은 5분의 모든 파일에서 목표 성능을 이미 달성했다는 뜻이 아니다.
+| 제한 | 구현값/검사 위치 |
+|---|---|
+| 파일 | 10MiB(10,485,760바이트), UI 및 Rust preflight |
+| 시간 | 선택 트랙의 마지막 유효 End of Track까지 300초 이하; 준비/여운 제외 |
+| 트랙 | 1–512개, header와 실제 MTrk 수 일치 |
+| 이벤트 | 파일 전체 200,000개 이하, event iterator 도중 검사 |
+| 지원 타격 | 선택 트랙/채널에서 GM 매핑된 NoteOn 50,000개 이하 |
+| 동시 후보 | 동일 μs 그룹의 처음 32개까지 beam 확장; 나머지 지원 타격은 unresolved로 보존 |
+| 내부 계획 | JSON 최대32MiB, schema·시각·ID·좌표·손발 검사 후 evaluator 생성 |
 
-원래 목적은 DAW에서 완성한 음원과 동기화된 커버 영상이다. 선택 WAV 입력·오프셋 보정·원음 결합은 **M3 후속 범위**로 보존한다. MVP의 합성음은 타격 확인용이며 DAW의 음색·이펙트를 재현한다고 표현하지 않는다. VRM 교체, 편집용 GLB/VRMA, 손 배정 편집, 1080p/60fps, 투명 출력, 학습 모델, 라이브 MIDI는 후속 확장이다.
+이 상한은 파싱·탐색의 작업량을 제한하는 정책이며, 모든 기기에서 5분 출력 성능을 측정했다는 뜻이 아니다. 주 인수 사례는 30초다. WAV·VRM·편집·프로젝트 저장·고해상도·3D 출력은 M3·M4에 유지한다.
 
-## 2. 모듈 책임
+## 2. 실제 모듈 책임
 
-| 모듈 | 책임 | 외부에 넘기는 결과 |
+| 파일/모듈 | 책임 | 경계 |
 |---|---|---|
-| `engine-core` (Rust) | SMF 파싱 결과 정규화, 템포맵, 매핑, 손발 배정, 궤적, 도달성, 시간별 운동학 | `PerformancePlan`, `PoseBuffer`, 진단 |
-| `engine-wasm` (Rust + wasm-bindgen) | 바이트 입력, WASM 수명·핸들, 배열 경계, 오류 전달 | JS에서 호출할 작은 API |
-| `planner-worker` (TypeScript) | 한 개의 Worker에서 분석 실행, 단계별 진행·취소 | 직렬화된 계획과 분석 보고 |
-| `transport` | 곡 시간, 오디오 기준 시계, 재생·일시정지·탐색 | 절대 곡 시간 |
-| `audio` | MIDI 타격 기반 합성 PCM, 프리뷰 재생; 추후 WAV 정렬 | 동일 타임라인의 PCM |
-| `rig` | 기본 리그 생성, 캘리브레이션, canonical pose를 실제 노드에 적용 | Three.js 장면 노드 |
-| `viewer` | 카메라·조명·키트·렌더링, 시간별 리그와 악기 상태 표시 | canvas |
-| `export` | 설정 검사, 고정 FPS 평가·렌더·인코딩, 오디오 mux, 취소·정리 | MP4 또는 WebM |
-| `project` | 버전·입력 해시·설정·계획의 저장/복원 경계 | 확장 가능한 프로젝트 기록 |
+| `crates/drum-engine/src/midi.rs` | SMF preflight/파싱, 템포맵, 선택과 GM 매핑 | canonical 타격·진단·키트 |
+| `model.rs`, `motion.rs` | 스키마·상한·기본 캘리브레이션, beam 배정, 궤적, 해석적 IK | `PerformancePlan`, 57-float pose |
+| `lib.rs` | wasm-bindgen API와 JSON/포즈 경계 검사 | `inspect_midi`, `Performance` |
+| `src/engine.worker.ts`, `engine.ts` | Worker에서 분석·취소, main WASM evaluator 소유 | JSON 계획, 시간별 Float32Array |
+| `src/scene.ts` | PrimitiveRigAdapter, 키트·무대·조명·카메라·타점 표시 | 포즈 적용과 canvas 렌더 |
+| `src/audio.ts`, `audio.worker.ts`, `synthesis.ts` | 자체 합성 PCM, Worker 합성/취소, Web Audio transport | 공통 출력 시간의 stereo PCM |
+| `src/export.ts` | codec 확인·시험 인코딩, 고정 FPS 평가·인코딩·mux·취소 | MP4 또는 WebM Blob |
+| `src/main.ts`, `style.css` | 파일·트랙·진단·재생·영상 저장 UI와 상태 | 사용자 입력/피드백 |
+| `src/demo.ts` | 직접 작성한 30초 SMF fixture | 사용자 자료 없이 재현 가능한 데모 |
 
-Rust 핵심은 DOM, Three.js, 브라우저 파일 경로에 의존하지 않는다. UI는 MIDI 해석이나 손 배정의 두 번째 구현을 만들지 않는다. 프리뷰와 영상은 같은 `evaluateAt(songTime)`를 사용한다.
+Rust 코어는 DOM·Three.js 객체 이름·브라우저 경로에 의존하지 않는다. UI가 MIDI 시간 해석이나 손발 배정을 다시 구현하지 않는다. 프로젝트 파일 저장/복원은 아직 구현하지 않았으며 #15의 후속 경계다.
 
-기준 빌드는 `wasm32-unknown-unknown`, stable Rust, **단일 스레드**다. Worker 한 개에서 계산하는 것과 WASM 공유 메모리 멀티스레딩은 별개다. `midly`는 기본 `parallel`을 끄고 `std`/`alloc`만 필요한 범위에서 켠다. SIMD·Rayon·SharedArrayBuffer는 측정 후 별도 결정한다. midly의 기본 parallel 기능은 Rayon을 사용한다. [공식 features](https://docs.rs/midly/latest/midly/#about-features)
+Rust 1.94.1, `wasm32-unknown-unknown`, 단일 스레드 WASM을 사용한다. midly 0.5.3은 `default-features=false`, `std`/`strict`를 사용하므로 기본 Rayon 병렬 파싱을 켜지 않는다. Worker와 shared-memory WASM 멀티스레딩은 별개다. SIMD·Rayon·SharedArrayBuffer는 도입하지 않았다.
 
-## 3. 곡 시간과 MIDI 정규화
+## 3. MIDI와 시간 정규화
 
-### 입력 정책
+- SMF **format 0/1, PPQN**을 지원한다. Format 2·SMPTE·0 PPQ·잘린 청크·트랙 수 불일치·End of Track 누락/이후 이벤트는 오류로 반환한다. 자동 복구로 이벤트를 숨기지 않는다.
+- 채널10이 있는 트랙을 기본 후보로, 없으면 지원 드럼 음표가 있는 트랙을 제시한다. UI에서 트랙과 채널을 바꿀 수 있다. 템포는 선택하지 않은 트랙을 포함한 파일 전체에서 읽는다.
+- velocity 0 NoteOn과 NoteOff는 타격으로 만들지 않는다. note length를 팔 접촉 길이로 해석하지 않는다. CC4, 정밀 주법, 레이어 병합은 후속이다.
+- 미매핑 음표는 트랙·채널·음표별 개수를 `UNMAPPED_NOTE`로 알리고 합성/리그 타격에서 제외한다. 지원하지만 몸으로 표현하지 못하는 타격과 구분한다.
 
-- MVP는 Standard MIDI File **format 0/1, PPQN**을 지원한다. format 2의 독립 시퀀스와 SMPTE timecode는 감지 후 구체적인 미지원 메시지를 낸다. BPM으로 잘못 해석하지 않는다. `midly::Timing`은 두 시간 형식을 구별한다. [공식 API](https://docs.rs/midly/latest/midly/enum.Timing.html)
-- 채널 10을 기본 드럼 후보로 제시하되 트랙/채널 선택을 허용한다. 선택하지 않은 트랙의 템포 메타 이벤트를 제거하지 않는다. GM 기본 매핑과 미매핑 음표 목록을 제공한다.
-- velocity 0의 NoteOn은 타격으로 만들지 않는다. NoteOff의 길이를 팔의 접촉 시간으로 쓰지 않는다. 하이햇 타격과 페달 상태는 별도 데이터다.
-- MVP 키트는 킥·스네어·닫힌/열린/페달 하이햇·탐·크래시·라이드다. 지원하지 않는 주법은 진단과 원본 참조를 남긴다. 겹친 음표를 임의로 삭제하지 않는다.
-- 잘못된 파일을 조용히 일부 복구하는 대신 strict 파싱을 기본 후보로 삼는다. 복구 모드를 추가한다면 사용자에게 유실 내용을 보여주는 별도 기능으로 둔다.
+템포맵은 PPQN의 공통 분모를 유지한 `u128` 누산값으로 `deltaTicks × microsecondsPerQuarter`를 더한다. 마지막에 한 번 μs로 반올림한다. 첫 tempo 이전 기본값은 500,000μs/quarter다. 같은 tick의 충돌은 트랙0(conductor)을 우선하고 동일 트랙의 마지막 이벤트를 사용한다. 트랙0 값이 없으면 안정된 `(trackIndex, eventIndex)` 순서의 마지막 값을 사용하며 `TEMPO_CONFLICT`에 선택 근거를 남긴다.
 
-### 시간 계산
+MVP 타격의 `timeUs`는 음수가 아닌 `u64`, `time`은 초 단위 `f64`다. 음수 준비 시간은 타격 데이터가 아닌 evaluator 입력이다. `tick`은 JavaScript 안전 정수 범위를 검사한다. 선택 구간이 최대300초이므로 반환 타격의 μs는 안전 정수 범위다. 원본 tick·track·eventIndex·channel·note·velocity를 보존한다. 실제 DAW 음색과 연주자의 손 선택은 MIDI만으로 복원되지 않는다. [MIDI Association](https://midi.org/standard-midi-files)
 
-원본 `absoluteTick`, 트랙, 이벤트 순서, tempo segment를 보존한다. PPQN 시간 변환은 구간마다 `deltaTicks × microsecondsPerQuarter / PPQN`을 누적한다. 구간마다 반올림하여 오차를 쌓지 말고 Rust의 넓은 정수 누산기와 유리수 표현으로 보관한 뒤 경계에서만 변환한다. 템포 이벤트 전 기본값은 SMF 관례의 500,000μs/quarter(120 BPM)로 구현하고 fixture로 검증한다.
+## 4. PerformancePlan과 포즈 계약
 
-canonical 이벤트의 `timeUs`는 부호 있는 정수 μs이며 동일 규칙으로 한 번 반올림한다. 원 tick과 유리수 원본을 함께 남겨 재계산할 수 있게 한다. JS 경계에서는 안전 정수 범위를 검사하고, 큰 정수의 원본 값은 십진 문자열로 직렬화한다. 포즈 평가·보간은 `f64` 초, 렌더용 위치·회전은 `f32` 배열을 허용한다.
+`schemaVersion=1`의 현재 JSON은 다음을 보존한다.
 
-같은 tick의 충돌하는 tempo 값은 출처와 함께 경고한다. 기본 선택 규칙은 format 1의 conductor track 우선, 그 안에서는 파일 순서의 마지막 값으로 명시하고 해당 선택을 프로젝트에 저장한다. 다른 트랙에만 존재하는 템포는 안정된 `(trackIndex, eventIndex)` 순서로 통합하되 충돌을 표시한다. 템포 선택은 재실행마다 달라지면 안 된다.
-
-원본 타격 시각은 동작을 자연스럽게 보이게 하려는 이유로 이동하지 않는다. MIDI 자료는 이벤트·시간·트랙·템포를 담으며, 연주자 손 선택이나 DAW 음색은 이 정보만으로 복원되지 않는다. [MIDI Association 설명](https://midi.org/standard-midi-files)
-
-## 4. Canonical PerformancePlan
-
-원본은 MIDI 바이트와 프로젝트 설정이며, 계획은 버전이 있는 파생 데이터다. 외형에 종속된 본 회전만 저장하지 않는다.
-
-| 데이터 | 필수 내용 |
+| 데이터 | 현재 필드/의미 |
 |---|---|
-| `PlanIdentity` | schema/engine/planner version, MIDI hash, mapping/kit/profile/calibration hash, deterministic seed |
-| `SourceRef` | track, channel, eventIndex, absoluteTick, note, velocity; 병합 시 원본 참조 목록 |
-| `HitIntent` | stable event ID, `timeUs`, instrument/articulation, target ID, velocity, 허용 effector, 사용자 고정 여부 |
-| `AssignedHit` | 의도 ID, 선택된 left/right hand/foot, 타점·표면 법선, stick/grip, 해결 상태 |
-| `StrokeSegment` | prepare/contact/rebound 시각, 곡선 제어점, 접근 방향, 이어지는 타격 ID |
-| `PerformerProfile` | 주도 손, 교차손/오픈핸드, 페달 구성, 이동/관절 한계와 선호 가중치 |
-| `RigCalibration` | 좌석·골반, 팔/다리 길이, rest basis, 그립, 스틱 길이, 도달 범위 |
-| `Diagnostic` | 코드·심각도, 구간·원 이벤트, 원인, 적용한 근사와 남은 문제 |
+| 버전/식별 | `schemaVersion`, `engineVersion`, `plannerVersion`, `midiHash`, `calibrationId` |
+| 시간 | `duration`, `preRoll=0.5`, `tail=0.25`, `tempoCount` |
+| 타격 | `id`, `time`, `timeUs`, `tick`, `track`, `eventIndex`, `channel`, `note`, `velocity`, `instrument`, `limb`, `target` |
+| 키트 | 악기별 `id`, `label`, 세계 좌표 `position`, `radius` |
+| 진단 | `code`, `message`, 필요한 경우 `hitId`, `time` |
 
-좌표계는 오른손 좌표, 미터, +Y 위, 연주자 정면 +Z로 고정한다. 키트 타점은 kit-local 좌표와 공통 world transform으로 표현한다. quaternion은 `(x,y,z,w)`, 관절 회전은 local-space임을 스키마에 적는다. 카메라 회전은 키트·연주 좌표를 바꾸지 않는다.
+`midiHash`는 입력 식별용 FNV-1a64이며 보안 무결성 해시로 사용하지 않는다. 기본 engine calibration은 `primitive-v1`, planner 식별자는 `beam-8-lookahead-2`다. 전체 mapping/profile/calibration hash, 사용자 고정 배정, 독립 StrokeSegment 저장, project migration과 seed 편집은 아직 구현하지 않았다. 이들은 #14/#15/#18의 확장 대상이며 현재 필드가 모두 있다는 뜻으로 읽지 않는다.
 
-외형을 교체하면 `RigCalibration`과 `RealizedMotion`을 다시 만든다. `HitIntent`와 사용자 고정 배정은 유지하지만, 새 체형에서 배정이 불가능하면 재계획 또는 충돌 진단이 필요하다. 오래된 calibration hash의 포즈 캐시는 무효화한다.
+프레임마다 계획 JSON을 주고받지 않는다. main WASM `Performance.from_json()`이 검증한 계획과 limb별 타격 인덱스를 보유하고, `evaluate_at(song_time)`이 소유권 있는 **Float32Array 57개 값**을 반환한다. 현재는 작은 배열을 매 호출 반환하므로 WASM memory growth 이후의 재사용 view 수명 문제를 노출하지 않는다. 추후 zero-copy 최적화 시 별도 수명 계약이 필요하다.
 
-첫 MVP는 JSON으로 계획을 디버깅하고 테스트한다. 프레임 호출에서는 계획 전체 JSON을 왕복하지 않는다. WASM 인스턴스가 계획을 보유하고 `evaluateAt()` 한 번으로 뼈와 스틱 변환 배열을 반환한다. 재사용 버퍼의 수명과 WASM memory growth 후 view 갱신 규칙을 API 계약에 포함한다.
-
-## 5. 손발 배정과 타격 궤적
-
-기본 선호는 오른발 킥·왼발 하이햇 페달, 주도 손 하이햇/라이드, 반대 손 스네어다. 이것은 손 후보를 금지하는 규칙이 아니다. 동시 타격 그룹과 앞뒤 이벤트를 고려하는 제한된 lookahead/beam search로 후보를 평가한다. 비용은 거리, 남은 시간, 도달 범위, 교대 패턴, 팔 교차, 다음 구간 연결을 구분하며 선택 이유를 진단 가능하게 한다. beam 폭과 lookahead는 설정에 기록한다.
-
-타격 접촉 시각은 고정하고 준비·접근·반동 구간을 조정한다. velocity는 높이·속도·반동·음량에 반영하되 타점은 유지한다. 타격점과 스틱 방향에서 그립 위치를 역산한 후 손목 목표를 정한다. 두 관절 팔/다리의 해석적 IK를 Rust의 기본 후보로 둔다. Three.js CCDIKSolver를 비교 실험에 사용할 수 있지만 `SkinnedMesh`용이며 이전 프레임을 초기값으로 삼으면 탐색 순서 의존성이 생기므로, 사용할 경우 매 평가마다 같은 기준 포즈로 초기화한다. [공식 CCDIKSolver](https://threejs.org/docs/pages/CCDIKSolver.html)
-
-**첫 타격**이 곡 0초여도 준비를 음수 시간에 계획한다. 기본 pre-roll `P=0.5초`와 tail `T=0.25초`를 프로젝트·출력 설정에 기록한다. 프리뷰와 영상 모두 곡 `-P`부터 시작하고, MIDI 0초의 첫 타격은 출력 `P`초에 접촉한다. 초기 준비는 `[-P, 0]` 안에 계산하고 그 시간으로 도달이 불가능하면 진단을 남긴다. 합성 오디오와 추후 WAV 모두 같은 `P`를 적용하며 MIDI 타격 시각 자체는 변경하지 않는다. 원음과 편집할 때 사용할 pre-roll 길이를 출력 요약에도 표시한다.
-
-### 불가능하거나 모호한 입력
-
-같은 손의 동시 두 타격, 도달 불가능한 타점, 이동 시간이 부족한 구간을 `unresolved`로 남긴다. 동일 타점의 레이어 병합은 매핑 프로필에서 명시적으로 같은 물리 타격이라고 지정한 경우에만 하며 원 MIDI 소리는 보존한다. 자동 배정이 막히면 안정된 우선순위로 가능한 타격만 실제 리그에 배정하고 나머지는 타점 강조로 표시한다. 화면과 분석 보고에 “리그로 표현하지 못한 타격 수”를 보여 주어 완전한 신체 연주처럼 숨기지 않는다. 원본 이벤트를 보존하므로 후속 손 편집·키트 이동·추가 연주자로 다시 해결할 수 있다.
-
-## 6. RigAdapter 계약
-
-`RigAdapter`는 MIDI나 템포를 읽지 않는다. 기본 리그와 추후 VRM이 같은 canonical 관절 의미와 캘리브레이션 경계를 따르게 한다.
-
-| 동작 | 입력/출력과 계약 |
+| Float32 offset | 의미 |
 |---|---|
-| `describeRig()` | canonical bone 이름, parent, rest transform, 길이, 그립 anchor, 선택 기능 반환 |
-| `calibrate(kit, performer)` | `RigCalibration` 반환; 필수 팔·다리/그립 누락은 명시적 오류 |
-| `applyPose(poseBuffer)` | pelvis/spine/head/upper/lower arm/hand/leg/foot와 stick의 변환을 실제 노드에 적용 |
-| `setVisualOptions(options)` | 재질·표시·색 변경; 연주 계획과 시각은 변경하지 않음 |
-| `dispose()` | geometry/material/texture/object URL 등 소유 자원 해제 |
+| 0–11 | 왼팔 root/elbow/wrist/stick tip의 XYZ |
+| 12–23 | 오른팔 root/elbow/wrist/stick tip의 XYZ |
+| 24–35 | 왼다리 hip/knee/ankle/toe의 XYZ |
+| 36–47 | 오른다리 hip/knee/ankle/toe의 XYZ |
+| 48–56 | pelvis/chest/head의 XYZ |
 
-MVP의 `PrimitiveRigAdapter`는 본 계층에 원통과 구를 붙여 상체·팔·다리·발·양쪽 스틱이 관절을 따라 움직이게 한다. 모델 교체용 seam을 만들되 VRM 로더 자체는 MVP 필수 의존성에서 제외한다. 미래 `VrmRigAdapter`는 normalized humanoid 본과 모델의 rest basis 차이를 변환하고 좌석·그립을 재보정한다. three-vrm에는 normalized/raw 본·포즈 API가 있으나 그것만으로 드럼 접촉까지 보장되지는 않는다. [공식 VRMHumanoid API](https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMHumanoid.html)
+오른손 좌표계, 미터, +Y 위, 연주자 정면 +Z다. 현재 포즈는 세계 좌표 위치이며 본의 local quaternion 형식이 아니다. 카메라를 움직여도 이 좌표계는 변하지 않는다.
 
-## 7. 프리뷰 오디오와 동기화
+## 5. 손발 배정과 결정적 동작
 
-`AudioSource`는 MVP의 `SynthDrums`와 M3의 `DecodedWav`를 교체할 수 있게 한다. 합성 드럼은 자체 파형·감쇠·고정 seed 노이즈로 만들고, 모든 타격을 공통 이벤트 시간에서 PCM sample index로 변환한다. 프리뷰와 내보내기에 같은 PCM 또는 같은 합성 규칙을 사용한다. 합성음은 unresolved 시각 타격도 원 MIDI 시각에 재생한다.
+기본 배정 선호는 오른발 킥, 왼발 하이햇 페달, 왼손 스네어/하이탐/크래시, 오른손 나머지 손 타격이다. 손 타격은 양손 후보를 평가한다. 동시 μs 그룹 안에서 beam 폭8을 유지하고, 다음 최대16개 이벤트 안의 손 타격2개를 비용 예측에 쓴다. 거리·회복 시간·주도 손 선호와 도달성을 반영한다. 완전한 동작 최적화나 신체 충돌 회피 모델은 아니다.
 
-프리뷰의 시계는 Web Audio를 기준으로 둔다. 재생 시작 시 `(songOrigin, contextOrigin)`을 기록하고 `songTime = songOrigin + (audioContextTime - contextOrigin)`으로 계산한다. `requestAnimationFrame` 경과 시간을 누적하지 않는다. 출력 지연을 다룰 때는 지원되는 `getOutputTimestamp()`의 context/performance 쌍으로 실제 출력 시각을 추정하며 임의의 고정 지연을 두 번 빼지 않는다. [Web Audio 시간 API](https://www.w3.org/TR/webaudio/#dom-audiocontext-getoutputtimestamp)
+같은 limb의 재타격 최소 간격45ms, 타점 이동 속도 상한12m/s, 0.43m 두 segment의 도달 범위를 검사한다. 이는 보수적인 구현 정책이며 생체역학적으로 검증한 인간 한계가 아니다. 배정할 수 없으면 `limb=null`과 `UNRESOLVED_HIT`를 남기고 원본 시각·소리·타점 강조를 유지한다. 동시에 여러 타격을 한 손에 넣거나 시각을 밀지 않는다.
 
-일시정지 시 곡 시간을 저장하고 source를 정지한다. 재개·seek는 새 source를 해당 offset에서 예약하고 이전 예약을 취소한다. pre-roll이나 WAV 시작 전처럼 계산된 `audioFileTime`이 음수이면 음수 값을 `AudioBufferSource.start()`의 offset으로 전달하지 않는다. offset 0으로 미래 시작 시각을 예약하고 그전에는 무음을 유지한다. AudioContext suspend/탭 비활성 상태를 감지해 오디오와 transport 상태가 다르게 흘러가지 않게 한다. 프리뷰 무음 모드에서는 monotonic clock과 같은 원점 모델을 사용한다.
+포즈는 인접 타격 사이의 smoothstep 보간과 sine arc로 절대 시각에서 평가한다. 짧은 간격은 연속 반동, 긴 간격은 준비/복귀로 처리한다. 손은 최대0.24m, 발은 최대0.045m의 준비 높이를 velocity와 간격으로 조절한다. 고정 stick vector `[0,-0.09,0.30]`에서 그립을 역산하고 2-bone IK를 적용한다. 몸통 기준점은 유지하고 머리의 작은 후속 움직임도 절대 시각으로 계산한다.
 
-M3 WAV의 부호 규칙은 **`audioFileTime = songTime - audioStartInSong`**이다. 예를 들어 `audioStartInSong=+0.2s`는 WAV sample 0을 곡 0.2초, 기본 pre-roll 포함 출력 0.7초에서 시작한다는 뜻이다. 앞 무음·음수 offset crop·끝 padding을 프리뷰와 출력에 동일 적용한다. 오프셋으로 원 MIDI를 수정하지 않는다.
+첫 타격이 0초여도 `[-0.5,0]`에서 준비한다. 기본 준비/여운은 원본 MIDI를 편집하지 않고 프리뷰·출력 시간축에만 적용한다. 입력 시각과 같은 포즈를 순서와 무관하게 얻는 것이 계약이다. GPU 픽셀이나 하드웨어 encoder 파일 바이트까지 동일하다는 보장은 아니다.
 
-## 8. 고정 FPS 영상 내보내기
+## 6. RigAdapter와 시각화
 
-출력은 실시간 캔버스 녹화가 아닌 오프라인 평가다. 30fps에서 프레임 `n`의 곡 시간은 `n/30 - P`, 파일 timestamp는 `n/30`이다. `P=0.5초`, 곡 길이 `D`, tail `T=0.25초`일 때 총 프레임 수는 **`ceil((P + D + T) × fps)`**다. duration은 프레임 인덱스에서 계산하여 덧셈 오차를 쌓지 않고 마지막 프레임에 맞춰 오디오를 trim/pad한다. 합성 오디오의 타격 `t`는 출력 `P+t`에 배치한다. 후속 WAV도 `P+audioStartInSong`을 원점으로 사용한다.
+`RigAdapter`는 MIDI나 tempo를 읽지 않는다. `PrimitiveRigAdapter`는 canonical 관절 의미를 전신 원통·구·스틱에 적용한다. 외부 모델/texture를 로드하지 않는다.
 
-순서는 평가 → RigAdapter 적용 → 렌더 → timestamp/duration으로 `CanvasSource.add()` → Promise 완료 대기다. 메인 스레드 UI에 진행률·취소 기회를 주며 preview render와 export render의 동시 상태 변경을 막는다. 원시 RGBA 모든 프레임을 메모리에 쌓지 않는다. Mediabunny가 canvas와 timestamp/duration을 받는 API를 제공하는 점은 확인되었고, 이 프로젝트의 실제 WebGL 캡처·속도·품질은 구현 후 검증한다. [공식 CanvasSource](https://mediabunny.dev/guide/media-sources#canvassource)
-
-| 실행 시 검사 | 동작 |
+| API | 현재 동작 |
 |---|---|
-| AVC/H.264 + AAC 및 MP4가 실제 720p30/오디오 설정에서 가능 | 기본 MP4, 합성 오디오 포함 |
-| 위 조합이 불가하고 VP8/VP9 + Opus 및 WebM 가능 | WebM 대체 옵션과 실제 형식 표시 |
-| 영상 codec은 가능하지만 요청한 오디오 codec 불가 | 가능한 A/V 조합부터 제시; 사용자 선택 없는 무음 전환 금지 |
-| 사용자가 명시적으로 무음 출력을 선택했고 영상 codec 가능 | video-only 출력, 무음 선택과 실제 형식을 요약에 표시; 합성 A/V 인수 통과와 구분 |
-| 사용할 A/V 조합이 없음 | 프리뷰는 유지, 내보내기 미지원 이유·브라우저 전환 안내 |
-| 인코딩 중 실패/취소/메모리 부족 | source·encoder·URL 정리, 완료 파일로 표시하지 않음 |
+| `describeRig()` | adapter ID `primitive-humanoid-v1`, canonical 관절19개, pose 길이57 |
+| `calibrate(kit)` | 유한 좌표/양의 반지름 검사, 타점 복사, 좌표계·스틱 길이 기록 |
+| `applyPose()` | 57개 유한 값 확인 후 몸통·머리·양손·양발·스틱 변환 적용 |
+| `setVisualOptions()` | body 재질 색 변경; 계획/시각은 유지 |
+| `dispose()` | 소유 geometry/material/texture 정리 |
 
-Mediabunny의 `canEncodeVideo`/`canEncodeAudio` 또는 WebCodecs `isConfigSupported()`를 실제 해상도·FPS·채널·sample rate로 호출하고 짧은 시험 인코딩까지 수행한다. WebCodecs 표준은 특정 codec 지원을 보장하지 않는다. API 존재만으로 MP4 성공을 약속하지 않는다. [Mediabunny 지원 조회](https://mediabunny.dev/guide/supported-formats-and-codecs#querying-codec-encodability), [W3C WebCodecs](https://www.w3.org/TR/webcodecs/)
+현재 `calibrate()`는 다른 체형의 IK를 자동으로 다시 푸는 함수가 아니다. engine의 기본 체형은 고정되어 있고, kit 치수와 표시 adapter의 분리 계약을 제공한다. VRM normalized/raw rest basis, 체형/좌석/그립 보정과 재계획은 #17/#18에서 구현한다. [three-vrm humanoid API](https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMHumanoid.html)
 
-실시간 MediaRecorder를 추가하더라도 “실시간 녹화”로 따로 표시하고 고정 FPS 인수 기준의 통과로 세지 않는다. PNG sequence·추가 WASM codec·ffmpeg.wasm은 후속 범위다. 머리카락·의상 물리는 MVP에 없으며 추후 도입 시 고정 step/체크포인트/베이크 정책을 별도로 결정한다.
+`DrumScene`은 `setPlan`, `applyPose`, `render`, `resize`, `setCamera`, `setBackground`, `setExportMode`를 제공한다. 무대/정면/탑뷰와 OrbitControls가 있다. 심벌 타점은 중앙 stand mount가 아닌 bow 표면에 맞추고 타격 강조·감쇠 반동을 `songTime`으로 계산한다. 출력 중에는 orbit과 preview rendering을 멈추고 pixel ratio1에서 1280×720으로 렌더한 뒤 CSS 크기로 복귀한다.
 
-결정성은 동일 엔진·설정·seed의 **주요 연주 계획과 포즈/프레임 시각**에 대한 계약이다. GPU 픽셀, 부동소수점의 플랫폼별 마지막 비트, 하드웨어 인코더가 만든 파일 바이트까지 동일하다고 주장하지 않는다.
+## 7. 합성 오디오와 transport
 
-## 9. GitHub Pages·CI 배포
+자체 파형·감쇠·event별 고정 integer PRNG 노이즈로 드럼을 합성한다. 외부 샘플이나 soundfont가 없다. 준비 단계에서 Worker가 48kHz stereo Float32 PCM을 생성하며 취소 시 Worker를 종료한다. 프리뷰와 내보내기는 같은 PCM을 사용한다. unresolved 타격도 원래 시각에 합성한다.
 
-예상 URL은 `https://postmelee.github.io/drum-vrm/`이다. Pages 설정과 배포가 아직 검증되지 않았으며 **사용자 승인 후** 구현·배포한다. Pages는 HTML/CSS/JS 정적 호스팅이고 프로젝트 사이트는 저장소 하위 경로를 사용한다. 서버 변환 API 없이 업로드 바이트·분석·오디오·영상 생성을 브라우저 안에서 처리한다. [공식 Pages 설명](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)
+PCM 타격 위치는 `round((0.5 + hit.time) × sampleRate)`다. 전체 길이는 영상 프레임 수에 맞춰 trim/pad한다. preview volume slider는 미리듣기 음량이며 출력 mute는 별도의 명시적 선택이다.
 
-- TypeScript + Vite의 프로젝트 `base`를 `/drum-vrm/`로 설정한다. WASM·Worker·아이콘·라이선스 자산도 이 경로 아래에서 로드되는지 production build로 확인한다. router가 필요하면 hash 경로 또는 단일 페이지 상태를 사용한다. [Vite Pages 가이드](https://vite.dev/guide/static-deploy.html#github-pages)
-- 개발 서버에서만 성공한 결과를 배포 성공으로 간주하지 않는다. `/drum-vrm/` 로컬 preview와 실제 HTTPS URL에서 MIME·WASM 초기화·콘솔 오류·샘플 MIDI·한 번의 영상 다운로드를 검사한다.
-- 기본 기능은 `crossOriginIsolated=false`에서도 동작해야 한다. COOP/COEP 응답 헤더를 전제로 하는 공유 메모리·threaded WASM을 Pages 기준 경로에 넣지 않는다. 정적 호스팅에서 필요한 헤더의 제공 가능성은 별도 검증 항목이지 현재 확인된 기능이 아니다. [격리 조건](https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated)
-- Rust toolchain, wasm-bindgen crate/CLI, npm 패키지와 Actions 버전을 고정한다. `Cargo.lock`·npm lockfile을 커밋하고 CI에서 locked install/build를 사용한다. 라이선스 명세와 배포물이 같은 버전을 가리키게 한다.
-- CI는 Rust 단위 테스트·WASM 빌드, TypeScript typecheck, production build, 브라우저 fixture smoke test를 수행한다. 배포 job은 검증 job 성공 뒤에만 실행하고 `github-pages` environment와 최소 `pages: write`·`id-token: write` 권한을 사용한다. Actions SHA와 업로드할 `dist`를 검토한다. [공식 workflow 조건](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages)
-- 첫 승인 전에는 배포 workflow 실행이나 Pages 활성화를 하지 않는다. 승인 후 초기 배포는 명시적인 workflow dispatch로 시작하고 성공 URL·commit·브라우저·검증 결과를 기록한다.
+transport의 시간은 출력 시간0부터 시작하고 `songTime = outputTime - 0.5`로 evaluator에 전달한다. Web Audio의 context origin/offset을 사용하고 `getOutputTimestamp()`가 유효하면 실제 출력 추정 시각을 이용한다. pause는 source를 정지하고 시간을 보존하며 resume/seek는 새 source를 만든다. AudioContext가 suspend되면 시간을 보존하고 재생을 정지한다. 탭 비활성화로 렌더 프레임이 중단되더라도 프레임 시간을 누적하지 않고 복귀 시 오디오 시계의 현재 위치를 평가한다. [Web Audio 시간 API](https://www.w3.org/TR/webaudio/#dom-audiocontext-getoutputtimestamp)
 
-Pages에는 사이트 크기·배포 시간·대역폭 제한이 있다. 현재 공식 문서는 게시 사이트 1GB, 배포 10분 제한, 월 100GB soft bandwidth limit을 설명한다. 대형 원음·모델·데이터셋을 저장소나 Pages 번들에 넣지 않는다. 유료 SaaS로 발전하면 Pages의 용도 제한에 맞는 별도 호스팅을 결정한다. [공식 사용 제한](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
+후속 WAV의 부호 계약은 `audioFileTime = songTime - audioStartInSong`을 유지한다. 예를 들어 +0.2s는 곡0.2초, 준비 포함 출력0.7초에 WAV sample0이 시작한다. WAV 로딩과 정렬은 #13이며 현재 UI에 없다.
+
+## 8. 고정 FPS 내보내기
+
+출력 프레임 `n`의 timestamp는 `n/30`, 평가 시각은 `n/30 - 0.5`, duration은 `1/30`이다. 프레임 수는 `ceil((0.5 + D + 0.25) × 30)`이며 30초 음악은923프레임이다. 매 프레임 평가 → 포즈 적용 → 렌더 → `CanvasSource.add(timestamp,duration)` 완료 대기 순서로 처리한다. 원시 RGBA 프레임 전체를 메모리에 쌓지 않는다.
+
+codec 후보는 MP4 AVC/AAC, WebM VP9/Opus, WebM VP8/Opus 순서다. 실제720p30·stereo48kHz 설정으로 지원을 조회한 뒤 6프레임·0.2초 A/V 파일을 시험 인코딩한다. 이어서 파일을 demux/decode하여 audio track 길이와0.1초에 예약한 tone의 실제 onset이 각각 기대값 대비1프레임 이내인지 확인한다. API 지원과 packet 존재만으로 선택하지 않는다. 조합별15초 watchdog을 두며 capability query와 trial도 AbortSignal로 취소한다. 사용할 A/V 조합이 없으면 이유를 표시하고, 사용자의 명시적 무음 선택이 있을 때만 video-only를 허용한다. WebCodecs API 존재만으로 성공을 판단하지 않는다. [Mediabunny 지원 조회](https://mediabunny.dev/guide/supported-formats-and-codecs#querying-codec-encodability)
+
+영상은 4Mbps, 오디오는128kbps를 요청한다. 오디오는1초 PCM chunk씩 영상과 함께 공급한다. 4프레임마다 UI에 실행 기회를 주고 진행률을 표시한다. 취소/오류에는 encoder/output을 정리하고 완료 다운로드로 표시하지 않는다. 이미 시작한 encoder flush/finalize는 브라우저 작업 정리를 기다릴 수 있으므로 마지막 단계 취소가 항상 즉시는 아니다. 성공 시 예상 video packet 수와 오디오 packet 존재를 확인하고, 완성 파일의 audio track 길이도 demux하여 영상 길이와1프레임 이내인지 검사한다. 이 검사는 실제 파일 metadata·일반 플레이어·A/V 동기화 검증을 대신하지 않는다. 2026-10-24 macOS/Chrome 검증에서 AAC priming으로 첫 onset이42.958ms 늦고 출력 길이가 기준을 넘는 조합을 발견하여 이 왕복 검사를 도입했다. 임의 전역 오디오 offset으로 보정하지 않고 통과하는 Opus/WebM 조합을 선택한다. 환경과 수치는 [MVP 검증 기록](verification/mvp-0.1.md)을 따른다.
+
+메모리에는 PCM과 압축 출력이 남는다. 5분48kHz stereo Float32 PCM 한 벌은 약110MiB이고 합성/AudioBuffer 복사·출력 buffer는 추가 공간을 사용한다. 장시간·고밀도 입력의 peak memory와 속도는 별도 측정 대상이다. 실시간 MediaRecorder·ffmpeg.wasm·PNG 시퀀스는 현재 구현에 없다.
+
+## 9. 정적 빌드와 Pages
+
+사용자는 2026-10-24 구현·검증 후 공개 배포를 승인했다. 예정 주소는 `https://postmelee.github.io/drum-vrm/`이며 이 문서 갱신 시점의 공개 배포 성공은 아직 기록하지 않았다. Vite base는 `/drum-vrm/`, production 산출물은 `dist/`다. 업로드 MIDI·오디오·영상 처리에 서버 API를 사용하지 않는다.
+
+- Node24 이상, Rust1.94.1, wasm-pack0.15.0, npm/Cargo lockfile을 사용한다. `src/wasm/`은 `npm run build:wasm` 생성물이다.
+- `cargo test --locked`, clippy/format, TypeScript, Vitest, production build와 라이선스 생성 검사를 실행한다. 정확한 명령은 [README](../README.md)에 있다.
+- CI/Pages workflow는 검사 성공 뒤 `dist/`만 배포하고 `github-pages` environment와 필요한 최소권한을 사용하도록 구성한다. workflow의 실제 실행 결과는 #12에 기록한다.
+- SharedArrayBuffer·COOP/COEP를 전제로 하지 않는다. Worker와 단일 스레드 WASM을 `crossOriginIsolated=false`에서도 검증한다.
+- HTTPS/프로젝트 하위 경로에서 WASM·Worker·라이선스와 새로고침을 검사하고, 실제 테스트 URL·SHA·브라우저 환경을 남긴다. 로컬 성공을 Pages 성공으로 표기하지 않는다.
+
+GitHub Pages는 정적 호스팅이다. 대형 사용자 원음·모델·데이터셋을 저장소나 배포물에 넣지 않는다. 서비스 확장 시 호스팅 용도와 현재 제한을 다시 검토한다. [Pages 공식 문서](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages), [사용 제한](https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits)
 
 ## 10. 검증 목표와 증거
 
-| 항목 | 승인 후 인수 목표 | 남길 증거 |
-|---|---|---|
-| 시간 해석 | 기본/변경 템포, 다른 트랙의 템포, 동시 타격, velocity 0, 빈/손상/미지원 파일을 명시적으로 처리 | 작은 직접 제작 MIDI fixture와 기대 tick/time |
-| 접촉 | 타격 시각 평가에서 스틱 끝과 목표점의 거리 ≤ 2cm (기본 리그·도달 가능 타격); 5mm는 선택적 개선 목표 | 실제 타격별 오차 보고와 실패 이벤트 |
-| 첫 타격 | tick 0 타격에서도 준비가 계산되고 접촉 시각이 밀리지 않음 | pre-roll/0초/seek 비교 |
-| 시간 일치 | 30fps 출력의 시각 접촉과 오디오 onset 차이 ≤ 1 frame | 출력 프레임/오디오를 다시 검사한 결과 |
-| 결정성 | 순차 평가·역방향 seek·랜덤 순서 평가에서 같은 시각의 주요 포즈가 허용 오차 내 일치 | 동일 plan hash와 수치 비교 |
-| 완주 | 기본 30초와 경계값 5분 fixture의 시작·중간·끝, pause/resume/seek 정상 | 기기·OS·브라우저·버전·시간·메모리 기록 |
-| 내보내기 | 최소 지원 브라우저에서 720p30, 합성 오디오, 예상 프레임 수/길이·형식, 실제 재생 가능 | 파일 metadata + 재생 확인 |
-| 오류/취소 | 분석·출력 중 취소 후 새 파일 재시도, 초과 입력/codec 미지원 명시 | 재현 절차와 결과 |
-| 배포 | Pages 하위 경로에서 새로고침 후 WASM·Worker 로드와 end-to-end 다운로드 | 실제 배포 URL·commit·검증 일시 |
+[PRD A01–A16](product-requirements.md)의 수치와 목표를 유지한다. Rust/TypeScript 검사는 정규화·접촉·임의 시점 결정성·리그 적용·합성 onset·출력 시간·취소를 다룬다. 통합 증거는 실제 브라우저의 업로드/재생/탐색/취소, 30초 A/V 파일, metadata와 playback, 공개 Pages 경로로 나누어 남긴다.
 
-초기 지원 목표는 데스크톱 Chromium 계열이며 Safari·Firefox는 업로드/프리뷰/codec probe 결과를 각각 기록한다. **현재 어떤 브라우저에서도 프로젝트 동작을 검증한 상태가 아니다.** CI의 headless encoder 결과와 실제 사용자의 OS/codec 환경은 구분한다. 수치 목표를 바꾸면 관련 이슈·인수 기준·이 문서를 함께 갱신한다.
+첫 지원 검증 대상은 데스크톱 Chromium이다. Safari·Firefox·모바일 전체 호환성, 모든 입력 상한의 실기기 성능은 확인 전 보장하지 않는다. 브라우저·OS·버전·검증 일시·commit SHA를 완료 기록에 적고, 수치나 범위를 변경하면 관련 이슈와 PRD를 함께 갱신한다.
