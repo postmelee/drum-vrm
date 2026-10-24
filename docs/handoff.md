@@ -1,6 +1,17 @@
 # 현재 상태와 다음 작업
 
-갱신일: 2026-10-24 (Asia/Seoul). 상태: **M0·M1·M2 완료, v0.1.0 공개 배포 및 사용자 테스트 준비 완료**.
+갱신일: 2026-10-24 (Asia/Seoul). 상태: **M0·M1·M2 완료, v0.2 UI/드럼 모델 개선 구현·로컬 검증 완료, 공개 배포 진행**.
+
+## v0.2 사용자 피드백 반영 상태
+
+사용자는 최소 Logic Pro형 작업 화면, 흰색/검정 테마, 지정 사이트 시스템 글꼴, 캐릭터·드럼·업로드/연주정보·내보내기 네 메뉴, 스켈레톤, 드럼 모델 교체를 요청했다. **#25 / M3**로 구현했다. [ADR0003](decisions/0003-minimal-studio-and-models.md), [모델·라이선스 조사](research/drum-assets.md), [v0.2 검증](verification/studio-0.2.md)을 우선 읽는다.
+
+- 상단 transport/네 inspector/하단 피아노롤. 패널은 기본 닫힘. 글꼴은 지정 사이트와 동일한 시스템 fallback.
+- 기본 스켈레톤, 350ms 정면 카메라 전환/reduced-motion, 부품 클릭/폼선택, 자체3종+InnersceneCC0 프리셋, 부품별 GLB/모델/색상/크기/회전/복원.
+- `timeline.ts`와 Rust메타데이터(ppq/tempoMap/timeSignatures)로 실제 템포·박자 기반 눈금. 음표편집은 없음.
+- `model-procedural.ts`, `model-import.ts`, `model-library.ts`가 외형을 분리. 정적 self-containedGLB최대25MiB. 캐릭터VRM/GLB로드는 여전히 #17/#18.
+- `public/models`에CC0원본·라이선스·SHA256·NOTICE를 보존. `npm run licenses`가검증한다. Apple에셋은포함하지않는다.
+- 로컬 Rust18개/웹27개, 타입·빌드·라이선스·실제GLB교체·오디오포함923프레임출력 검증완료. PR CI/Pages 배포를 진행한다.
 
 ## 저장소와 승인
 
@@ -50,7 +61,7 @@
 
 원 대화 두 턴의 사용자 2개·응답 2개 메시지 전체를 읽었고 원본은 `.local/source-conversation.json`에 로컬 보관했다. 공개 [맥락 문서](context/source-conversation.md)가 전체 주제와 현재 범위를 연결한다.
 
-자체 코드는 MIT이고 원본 의존성 라이선스는 별개다. 실제 배포 고지는 `npm run licenses`가 생성한다. 외부 모션·모델·샘플·가중치는 편입하지 않았다. MMIP 조건, DRUMS/Disney 공개 코드·가중치, ARDrum 활용은 연구 대장의 미확인/후속 항목을 유지한다. MIDIAnimator GPL/Blender 유래 코드를 포팅하지 않았다.
+자체 코드는 MIT이고 원본 의존성 라이선스는 별개다. 실제 배포 고지는 `npm run licenses`가 생성한다. 외부 모션·샘플·ML 가중치는 편입하지 않았다. v0.2에서 사용자 요청으로 Innerscene CC0 드럼 모델과 포함 텍스처를 추가했다. MMIP 조건, DRUMS/Disney 공개 코드·가중치, ARDrum 활용은 연구 대장의 미확인/후속 항목을 유지한다. MIDIAnimator GPL/Blender 유래 코드를 포팅하지 않았다.
 
 Rust 16개·웹 14개 테스트와 PR/배포 CI가 통과했다. 공개 사이트에서 채널2/두 템포의 30초 MIDI 업로드·재생·seek·923프레임 WebM 다운로드를 확인했다. 첫 오디오 onset 오차는 약6.5ms, 실제 파일은30.78초였다. 자세한 명령·한계는 검증 기록에 유지한다.
 

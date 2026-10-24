@@ -114,6 +114,92 @@ fn selected_track_end_excludes_other_tails_but_keeps_their_tempos() {
 }
 
 #[test]
+fn musical_grid_metadata_preserves_tempos_meters_and_original_hit_times() {
+    let bytes = smf(
+        1,
+        480,
+        vec![
+            vec![
+                (0, tempo(500_000)),
+                (0, vec![0xff, 0x58, 4, 4, 2, 24, 8]),
+                (960, tempo(1_000_000)),
+                (960, vec![0xff, 0x58, 4, 3, 2, 24, 8]),
+                (1440, end()),
+            ],
+            vec![
+                (0, note(36, 100, 9)),
+                (960, note(38, 100, 9)),
+                (960, note(42, 100, 9)),
+                (1440, end()),
+            ],
+        ],
+    );
+    let plan = build_plan(&bytes, &selection(&[1], Some(9))).unwrap();
+    assert_eq!(plan.ppq, Some(480));
+    assert_eq!(plan.end_tick, Some(3360));
+    assert_eq!(plan.tempo_map.len(), 2);
+    assert_eq!(
+        (
+            plan.tempo_map[1].tick,
+            plan.tempo_map[1].time,
+            plan.tempo_map[1].microseconds_per_quarter
+        ),
+        (960, 1.0, 1_000_000)
+    );
+    assert_eq!(
+        plan.time_signatures
+            .iter()
+            .map(|s| (s.tick, s.numerator, s.denominator))
+            .collect::<Vec<_>>(),
+        vec![(0, 4, 4), (1920, 3, 4)]
+    );
+    assert_eq!(
+        plan.hits.iter().map(|h| h.time_us).collect::<Vec<_>>(),
+        vec![0, 1_000_000, 3_000_000]
+    );
+    assert_eq!(plan.duration, 6.0);
+}
+
+#[test]
+fn meter_conflicts_use_conductor_and_invalid_meters_do_not_change_hits() {
+    let bytes = smf(
+        1,
+        480,
+        vec![
+            vec![
+                (0, vec![0xff, 0x58, 4, 6, 3, 24, 8]),
+                (480, vec![0xff, 0x58, 4, 0, 255, 24, 8]),
+                (480, end()),
+            ],
+            vec![
+                (0, vec![0xff, 0x58, 4, 3, 2, 24, 8]),
+                (480, note(38, 100, 9)),
+                (480, end()),
+            ],
+        ],
+    );
+    let plan = build_plan(&bytes, &selection(&[1], Some(9))).unwrap();
+    assert_eq!(plan.time_signatures.len(), 1);
+    assert_eq!(
+        (
+            plan.time_signatures[0].numerator,
+            plan.time_signatures[0].denominator
+        ),
+        (6, 8)
+    );
+    assert!(plan
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "TIME_SIGNATURE_CONFLICT"));
+    assert!(plan
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "INVALID_TIME_SIGNATURE"));
+    assert_eq!(plan.hits[0].time_us, 500_000);
+    assert_eq!(plan.tempo_map.len(), 1);
+}
+
+#[test]
 fn forged_u32_chunk_lengths_are_rejected_before_pointer_arithmetic() {
     for length in [u32::MAX, 0xffff_fff8, 0xffff_fff9, 10_485_760] {
         let mut bytes = smf(0, 480, vec![vec![(0, end())]]);

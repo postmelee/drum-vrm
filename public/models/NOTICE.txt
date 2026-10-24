@@ -1,0 +1,10 @@
+Five-piece drum kit — Innerscene (original model)
+License: CC0 1.0 Universal (CC0-1.0)
+Source: https://www.innerscene.com/tools/library/3d-parts/five-piece-drum-kit-daff10f4
+Download: https://www.innerscene.com/api/library/five-piece-drum-kit-daff10f4/download
+License: https://creativecommons.org/publicdomain/zero/1.0/
+Retrieved: 2026-10-24
+Asset SHA-256: 3cf8d568b604e99ce63ee82829d7f25044d996ed6cd42c39bc7f226919d1a5a7
+Bundled binary is unmodified. Runtime grouping, coordinate adaptation and texture resampling are performed by the application.
+Full CC0 text: models/innerscene-LICENSE.txt
+Exact provenance: models/innerscene-provenance.json

@@ -138,3 +138,9 @@ GitHub Pages는 정적 호스팅이다. 대형 사용자 원음·모델·데이�
 [PRD A01–A16](product-requirements.md)의 수치와 목표를 유지한다. Rust/TypeScript 검사는 정규화·접촉·임의 시점 결정성·리그 적용·합성 onset·출력 시간·취소를 다룬다. 통합 증거는 실제 브라우저의 업로드/재생/탐색/취소, 30초 A/V 파일, metadata와 playback, 공개 Pages 경로로 나누어 남긴다.
 
 첫 지원 검증 대상은 데스크톱 Chromium이다. Safari·Firefox·모바일 전체 호환성, 모든 입력 상한의 실기기 성능은 확인 전 보장하지 않는다. 브라우저·OS·버전·검증 일시·commit SHA를 완료 기록에 적고, 수치나 범위를 변경하면 관련 이슈와 PRD를 함께 갱신한다.
+
+## v0.2 작업 화면·드럼 모델 경계
+
+[ADR0003](decisions/0003-minimal-studio-and-models.md)에 따라 `main.ts`는 네 inspector의 상태와 transport를 연결하고, `timeline.ts`는 tempoMap/timeSignatures 기반 피아노 롤을 표시한다. Rust 계획의 추가 metadata는 optional TS 필드로 이전 fixture와 호환한다.
+
+`scene.ts`는 스켈레톤·카메라·부품 선택을 담당한다. `model-procedural.ts`는 자체 키트 외형, `model-library.ts`는 CC0 키트의 부품 분류/타점 정렬, `model-import.ts`는 외부 자원이 없는 로컬 GLB 검증을 담당한다. 외형은 canonical 엔진 좌표를 수정하지 않는다. 원본/라이선스/해시와 runtime 변형 기록은 `public/models/innerscene-provenance.json`에 보존하며 라이선스 생성기가 배포 때 검증한다.

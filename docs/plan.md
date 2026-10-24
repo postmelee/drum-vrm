@@ -102,3 +102,7 @@ Rust MIDI/계획·WASM 연결, 기본 리그/키트, 합성 오디오, UI, codec
 - 승인: [승인 기록](approval.md)과 #3에 2026-10-24 실제 사용자 승인을 기록했다. M1·M2 구현·검증·Pages 배포와 MIT 채택 범위에서 진행하며, 새 기능의 범위 변경은 별도로 추적한다.
 
 완료 근거: [v0.1.0 검증](verification/mvp-0.1.md), [배포](https://github.com/postmelee/drum-vrm/actions/runs/40060762280), [테스트 사이트](https://postmelee.github.io/drum-vrm/). M3·M4는 열린 상태로 유지한다.
+
+## 사용자 피드백 반영 — v0.2
+
+M3의 [#25](https://github.com/postmelee/drum-vrm/issues/25)를 우선한다. 최소 작업 화면, 네 inspector, 피아노 롤, 스켈레톤, 드럼 정면 편집과 라이선스 검증 모델 프리셋을 포함한다. [ADR0003](decisions/0003-minimal-studio-and-models.md)가 범위와 동작을 고정한다. #14의 음표/손 배정 편집과 #17/#18의 캐릭터 리타게팅 전체는 계속 후속이다. 외부 CC0 키트의 편입은 최초 MVP의 자체 에셋만 사용하던 범위를 이번 사용자 요청으로 확장한 것이다.
