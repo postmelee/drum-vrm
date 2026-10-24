@@ -3,7 +3,55 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Hit, Instrument, KitPiece, PerformancePlan, Vec3 } from './types';
 import { canonicalPieceId, cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
 import { loadLocalGLB } from './model-import';
+import { applyHitResponse, bindHitResponse, createHitResponseTrack, evaluateHitResponse, validateHitResponse, type HitResponseBinding, type HitResponseSettings, type HitResponseTrack } from './hit-response';
 export { KIT_PRESETS, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings } from './model-procedural';
+export type { HitResponseSettings } from './hit-response';
+
+export type CameraView = 'front' | 'stage' | 'top' | 'player';
+/** primitive-v1 labels have LH at -X. Display +Z-facing anatomy requires LH at +X.
+ * This is a renderer-only v1 compatibility basis, never a plan/assignment mutation.
+ * Future VRM adapters must convert their numeric pose basis, not reflect VRM bones. */
+export const legacyPointToDisplay = (point: ArrayLike<number>): Vec3 => [-point[0], point[1], point[2]];
+export const legacyDirectionToDisplay = legacyPointToDisplay;
+export function createLegacyDisplayRoot(): THREE.Group {
+  const root = new THREE.Group(); root.name = 'PrimitiveV1DisplayBasis'; root.scale.x = -1;
+  root.userData.coordinateConversion = 'primitive-v1-to-display-v1:reflect-x'; return root;
+}
+export interface CameraState {
+  position: THREE.Vector3; target: THREE.Vector3; view: CameraView;
+  fov: number; near: number; minDistance: number; maxDistance: number; maxPolarAngle: number;
+  enableRotate: boolean; enablePan: boolean; enableZoom: boolean;
+}
+export function cameraPresetState(view: CameraView): CameraState {
+  const player = view === 'player';
+  const positions: Record<CameraView, Vec3> = { front: [0, 1.95, 4.7], stage: [2.75, 2.4, 3.75], top: [.001, 4.8, .5], player: [0, 1.55, -.30] };
+  return {
+    view, position: new THREE.Vector3(...positions[view]), target: new THREE.Vector3(0, player ? .90 : view === 'top' ? .5 : .72, player ? .70 : .32),
+    fov: player ? 65 : 35, near: player ? .025 : .05, minDistance: player ? .2 : 2, maxDistance: player ? 2 : 8,
+    maxPolarAngle: player ? Math.PI : Math.PI * .49, enableRotate: !player, enablePan: !player, enableZoom: !player,
+  };
+}
+const isLibraryPreset = (preset: KitPresetId): preset is 'library' | 'batoski' | 'smoj' => ['library', 'batoski', 'smoj'].includes(preset);
+
+/** Library adapters bake stand geometry in the source world basis. Resize only
+ * stand hardware around the source contact, so source floor Y=0 remains floor
+ * Y=0 after the outer contact translation and uniform instrument scale. */
+export function fitLibraryStandHardware(display: THREE.Group, contactY: number, targetY: number, scale: number): void {
+  for (const child of display.children) {
+    if (!(child instanceof THREE.Mesh) || child.userData.hitResponseRole !== 'hardware') continue;
+    const positions = child.geometry.getAttribute('position'), indices = child.geometry.getIndex();
+    if (!positions) continue;
+    let floor = Infinity;
+    // Split meshes may retain unused vertices, so a geometry bounding box can
+    // incorrectly include the drum shell when measuring its separate legs.
+    for (let i = 0, count = indices?.count ?? positions.count; i < count; i++) floor = Math.min(floor, positions.getY(indices ? indices.getX(i) : i));
+    if (Math.abs(floor) > .025) continue; // rack-tom mounts are not floor stands
+    const factor = targetY / ((contactY - floor) * scale);
+    if (!Number.isFinite(factor) || factor <= 0) continue;
+    child.scale.y = factor;
+    child.position.y = contactY * (1 - factor);
+  }
+}
 
 /** All coordinates are metres; +Y is up and the performer faces +Z. */
 export interface RigCalibration {
@@ -19,6 +67,7 @@ export interface RigAdapter {
   calibrate(kit: readonly KitPiece[]): RigCalibration;
   applyPose(pose: Float32Array): void;
   setVisualOptions(options: { bodyColor?: string }): void;
+  setFirstPerson?(enabled: boolean): void;
   dispose(): void;
 }
 
@@ -148,6 +197,10 @@ export class PrimitiveRigAdapter implements RigAdapter {
       (this.head.getObjectByName('headMarker') as THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>).material.color.set(options.bodyColor);
     }
   }
+  setFirstPerson(enabled: boolean): void {
+    // Preserve arms, wrist markers and sticks; hide geometry around the seated eye.
+    [this.head, this.neck, this.torso, this.hips, this.chest, ...this.shoulderLinks, ...this.hipLinks].forEach(node => { node.visible = !enabled; });
+  }
   dispose(): void { disposeModel(this.root); }
 }
 
@@ -161,8 +214,7 @@ function defaultPose(): Float32Array {
   ]);
 }
 
-type KitVisual = PieceModel & { id: Instrument; hits: Hit[]; };
-type CameraState = { position: THREE.Vector3; target: THREE.Vector3 };
+type KitVisual = PieceModel & { id: Instrument; hits: Hit[]; response: HitResponseBinding; responseTrack: HitResponseTrack; };
 type CameraTransition = { from: CameraState; to: CameraState; started: number };
 type ImportedModel = { root: THREE.Group; name: string; approximate: boolean };
 
@@ -172,6 +224,7 @@ export class DrumScene {
   readonly rig: RigAdapter;
   onPieceSelect: ((id: Instrument | null) => void) | null = null;
   private readonly scene = new THREE.Scene();
+  private readonly displayRoot = createLegacyDisplayRoot();
   private readonly camera = new THREE.PerspectiveCamera(35, 1, .05, 40);
   private readonly controls: OrbitControls;
   private readonly kitGroup = new THREE.Group();
@@ -186,8 +239,8 @@ export class DrumScene {
   private readonly imported = new Map<Instrument, ImportedModel>();
   private readonly proceduralOverrides = new Set<Instrument>();
   private readonly pieceLoadVersions = new Map<Instrument, number>();
-  private library: Partial<Record<Instrument, THREE.Group>> | null = null;
-  private libraryPromise: Promise<Partial<Record<Instrument, THREE.Group>>> | null = null;
+  private readonly libraries = new Map<KitPresetId, Partial<Record<Instrument, THREE.Group>>>();
+  private readonly libraryPromises = new Map<KitPresetId, Promise<Partial<Record<Instrument, THREE.Group>>>>();
   private loadGeneration = 0;
   private disposed = false;
   private selected: Instrument | null = null;
@@ -195,6 +248,10 @@ export class DrumScene {
   private editorMode = false;
   private characterVisible = true;
   private exportMode = false;
+  private cameraView: CameraView = 'stage';
+  private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  private hitResponse: HitResponseSettings = { enabled: !this.reducedMotion.matches, strength: .65 };
+  private songTime = -.5;
   private savedCamera: CameraState | null = null;
   private transition: CameraTransition | null = null;
   private pointerStart: { id: number; x: number; y: number; dragged: boolean } | null = null;
@@ -211,8 +268,8 @@ export class DrumScene {
     const gridMaterial = this.grid.material as THREE.LineBasicMaterial;
     gridMaterial.transparent = true; gridMaterial.opacity = .17;
     this.grid.position.set(0, -.02, .4); this.grid.visible = false; this.scene.add(this.grid);
-    this.scene.add(this.kitGroup);
-    this.rig = new PrimitiveRigAdapter(); this.scene.add(this.rig.root);
+    this.scene.add(this.displayRoot); this.displayRoot.add(this.kitGroup);
+    this.rig = new PrimitiveRigAdapter(); this.displayRoot.add(this.rig.root);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = false;
     this.controls.minDistance = 2; this.controls.maxDistance = 8;
@@ -225,6 +282,7 @@ export class DrumScene {
     canvas.addEventListener('pointercancel', this.pointerCancel);
     this.resizeObserver = new ResizeObserver(() => { if (!this.exportMode) this.resize(); });
     this.resizeObserver.observe(canvas); this.resize();
+    this.reducedMotion.addEventListener('change', this.motionPreferenceChanged);
   }
 
   setPlan(plan: PerformancePlan): void {
@@ -239,31 +297,34 @@ export class DrumScene {
     (this.grid.material as THREE.LineBasicMaterial).color.set(theme === 'light' ? 0x8b949e : 0x7d8691);
   }
   setGridVisible(visible: boolean): void { this.grid.visible = visible; }
+  setHitResponse(settings: HitResponseSettings): void {
+    this.hitResponse = validateHitResponse(settings); this.updateHitResponses();
+  }
+  getHitResponse(): HitResponseSettings { return { ...this.hitResponse }; }
   setEditorMode(enabled: boolean): void {
     if (this.editorMode === enabled || this.exportMode) return;
     this.updateCameraTransition();
+    const beforeEditor = this.cameraState();
     this.editorMode = enabled;
-    this.controls.enableRotate = !enabled;
-    this.controls.maxPolarAngle = enabled ? Math.PI : Math.PI * .49;
     this.rig.root.visible = this.characterVisible && !enabled;
     if (enabled) {
-      this.savedCamera = this.cameraState();
-      this.moveCamera({ position: new THREE.Vector3(0, 1.4, 4.1), target: new THREE.Vector3(0, .76, .50) });
+      this.savedCamera ??= beforeEditor;
+      this.moveCamera({ ...cameraPresetState('front'), position: new THREE.Vector3(0, 1.4, 4.1), target: new THREE.Vector3(0, .76, .50), maxPolarAngle: Math.PI, enableRotate: false });
     } else if (this.savedCamera) {
-      this.moveCamera(this.savedCamera); this.savedCamera = null;
+      this.moveCamera(this.savedCamera);
     }
-    this.updateSelection();
+    this.rig.setFirstPerson?.(!enabled && this.cameraView === 'player'); this.updateHitResponses(); this.updateSelection();
   }
   async setKitPreset(preset: KitPresetId): Promise<void> {
-    if (!['studio', 'vintage', 'electronic', 'library'].includes(preset)) throw new Error('지원하지 않는 드럼 키트입니다.');
+    if (!['studio', 'vintage', 'electronic', 'library', 'batoski', 'smoj'].includes(preset)) throw new Error('지원하지 않는 드럼 키트입니다.');
     const generation = ++this.loadGeneration;
-    if (preset === 'library') {
-      this.libraryPromise ??= import('./model-library').then(module => module.loadLibraryKit()).then(library => {
-        if (this.disposed) this.disposeLibrary(library); else this.library = library;
+    if (isLibraryPreset(preset)) {
+      if (!this.libraryPromises.has(preset)) this.libraryPromises.set(preset, import('./model-library').then(module => module.loadLibraryKit(preset)).then(library => {
+        if (this.disposed) this.disposeLibrary(library); else this.libraries.set(preset, library);
         return library;
-      });
-      try { await this.libraryPromise; }
-      catch (error) { this.libraryPromise = null; throw error; }
+      }));
+      try { await this.libraryPromises.get(preset); }
+      catch (error) { this.libraryPromises.delete(preset); throw error; }
       if (this.disposed || generation !== this.loadGeneration) return;
     }
     this.preset = preset; this.overrides.clear(); this.proceduralOverrides.clear();
@@ -274,7 +335,7 @@ export class DrumScene {
     const canonical = canonicalPieceId(id);
     const visual = resolvePieceVisual(this.preset, canonical, this.overrides.get(canonical));
     const imported = this.imported.get(canonical);
-    return { ...visual, source: imported ? 'imported' : this.preset === 'library' && !this.proceduralOverrides.has(canonical) ? 'library' : 'procedural', ...(imported ? { customModel: imported.name, approximateCalibration: imported.approximate } : {}) };
+    return { ...visual, source: imported ? 'imported' : isLibraryPreset(this.preset) && !this.proceduralOverrides.has(canonical) ? 'library' : 'procedural', ...(imported ? { customModel: imported.name, approximateCalibration: imported.approximate } : {}) };
   }
   setPieceVisual(id: Instrument, options: PieceVisualOptions): void {
     const canonical = canonicalPieceId(id);
@@ -314,19 +375,17 @@ export class DrumScene {
     this.selected = canonical; this.updateSelection(); this.onPieceSelect?.(canonical);
   }
   applyPose(pose: Float32Array, songTime: number): void {
-    this.rig.applyPose(pose);
+    this.rig.applyPose(pose); this.songTime = songTime; this.updateHitResponses();
+  }
+  private updateHitResponses(): void {
     for (const visual of this.visuals) {
       let low = 0, high = visual.hits.length;
-      while (low < high) { const mid = (low + high) >>> 1; if (visual.hits[mid].time <= songTime) low = mid + 1; else high = mid; }
-      const hit = visual.hits[low - 1], age = hit ? songTime - hit.time : Infinity;
-      const envelope = age >= 0 && age < .35 ? Math.exp(-age * 12) * (hit!.velocity / 127) : 0;
+      while (low < high) { const mid = (low + high) >>> 1; if (visual.hits[mid].time <= this.songTime) low = mid + 1; else high = mid; }
+      const hit = visual.hits[low - 1], age = hit ? this.songTime - hit.time : Infinity;
+      const envelope = this.hitResponse.enabled && age >= 0 && age < .35 ? Math.exp(-age * 12) * (hit!.velocity / 127) * this.hitResponse.strength : 0;
       visual.ring.material.opacity = this.editorMode && this.imported.has(visual.id) ? .7 : envelope * .7;
       visual.ring.visible = !this.exportMode && this.editorMode && this.imported.has(visual.id) || envelope > .002;
-      if (visual.cymbal) {
-        const motion = age >= 0 && age < .8 ? Math.sin(age * 46) * Math.exp(-age * 7) * .025 * (hit!.velocity / 127) : 0;
-        visual.cymbal.rotation.x = this.editorMode ? 0 : motion;
-        visual.cymbal.rotation.z = this.editorMode ? 0 : motion * .65;
-      }
+      applyHitResponse(visual.response, evaluateHitResponse(visual.responseTrack, this.songTime, this.hitResponse, this.reducedMotion.matches || this.editorMode, visual.response.fallback));
     }
   }
   render(): void {
@@ -340,12 +399,10 @@ export class DrumScene {
     this.renderer.setPixelRatio(this.exportMode ? 1 : Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
   }
-  setCamera(preset: 'front' | 'stage' | 'top'): void {
+  setCamera(preset: CameraView): void {
     if (this.editorMode) return;
-    this.transition = null;
-    const position = { front: [0, 1.95, 4.7], stage: [2.75, 2.4, 3.75], top: [.001, 4.8, .5] }[preset];
-    this.camera.position.set(...position as Vec3);
-    this.controls.target.set(0, preset === 'top' ? .5 : .72, .32);
+    this.transition = null; this.savedCamera = null;
+    this.applyCameraState(cameraPresetState(preset)); this.rig.setFirstPerson?.(preset === 'player');
     this.controls.enabled = !this.exportMode; this.controls.update();
   }
   setBackground(color: string): void { this.scene.background = new THREE.Color(color); }
@@ -356,15 +413,27 @@ export class DrumScene {
   }
   dispose(): void {
     this.disposed = true; ++this.loadGeneration; this.resizeObserver.disconnect(); this.controls.dispose();
+    this.reducedMotion.removeEventListener('change', this.motionPreferenceChanged);
     this.canvas.removeEventListener('pointerdown', this.pointerDown); this.canvas.removeEventListener('pointermove', this.pointerMove);
     this.canvas.removeEventListener('pointerup', this.pointerUp); this.canvas.removeEventListener('pointercancel', this.pointerCancel);
     this.clearSelection(); disposeModel(this.scene);
     this.imported.forEach(model => disposeModelSource(model.root)); this.imported.clear();
-    if (this.library) this.disposeLibrary(this.library);
+    this.libraries.forEach(library => this.disposeLibrary(library)); this.libraries.clear();
     this.renderer.dispose();
   }
 
-  private cameraState(): CameraState { return { position: this.camera.position.clone(), target: this.controls.target.clone() }; }
+  private cameraState(): CameraState {
+    return { position: this.camera.position.clone(), target: this.controls.target.clone(), view: this.cameraView, fov: this.camera.fov, near: this.camera.near,
+      minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance, maxPolarAngle: this.controls.maxPolarAngle,
+      enableRotate: this.controls.enableRotate, enablePan: this.controls.enablePan, enableZoom: this.controls.enableZoom };
+  }
+  private applyCameraState(state: CameraState): void {
+    this.camera.position.copy(state.position); this.controls.target.copy(state.target); this.cameraView = state.view;
+    this.camera.fov = state.fov; this.camera.near = state.near; this.camera.updateProjectionMatrix();
+    for (const key of ['minDistance', 'maxDistance', 'maxPolarAngle', 'enableRotate', 'enablePan', 'enableZoom'] as const) {
+      (this.controls as unknown as Record<string, unknown>)[key] = state[key];
+    }
+  }
   private invalidatePieceLoad(id: Instrument): number {
     const version = (this.pieceLoadVersions.get(id) ?? 0) + 1; this.pieceLoadVersions.set(id, version); return version;
   }
@@ -372,21 +441,27 @@ export class DrumScene {
     const root = new THREE.Group(); Object.values(library).forEach(group => { if (group) root.add(group); }); disposeModelSource(root);
   }
   private moveCamera(to: CameraState): void {
-    this.transition = { from: this.cameraState(), to: { position: to.position.clone(), target: to.target.clone() }, started: performance.now() };
+    this.transition = { from: this.cameraState(), to: { ...to, position: to.position.clone(), target: to.target.clone() }, started: performance.now() };
+    this.cameraView = to.view;
+    this.controls.minDistance = 0; this.controls.maxDistance = Infinity; this.controls.maxPolarAngle = Math.PI;
     this.controls.enabled = false;
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) this.finishCameraTransition();
+    if (this.reducedMotion.matches) this.finishCameraTransition();
   }
   private updateCameraTransition(): void {
     if (!this.transition) return;
     const t = Math.min(1, (performance.now() - this.transition.started) / 350), eased = t * t * (3 - 2 * t);
     this.camera.position.lerpVectors(this.transition.from.position, this.transition.to.position, eased);
+    if (this.transition.from.view === 'player' || this.transition.to.view === 'player') this.camera.position.y += .45 * Math.sin(Math.PI * eased);
     this.controls.target.lerpVectors(this.transition.from.target, this.transition.to.target, eased);
-    if (t === 1) { this.transition = null; this.controls.enabled = !this.exportMode; }
+    this.camera.fov = THREE.MathUtils.lerp(this.transition.from.fov, this.transition.to.fov, eased); this.camera.updateProjectionMatrix();
+    if (t === 1) { this.applyCameraState(this.transition.to); this.transition = null; this.controls.enabled = !this.exportMode; if (!this.editorMode) this.savedCamera = null; }
   }
   private finishCameraTransition(): void {
-    if (this.transition) { this.camera.position.copy(this.transition.to.position); this.controls.target.copy(this.transition.to.target); this.transition = null; }
+    if (this.transition) { this.applyCameraState(this.transition.to); this.transition = null; }
+    if (!this.editorMode) this.savedCamera = null;
     this.controls.update(); this.controls.enabled = !this.exportMode;
   }
+  private motionPreferenceChanged = (): void => { if (this.reducedMotion.matches) this.finishCameraTransition(); this.updateHitResponses(); };
   private clearSelection(): void {
     if (this.selectionBox) { this.scene.remove(this.selectionBox); this.selectionBox.geometry.dispose(); this.selectionBox.material.dispose(); this.selectionBox = null; }
   }
@@ -394,7 +469,7 @@ export class DrumScene {
     this.clearSelection();
     if (!this.editorMode || this.exportMode || !this.selected) return;
     const model = this.visuals.find(visual => visual.id === this.selected); if (!model) return;
-    model.root.updateMatrixWorld(true);
+    model.root.updateWorldMatrix(true, true);
     this.selectionBox = new THREE.BoxHelper(model.root, 0x388bfd);
     this.selectionBox.material.depthTest = false; this.selectionBox.material.transparent = true; this.selectionBox.material.opacity = .8;
     this.selectionBox.renderOrder = 10; this.scene.add(this.selectionBox);
@@ -411,7 +486,7 @@ export class DrumScene {
     if (!start || start.id !== event.pointerId || start.dragged || !this.editorMode || this.exportMode || this.transition) return;
     const rect = this.canvas.getBoundingClientRect(); if (!rect.width || !rect.height) return;
     this.raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), this.camera);
-    this.kitGroup.updateMatrixWorld(true);
+    this.displayRoot.updateMatrixWorld(true);
     const hit = this.raycaster.intersectObjects(this.visuals.map(value => value.root), true)[0];
     let object: THREE.Object3D | null = hit?.object ?? null;
     while (object && !object.userData.pieceId) object = object.parent;
@@ -419,11 +494,12 @@ export class DrumScene {
   };
   private rebuildKit(): void {
     this.clearSelection(); disposeModel(this.kitGroup); this.visuals = [];
+    const library = this.libraries.get(this.preset);
     for (const piece of this.kit) {
       if (canonicalPieceId(piece.id) !== piece.id) continue;
       const settings = this.getPieceVisual(piece.id);
       const built = createPieceModel(piece, settings, this.preset, this.kit);
-      const source = this.imported.get(piece.id)?.root ?? (this.preset === 'library' && !this.proceduralOverrides.has(piece.id) ? this.library?.[piece.id] : undefined);
+      const source = this.imported.get(piece.id)?.root ?? (isLibraryPreset(this.preset) && !this.proceduralOverrides.has(piece.id) ? library?.[piece.id] : undefined);
       if (source) {
         built.ring.removeFromParent(); disposeModel(built.root); built.cymbal = undefined;
         const display = cloneModel(source), pivot = new THREE.Group(); pivot.add(display); built.root.add(pivot, built.ring);
@@ -438,12 +514,13 @@ export class DrumScene {
           if (piece.id === 'kick') pivot.position.y = .32 - center.y * fit;
         } else {
           this.alignLibraryPiece(display, pivot, source, piece, settings);
-          if (piece.id === 'hihat' && this.library?.pedalHat) {
+          if (piece.id === 'hihat' && library?.pedalHat) {
             const pedal = this.kit.find(item => item.id === 'pedalHat');
             if (pedal) {
-              const pedalDisplay = cloneModel(this.library.pedalHat), pedalPivot = new THREE.Group();
+              const pedalDisplay = cloneModel(library.pedalHat), pedalPivot = new THREE.Group();
+              pedalPivot.userData.hitResponseRole = 'pedal';
               pedalPivot.add(pedalDisplay); built.root.add(pedalPivot);
-              this.alignLibraryPiece(pedalDisplay, pedalPivot, this.library.pedalHat, pedal, settings);
+              this.alignLibraryPiece(pedalDisplay, pedalPivot, library.pedalHat, pedal, settings);
             }
           }
         }
@@ -456,17 +533,20 @@ export class DrumScene {
         const model = new THREE.Group(); model.position.copy(pivot.position).multiplyScalar(-1);
         [...built.root.children].forEach(child => { if (!child.userData.fixedContact) model.add(child); }); pivot.add(model); built.root.add(pivot);
       }
+      const response = bindHitResponse(built.root, piece.position, this.imported.has(piece.id));
       built.root.userData.pieceId = piece.id; this.kitGroup.add(built.root);
       const instruments: Instrument[] = piece.id === 'hihat' ? ['hihat', 'openHat', 'pedalHat'] : [piece.id];
-      this.visuals.push({ ...built, id: piece.id, hits: this.plan?.hits.filter(hit => instruments.includes(hit.instrument)).sort((a, b) => a.time - b.time) ?? [] });
+      const hits = this.plan?.hits.filter(hit => instruments.includes(hit.instrument)).sort((a, b) => a.time - b.time) ?? [];
+      this.visuals.push({ ...built, id: piece.id, hits, response, responseTrack: createHitResponseTrack(hits, piece.id) });
     }
-    this.updateSelection();
+    this.updateHitResponses(); this.updateSelection();
   }
   private alignLibraryPiece(display: THREE.Group, pivot: THREE.Group, source: THREE.Group, piece: KitPiece, settings: PieceVisualSettings): void {
     const contact = new THREE.Vector3(...source.userData.contact as Vec3);
+    if (piece.id !== 'kick' && piece.id !== 'pedalHat') fitLibraryStandHardware(display, contact.y, piece.position[1], settings.scale);
     display.position.copy(contact).multiplyScalar(-1);
     pivot.position.set(...piece.position);
-    // Preserve source proportions; contact stays exact even if stand feet vary in height.
+    // Shells and heads keep source proportions; only stand lengths are adjusted.
     pivot.scale.setScalar(settings.scale);
     pivot.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
   }

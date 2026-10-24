@@ -4,7 +4,7 @@
 
 ## Current execution order — 2026-10-24
 
-The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. Application features below remain unimplemented; this update prepares issues and review documentation. Public v0.2.0 stays unchanged.
+The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. PR #31 passed CI and was merged at 28a50a2c19c2b5109c490384f0b03e554f4dea1e. The owner then authorized #28/#29 implementation followed by #30/#17. #28/#29 are implemented on the working branch and undergoing integration checks; VRM model acquisition findings have been added to #17/#18/#30. Public v0.2.0 stays unchanged.
 
 | Priority | Work | Issue / milestone | Boundary |
 | --- | --- | --- | --- |

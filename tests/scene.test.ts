@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Raycaster, Texture, Vector3 } from 'three';
-import { PrimitiveRigAdapter } from '../src/scene';
+import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, PerspectiveCamera, Raycaster, Texture, Vector3 } from 'three';
+import { cameraPresetState, createLegacyDisplayRoot, legacyPointToDisplay, PrimitiveRigAdapter } from '../src/scene';
 import { cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId } from '../src/model-procedural';
 import { validateSelfContainedGLB } from '../src/model-import';
 import type { KitPiece } from '../src/types';
@@ -16,6 +16,37 @@ const pose = () => new Float32Array([
 const capture = (rig: PrimitiveRigAdapter) => rig.root.children.map(node => ({
   position: node.position.toArray(), rotation: node.quaternion.toArray(), scale: node.scale.toArray(),
 }));
+
+describe('primitive-v1 display conversion and player view', () => {
+  it('shows anatomical left/right correctly from the seat without changing the canonical pose', () => {
+    const state = cameraPresetState('player'), camera = new PerspectiveCamera(state.fov, 16 / 9, state.near, 40);
+    camera.position.copy(state.position); camera.lookAt(state.target); camera.updateMatrixWorld(true);
+    const rig = new PrimitiveRigAdapter(), display = createLegacyDisplayRoot(), input = pose(), before = Array.from(input);
+    display.add(rig.root); rig.applyPose(input); display.updateMatrixWorld(true);
+    for (const [name, offset, sign] of [['leftStick', 9, -1], ['rightStick', 21, 1]] as const) {
+      const actual = rig.root.getObjectByName(name)!.localToWorld(new Vector3(0, .5, 0));
+      const expected = new Vector3(...legacyPointToDisplay(input.slice(offset, offset + 3)));
+      expect(actual.distanceTo(expected)).toBeLessThan(1e-6);
+      expect(Math.sign(actual.project(camera).x)).toBe(sign);
+    }
+    expect(Array.from(input)).toEqual(before);
+    expect(state.minDistance).toBeLessThan(state.position.distanceTo(state.target));
+    expect(state.enablePan).toBe(false); expect(state.enableRotate).toBe(false);
+    expect(cameraPresetState('stage').fov).toBe(35); expect(cameraPresetState('stage').minDistance).toBe(2);
+    rig.setFirstPerson(true); expect(rig.root.getObjectByName('head')!.visible).toBe(false); expect(rig.root.getObjectByName('leftStick')!.visible).toBe(true);
+    rig.setFirstPerson(false); expect(rig.root.getObjectByName('head')!.visible).toBe(true);
+    rig.dispose();
+  });
+  it('raycasts the same labeled drum at its converted contact', () => {
+    const piece: KitPiece = { id: 'snare', label: 'Snare', position: [-.18, .79, .40], radius: .22 };
+    const built = createPieceModel(piece, resolvePieceVisual('studio', 'snare'), 'studio', [piece]);
+    const display = createLegacyDisplayRoot(); display.add(built.root); display.updateMatrixWorld(true);
+    const target = new Vector3(...legacyPointToDisplay(piece.position));
+    const hit = new Raycaster(target.clone().add(new Vector3(0, 1, 0)), new Vector3(0, -1, 0)).intersectObject(built.root.getObjectByName('contactSurface')!, false)[0];
+    expect(hit.point.distanceTo(target)).toBeLessThan(1e-7); expect(built.root.userData.pieceId).toBe('snare');
+    disposeModel(display);
+  });
+});
 
 describe('PrimitiveRigAdapter canonical pose contract', () => {
   it('places the distal ends of both sticks at the supplied canonical contact points', () => {
