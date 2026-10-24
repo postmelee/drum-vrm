@@ -49,7 +49,13 @@ Production preview `/drum-vrm/`에서 확인했다.
 
 ## 배포
 
-PR CI와공개Pages검증결과는실행완료후아래에기록한다.
+- 배포 commit: `3e8be9333cedbc9845dbc3e4cebd73961af697b4`, [PR #26](https://github.com/postmelee/drum-vrm/pull/26).
+- [최종 PR CI](https://github.com/postmelee/drum-vrm/actions/runs/40063272293)와 [Pages build/deploy](https://github.com/postmelee/drum-vrm/actions/runs/40063363035) 성공.
+- [공개 URL](https://postmelee.github.io/drum-vrm/)에서 새 UI, 데모193타격 준비, CC0 프리셋 로딩, 16배 확대·키보드 탐색 확인. 앱너비1512px/피아노롤bitmap3024px 유지.
+- 공개 사이트에서 CC0 키트·스켈레톤·흰 배경의 923프레임/30.77초 WebM·합성 오디오 출력과 다운로드 링크 생성 확인. console error/warn없음. 실제 다운로드 파일의 decode/onset 측정은 위 로컬 production 결과와 구분한다.
+- 공개 `licenses.txt` SHA-256이 로컬과 일치: `54c3affc6c33acb2bb723ddc241e07ac7c2b02274fcf36be5cb4effdc8288a53`.
+- [v0.2.0 릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)에 실제 Pages artifact와 SHA-256 보관: `drum-vrm-v0.2.0-pages.tar.gz`, `a913e77951c475ebdca16650933542a65eb2ccc3b04ae38f10d505e7984163ee`.
+- 이전 기준은 v0.1.0 릴리스다. 필요하면 해당 artifact/소스로 복구하고 전체 검증 후 Pages workflow를 실행한다.
 
 ## 확대 회귀 수정
 

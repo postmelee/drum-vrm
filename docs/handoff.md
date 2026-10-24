@@ -1,6 +1,6 @@
 # 현재 상태와 다음 작업
 
-갱신일: 2026-10-24 (Asia/Seoul). 상태: **M0·M1·M2 완료, v0.2 UI/드럼 모델 개선 구현·로컬 검증 완료, 공개 배포 진행**.
+갱신일: 2026-10-24 (Asia/Seoul). 상태: **M0·M1·M2 완료, v0.2.0 UI/드럼 모델 개선 공개 배포·검증 완료**.
 
 ## v0.2 사용자 피드백 반영 상태
 
@@ -11,7 +11,7 @@
 - `timeline.ts`와 Rust메타데이터(ppq/tempoMap/timeSignatures)로 실제 템포·박자 기반 눈금. 음표편집은 없음.
 - `model-procedural.ts`, `model-import.ts`, `model-library.ts`가 외형을 분리. 정적 self-containedGLB최대25MiB. 캐릭터VRM/GLB로드는 여전히 #17/#18.
 - `public/models`에CC0원본·라이선스·SHA256·NOTICE를 보존. `npm run licenses`가검증한다. Apple에셋은포함하지않는다.
-- 로컬 Rust18개/웹27개, 타입·빌드·라이선스·실제GLB교체·오디오포함923프레임출력 검증완료. PR CI/Pages 배포를 진행한다.
+- 로컬 Rust18개/웹27개, 타입·빌드·라이선스·실제GLB교체·오디오포함923프레임출력 검증완료. [PR CI](https://github.com/postmelee/drum-vrm/actions/runs/40063272293)와 [Pages 배포](https://github.com/postmelee/drum-vrm/actions/runs/40063363035) 성공. 공개주소에서도 모델·16배 확대·오디오포함영상출력 확인. 배포 SHA `3e8be9333cedbc9845dbc3e4cebd73961af697b4`, [v0.2.0 artifact](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0).
 
 ## 저장소와 승인
 
@@ -19,7 +19,7 @@
 - [개발 계획](plan.md) · [5개 마일스톤](https://github.com/postmelee/drum-vrm/milestones) · [전체 이슈](https://github.com/postmelee/drum-vrm/issues?q=is%3Aissue)
 - 사용자는 2026-10-24 계획·MIT 라이선스·MVP 구현·검증·GitHub Pages 배포와 이슈·문서 갱신을 승인했다. 근거는 [승인 기록](approval.md)과 #3이다. 같은 범위를 다시 승인받을 필요가 없다.
 - M0–M2 / #1–#12를 완료했다. 다음 입력은 사용자의 실제 DAW MIDI 피드백이며 M3(#13–#18)·M4(#19–#23)는 열린 후속 백로그다.
-- 테스트 URL: [https://postmelee.github.io/drum-vrm/](https://postmelee.github.io/drum-vrm/) · 배포 SHA: `9ddc2bf2450600e1eaca5bd405a4221e254ce83b` · [성공 run](https://github.com/postmelee/drum-vrm/actions/runs/40060762280) · [릴리스/정적 artifact](https://github.com/postmelee/drum-vrm/releases/tag/v0.1.0).
+- 테스트 URL: [https://postmelee.github.io/drum-vrm/](https://postmelee.github.io/drum-vrm/) · 배포 SHA: `3e8be9333cedbc9845dbc3e4cebd73961af697b4` · [성공 run](https://github.com/postmelee/drum-vrm/actions/runs/40063363035) · [릴리스/정적 artifact](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0).
 
 ## 구현된 경로
 
@@ -37,7 +37,7 @@
 
 ## 다음 작업자가 이어갈 순서
 
-1. [검증 기록](verification/mvp-0.1.md)과 사용자 피드백을 읽고 재현할 MIDI 사례/관련 이슈를 정한다. M3·M4를 자동으로 모두 착수하지 않는다.
+1. [현재 검증 기록](verification/studio-0.2.md)과 [최초 MVP 검증](verification/mvp-0.1.md)과 사용자 피드백을 읽고 재현할 MIDI 사례/관련 이슈를 정한다. M3·M4를 자동으로 모두 착수하지 않는다.
 2. `npm ci`, `npm run build:wasm` 후 `npm run dev`의 `/drum-vrm/`을 연다. Rust 1.94.1, wasm-pack 0.15.0, Node 24를 사용한다.
 3. 변경에 맞는 Rust/JS 검사를 실행하고, 엔진 변경은 WASM을 다시 생성한다. 새 codec/타임라인 변경은 실제 출력 파일의 프레임·오디오 onset까지 확인한다.
 4. PR CI 후 main에 반영하고 `gh workflow run pages.yml --ref main`으로 배포한다. 공개 URL에서 실제 업로드·출력 경로를 확인한다.

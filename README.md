@@ -2,9 +2,9 @@
 
 DAW에서 만든 드럼 MIDI를 3D 드러머의 연주 영상으로 바꾸는 브라우저 도구입니다. Rust/WASM이 MIDI와 연주 동작을 계산하고 Three.js가 확장 가능한 기본 리그를 렌더링합니다.
 
-**MVP 배포 완료 · [지금 테스트하기](https://postmelee.github.io/drum-vrm/) · [v0.1.0 릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.1.0)**
+**v0.2.0 배포 완료 · [지금 테스트하기](https://postmelee.github.io/drum-vrm/) · [v0.2.0 릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)**
 
-Chrome 155/macOS에서 실제 파일 업로드부터 오디오 포함 영상 다운로드까지 확인했습니다. [검증 기록](docs/verification/mvp-0.1.md)에 환경·측정값·미검증 범위를 기록합니다.
+Chrome 155/macOS에서 실제 파일 업로드부터 오디오 포함 영상 다운로드까지 확인했습니다. [검증 기록](docs/verification/studio-0.2.md)에 환경·측정값·미검증 범위를 기록합니다.
 
 ## 첫 MVP
 
@@ -84,6 +84,6 @@ MVP 리그는 고정된 기본 체형과 규칙 기반 동작입니다. 밀집 �
 
 ## 배포와 라이선스
 
-2026-10-24 [Pages](https://postmelee.github.io/drum-vrm/) 배포 및 공개 주소 핵심 경로 검증을 완료했습니다. 배포 commit은 `9ddc2bf2450600e1eaca5bd405a4221e254ce83b`, [배포 run](https://github.com/postmelee/drum-vrm/actions/runs/40060762280)은 성공했습니다. [릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.1.0)에 실제 정적 artifact와 SHA-256을 보존합니다. 후속 배포는 main에서 `gh workflow run pages.yml --ref main`을 실행하며 전체 CI가 먼저 통과해야 합니다.
+2026-10-24 [Pages](https://postmelee.github.io/drum-vrm/) 배포 및 공개 주소 핵심 경로 검증을 완료했습니다. 배포 commit은 `3e8be9333cedbc9845dbc3e4cebd73961af697b4`, [배포 run](https://github.com/postmelee/drum-vrm/actions/runs/40063363035)은 성공했습니다. [릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)에 실제 정적 artifact와 SHA-256을 보존합니다. 후속 배포는 main에서 `gh workflow run pages.yml --ref main`을 실행하며 전체 CI가 먼저 통과해야 합니다.
 
 자체 소스는 [MIT](LICENSE)입니다. 제3자 라이선스는 각각 유지하며 [배포 고지](public/licenses.txt)에 정확한 버전·소스·원문을 제공합니다. Mediabunny는 MPL-2.0이며 대응 소스의 고정 버전 URL을 고지에 포함합니다. Innerscene의 CC0 드럼 GLB와 포함 텍스처를 배포하며 출처·원문·SHA-256을 `public/models`에 보존합니다. 외부 캐릭터·음원 샘플·모션 데이터·ML 가중치는 포함하지 않습니다. [무료 드럼 모델 조사와 지원 형식](docs/research/drum-assets.md)을 참고하세요. 참고 연구의 라이선스를 관련 데이터나 가중치의 사용 허가로 확대하지 않습니다.

@@ -106,3 +106,5 @@ Rust MIDI/계획·WASM 연결, 기본 리그/키트, 합성 오디오, UI, codec
 ## 사용자 피드백 반영 — v0.2
 
 M3의 [#25](https://github.com/postmelee/drum-vrm/issues/25)를 우선한다. 최소 작업 화면, 네 inspector, 피아노 롤, 스켈레톤, 드럼 정면 편집과 라이선스 검증 모델 프리셋을 포함한다. [ADR0003](decisions/0003-minimal-studio-and-models.md)가 범위와 동작을 고정한다. #14의 음표/손 배정 편집과 #17/#18의 캐릭터 리타게팅 전체는 계속 후속이다. 외부 CC0 키트의 편입은 최초 MVP의 자체 에셋만 사용하던 범위를 이번 사용자 요청으로 확장한 것이다.
+
+#25는 [PR #26](https://github.com/postmelee/drum-vrm/pull/26)으로 완료했고, v0.2.0을 [Pages](https://github.com/postmelee/drum-vrm/actions/runs/40063363035)에 배포했다. [검증 기록](verification/studio-0.2.md)과 [정적 artifact](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)를 후속 기준으로 사용한다. M3 전체는 열린 상태를 유지한다.
