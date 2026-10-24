@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { Bone, Group, Quaternion, Vector3 } from 'three';
-import { createRestRigPose, legacyPositionToNative, legacyQuaternionToNative, NativeHumanoidRigAdapter } from '../src/rig-humanoid';
+import { createRestRigPose, legacyPositionToNative, legacyQuaternionToNative, NativeHumanoidRigAdapter, type PalmOrientation } from '../src/rig-humanoid';
 import type { KitPiece } from '../src/types';
 
 describe('semantic humanoid and hand-local tools', () => {
@@ -20,8 +20,10 @@ describe('semantic humanoid and hand-local tools', () => {
       // joint on its centre line (the old longitudinal socket regression).
       for (const finger of ['Index', 'Middle', 'Ring', 'Little']) {
         const points = ['Proximal', 'Intermediate', 'Distal'].map(segment => socket.worldToLocal(rig.root.getObjectByName(`${side}${finger}${segment}`)!.getWorldPosition(new Vector3())).sub(grip));
-        expect(points[0].y).toBeGreaterThan(.01); expect(points[2].y).toBeLessThan(-.01);
-        expect((side === 'left' ? 1 : -1) * points[1].x).toBeGreaterThan(.01);
+        // A diagonal shaft can have any roll. The actual proximal/distal joints
+        // must lie on opposite radial sides, with clearance from its centre.
+        expect(points[0].x * points[2].x + points[0].y * points[2].y, `${side} ${finger}`).toBeLessThan(0);
+        expect(Math.hypot(points[1].x, points[1].y)).toBeGreaterThan(.006);
         expect(Math.hypot(points[1].x, points[1].y)).toBeLessThan(.03);
       }
     }
@@ -40,12 +42,37 @@ describe('semantic humanoid and hand-local tools', () => {
     expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
     rig.setCalibration({seatHeight: .54, seatForward: -.1});
     expect(rig.setCalibration(adjusted, kit)).toEqual(profile);
-    const read = rig.getCalibration(); read.seatHeight = 1; expect(rig.getCalibration()).toEqual(adjusted);
+    const read = rig.getCalibration(); read.seatHeight = 1; expect(rig.getCalibration()).toEqual({...adjusted, palmOrientation: 'up'});
     expect(() => rig.setCalibration({seatHeight: NaN, seatForward: 0})).toThrow('좌석');
     expect(() => rig.setCalibration({seatHeight: .6, seatForward: .51})).toThrow('좌석');
     expect(rig.getProfile()).toEqual(profile);
     const auto = rig.getAutomaticCalibration(kit); expect(auto.seatHeight).toBeGreaterThanOrEqual(.3); expect(auto.seatForward).toBe(.06);
     rig.dispose();
+  });
+  it.each<PalmOrientation>(['up', 'inward', 'down'])('aligns resting wrists with forearms and carries %s palm roll in the forearm', palmOrientation => {
+    const rig = new NativeHumanoidRigAdapter(), original = rig.getProfile();
+    expect(rig.getCalibration().palmOrientation).toBe('up');
+    const profile = rig.setCalibration({...rig.getCalibration(), palmOrientation}), pose = createRestRigPose(profile);
+    rig.applyPose(pose);
+    for (const [limb, side] of (['left', 'right'] as const).entries()) {
+      const hand = rig.humanoid.getNormalizedBoneNode(`${side}Hand`)!, lower = rig.humanoid.getNormalizedBoneNode(`${side}LowerArm`)!;
+      const forearm = hand.getWorldPosition(new Vector3()).sub(lower.getWorldPosition(new Vector3())).normalize();
+      const forward = new Vector3(side === 'left' ? .065 : -.065, 0, .008).normalize().applyQuaternion(hand.getWorldQuaternion(new Quaternion()));
+      const palm = new Vector3(0, -1, 0).applyQuaternion(hand.getWorldQuaternion(new Quaternion()));
+      const desired = palmOrientation === 'up' ? new Vector3(0, 1, 0) : palmOrientation === 'down' ? new Vector3(0, -1, 0) : new Vector3(limb === 0 ? -1 : 1, 0, 0);
+      desired.addScaledVector(forearm, -desired.dot(forearm)).normalize();
+      expect(forward.dot(forearm)).toBeGreaterThan(1 - 1e-10); expect(palm.dot(desired)).toBeGreaterThan(1 - 1e-10);
+      const forearmPalm = new Vector3(0, -1, 0).applyQuaternion(lower.getWorldQuaternion(new Quaternion()));
+      forearmPalm.addScaledVector(forearm, -forearmPalm.dot(forearm)).normalize();
+      expect(forearmPalm.dot(palm)).toBeGreaterThan(1 - 1e-10);
+    }
+    expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
+    expect(profile.lengths).toEqual(original.lengths);
+    rig.setCalibration({seatHeight: .6, seatForward: .1}); expect(rig.getCalibration().palmOrientation).toBe(palmOrientation);
+    expect(rig.getAutomaticCalibration().palmOrientation).toBe(palmOrientation);
+    rig.setCalibration({...rig.getCalibration(), palmOrientation: 'down'}); rig.applyPose(createRestRigPose(rig.getProfile()));
+    rig.setCalibration({...rig.getCalibration(), seatHeight: original.pelvis[1], seatForward: original.pelvis[2], palmOrientation});
+    rig.applyPose(pose); expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true); rig.dispose();
   });
   it('starts with both feet on the pedals and clamps unreachable rest poses without stretching', () => {
     const rig = new NativeHumanoidRigAdapter(), initial = rig.getProfile();

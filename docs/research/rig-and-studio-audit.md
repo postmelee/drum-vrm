@@ -128,3 +128,12 @@ Only this engineering document is produced by this audit task. No feature code, 
 ## Implementation follow-up (unreleased)
 
 The historical audit above describes v0.2.0. [ADR 0004](../decisions/0004-vrm-humanoid-and-grip.md) records the implemented VRM 1.0 normalized/raw adapter, real semantic Bone default skeleton, measured segment/seat profile, wrist/tool orientation, fixed matched grip, and actual hand-local stick markers. [Model evidence](vrm-models.md) distinguishes preflight, headless bones, actual browser rendering/seek checks, and pending validation. three-vrm 3.5.5 is now adopted with its original MIT notice; separate avatar terms remain in force. No learned research model or external motion dataset is integrated.
+
+
+## Palm orientation correction — 2026-10-24
+
+The owner reported a visibly bent wrist and requested an upward-facing palm. The previous adapter used an identity hand-to-tool rotation: normalized T-pose hands extended along opposite X axes while the stick used Z. This could produce a sideways wrist even though the actual tip met its target. A passing tip-contact metric is therefore insufficient evidence of a natural grip.
+
+[Yamaha, A Guide to Proper Stick Grips](https://hub.yamaha.com/music-educators/instruments/perc/a-guide-to-proper-stick-grips/) distinguishes matched/overhand grips, French grip with palms facing each other and thumbs upward, and traditional grip with an underhand left hand and an overhand right hand. The latter also changes finger placement. Do not label a symmetric palm-up orientation as a complete traditional-grip implementation. This source is instructional reference only; no text, images, motion data or code are copied into the product.
+
+Adopt a shared diagonal hand-local socket, a seated-forearm reference frame and palm orientation choices (up, inward, down). Carry the roll through the forearm rather than putting the whole twist at the wrist. Keep tools parented to actual hands, fixed bone lengths, immutable MIDI times and absolute-time pose evaluation. Avatar identity is not an input. Measure rest wrist bend and palm direction in addition to contact/determinism, and inspect actual meshes. Dynamic per-target wrist limits, true asymmetric traditional finger poses and arm/skin collision remain #20; they must not be marked complete by this bounded correction.

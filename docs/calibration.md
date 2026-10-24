@@ -18,7 +18,11 @@ Changes apply to the current session and are **not saved across reloads**. Keep 
 
 Feet start on the calibrated kick and hi-hat pedal contacts. During a hit, the ankle stays in place and the foot makes a small toe-up preparation before pressing back to the contact. The same time-based evaluation is used for playback, seeking and video output. This simple ankle-only motion does not reproduce heel-up, heel-toe or double-pedal technique, and it is not a mechanical pedal simulation.
 
-The grip update aligns the stick across the palm and curls available finger bones around it. Models without finger bones still load, with reduced grip detail. The contact inspector measures actual stick-tip and foot-socket transforms; it does not measure every skin or shoe vertex. Check the visible grip with your model, especially thick gloves, large hands or unusual shoes.
+In Character settings, **손바닥 방향** (Palm direction) selects **위** (up, the requested default), **안쪽 · 엄지 위** (inward / thumbs up), or **아래** (down). The setting applies to both hands and is retained while changing the seat or importing another character in this session. It pauses playback, recalibrates the grip and invalidates an older video download.
+
+The grip uses a diagonal hand-local stick socket and available finger bones. The seated forearm supplies the reference hand orientation, and forearm roll carries the palm rotation so it is not concentrated entirely at the wrist. This is a baseline correction, not an anatomical wrist-limit or collision solver for every distant target.
+
+These are palm orientations, **not complete traditional-grip styles**: traditional grip uses a different underhand left-hand finger arrangement and an overhand right hand. Matched grips commonly use downward or inward-facing palms; see [Yamaha’s grip guide](https://hub.yamaha.com/music-educators/instruments/perc/a-guide-to-proper-stick-grips/). Models without finger bones still load, with reduced grip detail. The contact inspector measures actual stick-tip and foot-socket transforms; it does not measure every skin or shoe vertex. Check the visible grip with your model, especially thick gloves, large hands or unusual shoes.
 
 The planner already prefers **right-hand hi-hat and left-hand snare**, but may choose another hand to handle reach or timing. Explicit crossed/open-handed style selection, arm/stick collision avoidance and manual hand overrides remain follow-up work. A current preference is not a guarantee that the arms always cross naturally.
 
@@ -33,3 +37,5 @@ Presets do not include every source model's original hardware. This common mount
 ## Remaining limits
 
 General humanoid GLB mapping, precise skin/sole calibration, automatic collision-free seating, a controlled short/tall VRoid test pair and project persistence remain open work. Hair/clothing dynamics still reset for repeatable seeking and output. Release tags and Pages deployment require separate approval; main or a PR changing does not update the public site.
+
+[Palm orientation verification and remaining wrist limits](verification/palm-orientation-unreleased.md).

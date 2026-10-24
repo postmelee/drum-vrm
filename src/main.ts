@@ -48,6 +48,8 @@ app.innerHTML = `  <header class="toolbar">
         <p id="character-message" class="hint" role="status">VRM 1.0 표준 본 · 기본 스켈레톤</p>
         <p class="hint">단일 .vrm · VRM 1.0 · 최대 50 MiB<br>.vroid는 편집 파일입니다. VRM 1.0으로 내보내세요.</p>
         <div id="character-info"></div>
+        <label class="field">손바닥 방향<select id="palm-orientation"><option value="up">위</option><option value="inward">안쪽 · 엄지 위</option><option value="down">아래</option></select></label>
+        <p class="hint">양손의 방향을 함께 조절합니다. 전통 그립의 좌우 다른 손가락 배치는 포함하지 않습니다.</p>
         <h3>좌석</h3>
         <label class="field">높이 (cm)<input id="seat-height" type="number" min="30" max="120" step="0.1" required/></label>
         <label class="field">앞뒤 위치 (cm · 앞쪽 +)<input id="seat-forward" type="number" min="-50" max="50" step="0.1" required/></label>
@@ -165,6 +167,7 @@ function refreshCalibration() {
   const seat = scene.getCalibration();
   get<HTMLInputElement>('seat-height').value = String(Math.round(seat.seatHeight*1000)/10);
   get<HTMLInputElement>('seat-forward').value = String(Math.round(seat.seatForward*1000)/10);
+  get<HTMLSelectElement>('palm-orientation').value = seat.palmOrientation ?? 'up';
 }
 function refreshTarget() {
   const piece = scene.getKitLayout().find(p=>p.id===get<HTMLSelectElement>('target-piece').value)!;
@@ -197,8 +200,9 @@ refreshCalibration();refreshTarget();
 get('seat-apply').onclick=()=>{
   const height=get<HTMLInputElement>('seat-height'), forward=get<HTMLInputElement>('seat-forward');
   if(!height.reportValidity()||!forward.reportValidity())return;
-  applyCalibration({seatHeight:height.valueAsNumber/100,seatForward:forward.valueAsNumber/100},scene.getKitLayout(),'calibration-message');
+  applyCalibration({...scene.getCalibration(),seatHeight:height.valueAsNumber/100,seatForward:forward.valueAsNumber/100},scene.getKitLayout(),'calibration-message');
 };
+get<HTMLSelectElement>('palm-orientation').onchange=()=>applyCalibration({...scene.getCalibration(),palmOrientation:get<HTMLSelectElement>('palm-orientation').value as HumanoidCalibration['palmOrientation']},scene.getKitLayout(),'calibration-message');
 get('seat-auto').onclick=()=>applyCalibration(scene.getAutomaticCalibration(),scene.getKitLayout(),'calibration-message');
 get<HTMLSelectElement>('target-piece').onchange=refreshTarget;
 get('target-apply').onclick=()=>{
@@ -234,7 +238,7 @@ function showModelInfo(info: VRMInspection | null) {
 }
 function adoptRig(adapter: NativeHumanoidRigAdapter | VRMHumanoidRigAdapter) {
   const kit=scene.getKitLayout();
-  const profile=adapter.setCalibration(adapter.getAutomaticCalibration(kit),kit);
+  const profile=adapter.setCalibration({...adapter.getAutomaticCalibration(kit),palmOrientation:scene.getCalibration().palmOrientation},kit);
   const next = engine.setSetup(profile,kit);
   scene.setRig(adapter);
   scene.setSkeletonVisible(get<HTMLInputElement>('skeleton-visible').checked);
@@ -313,7 +317,7 @@ function controls() {
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-panel], #close-panel, #theme, #character-visible')) el.disabled=exporting || modelBusy;
   for (const el of document.querySelectorAll<HTMLInputElement>('#panel-drums input, #panel-drums select, #panel-drums button')) el.disabled=busy || exporting || modelBusy;
   for (const id of ['start-upload','start-demo']) get<HTMLButtonElement>(id).disabled=busy || exporting;
-  for (const el of document.querySelectorAll<HTMLInputElement>('#panel-character input, #panel-character button')) el.disabled=busy || exporting || modelBusy;
+  for (const el of document.querySelectorAll<HTMLInputElement>('#panel-character input, #panel-character select, #panel-character button')) el.disabled=busy || exporting || modelBusy;
   get<HTMLInputElement>('hit-strength').disabled = exporting || modelBusy || !get<HTMLInputElement>('hit-response').checked;
   get<HTMLButtonElement>('export').disabled = !plan || busy || exporting || modelBusy;
   get('cancel-analysis').hidden = !busy;

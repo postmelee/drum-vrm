@@ -2,6 +2,8 @@
 
 기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.2.0 공개 유지, PR #33 병합 후 공통 보정·페달·하드웨어 PR #34 검토 중·미배포**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
 
+Palm-direction follow-up in PR #34: shared up/inward/down controls and reference wrist alignment are implemented, with up as the requested default. [Verification](verification/palm-orientation-unreleased.md) separates the improved rest pose from remaining large hi-hat wrist bends; target-dependent orientation/wrist limits remain #20 and are the next motion-quality priority. This is not release approval.
+
 ## Current execution order — 2026-10-24
 
 The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. PR #31 passed CI and was merged at 28a50a2c19c2b5109c490384f0b03e554f4dea1e. The owner then authorized #28/#29 implementation followed by #30/#17. #28/#29 passed CI and merged in PR #32 at bd1568d4a3cc89913627b04e34f2fd2153a3ffac. PR #33's VRM 1.0/profile/grip foundation passed CI and merged at a2105a5508ae92e49d31977e2c56b096dfd1d822; generic GLB mapping and controlled Studio two-body calibration remain open. VRM model acquisition findings have been added to #17/#18/#30. Public v0.2.0 stays unchanged.

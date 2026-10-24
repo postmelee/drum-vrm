@@ -20,6 +20,10 @@ The latest owner instruction is to implement shared seat height/forward and cont
 - Playing style: existing RH-hi-hat/LH-snare preference is a planner cost. Explicit crossed/open/mirrored styles, hand overrides and collision-aware arm/stick ordering remain #14/#20 follow-up work; do not present them as implemented.
 - Verification: full original VRMs passed 128-frame/shuffled-seek browser checks; Twist hand close-ups show the grip. Seat/target controls, preset/GLB swaps and a 923-frame synthesized-audio WebM encode were exercised. Independent playback of the new blob file and the controlled two-export VRoid proportion pair remain open. Implementation commit: `644fe1859190b8e427a244206db27a7f5d15938e`, [PR #34](https://github.com/postmelee/drum-vrm/pull/34), branch `codex/calibration-pedals-hardware`. The PR remains open for review; consult its latest checks for CI status. No release.
 
+## Palm direction follow-up — implemented, unreleased
+
+PR #34 now includes the requested up-facing palm option (default), inward/down alternatives, a diagonal measured grip, reference hand/forearm alignment and forearm-carried roll. Selection persists across seat changes and model import within the session. Web 79 tests and typecheck/build passed; three actual VRMs passed 128-frame/seek browser checks. See [the separate verification](verification/palm-orientation-unreleased.md), including measured remaining 99–110° hi-hat wrist bends. Reference wrists are fixed; dynamic target-dependent wrist limits are **not**. #20 tracks that priority before claiming natural performance hands. No release or Pages deployment.
+
 ## v0.2 사용자 피드백 반영 상태
 
 사용자는 최소 Logic Pro형 작업 화면, 흰색/검정 테마, 지정 사이트 시스템 글꼴, 캐릭터·드럼·업로드/연주정보·내보내기 네 메뉴, 스켈레톤, 드럼 모델 교체를 요청했다. **#25 / M3**로 구현했다. [ADR0003](decisions/0003-minimal-studio-and-models.md), [모델·라이선스 조사](research/drum-assets.md), [v0.2 검증](verification/studio-0.2.md)을 우선 읽는다.

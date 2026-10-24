@@ -57,7 +57,7 @@ function matrices(rig: VRMHumanoidRigAdapter): number[] {
 }
 
 describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
-  it.each([.86, 1.12])('fits a transverse grip from measured %s finger geometry with arbitrary raw rest bases', proportion => {
+  it.each([.86, 1.12])('fits a diagonal grip from measured %s finger geometry with arbitrary raw rest bases', proportion => {
     const {vrm} = generatedVRM(proportion, true), rig = new VRMHumanoidRigAdapter(vrm, `generated-fingers-${proportion}`);
     const profile = rig.getProfile(), pose = createRestRigPose(profile);
     expect(Math.abs(profile.gripOffsets[0][0])).toBeGreaterThan(.03 * proportion);
@@ -66,8 +66,10 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
       const socket = rig.root.getObjectByName(`${side}HandToolSocket`)!;
       const proximal = socket.worldToLocal(vrm.humanoid.getRawBoneNode(`${side}IndexProximal`)!.getWorldPosition(new Vector3()));
       const distal = socket.worldToLocal(vrm.humanoid.getRawBoneNode(`${side}IndexDistal`)!.getWorldPosition(new Vector3()));
-      const centreY = profile.gripOffsets[side === 'left' ? 0 : 1][1];
-      expect(proximal.y).toBeGreaterThan(centreY); expect(distal.y).toBeLessThan(centreY);
+      const grip = new Vector3(...profile.gripOffsets[side === 'left' ? 0 : 1]); grip.x *= -1;
+      proximal.sub(grip); distal.sub(grip);
+      expect(proximal.x * distal.x + proximal.y * distal.y).toBeLessThan(0);
+      expect(Math.hypot(distal.x, distal.y)).toBeGreaterThan(.005);
       expect(vrm.humanoid.getNormalizedBoneNode(`${side}ThumbMetacarpal`)!.quaternion.angleTo(new Quaternion())).toBeGreaterThan(.01);
     }
     const before = matrices(rig), calibration = rig.getCalibration(), moved = rig.setCalibration({seatHeight: .55, seatForward: .12});
@@ -140,11 +142,30 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
       expect(vrm.humanoid.getNormalizedBoneNode(`${side}ThumbDistal`)).toBeNull();
     }
     const rig = new VRMHumanoidRigAdapter(vrm, 'generated-no-fingers'), profile = rig.getProfile();
-    expect(profile.gripOffsets[0][0]).toBeCloseTo(0); expect(profile.gripOffsets[1][0]).toBeCloseTo(0);
+    for (const grip of profile.gripOffsets.slice(0, 2)) expect(new Vector3(...grip).length()).toBeLessThan(.09);
     rig.applyPose(createRestRigPose(profile));
     expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
     expect(rig.root.getObjectByName('leftHandActualStickTip')).toBeDefined();
     expect(rig.root.getObjectByName('rightHandActualStickTip')).toBeDefined();
+    rig.dispose();
+  });
+
+  it.each(['zero-segments', 'coincident-proximals', 'parallel-palm-basis'])('keeps optional %s finger geometry finite with a generic fallback', variant => {
+    const {vrm} = generatedVRM(1, true);
+    for (const side of ['left', 'right'] as const) for (const finger of ['Index', 'Middle', 'Ring', 'Little'] as const) {
+      for (const segment of ['Proximal', 'Intermediate', 'Distal'] as const) {
+        const name = `${side}${finger}${segment}` as VRMHumanBoneName;
+        for (const node of [vrm.humanoid.getNormalizedBoneNode(name)!, vrm.humanoid.getRawBoneNode(name)!]) {
+          if (variant === 'zero-segments' || segment === 'Proximal') node.position.set(0, 0, variant === 'parallel-palm-basis' ? .05 : 0);
+        }
+      }
+    }
+    const rig = new VRMHumanoidRigAdapter(vrm, `generated-${variant}`);
+    for (const palmOrientation of ['up', 'inward', 'down'] as const) {
+      const profile = rig.setCalibration({...rig.getCalibration(), palmOrientation}); rig.applyPose(createRestRigPose(profile));
+      expect(matrices(rig).every(Number.isFinite)).toBe(true);
+      expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
+    }
     rig.dispose();
   });
 });
