@@ -1,6 +1,6 @@
 # Calibration, planted pedals, grip, and shared hardware
 
-Date: 2026-10-24, macOS / Chrome. Implemented on `codex/calibration-pedals-hardware` after main `a2105a5508ae92e49d31977e2c56b096dfd1d822`. **Unreleased**: no tag, GitHub Release or Pages dispatch. Public v0.2.0 remains unchanged. Related work: #18, #14, #20; [ADR 0005](../decisions/0005-calibration-pedals-hardware.md).
+Date: 2026-10-24, macOS / Chrome. Implemented on `codex/calibration-pedals-hardware` after main `a2105a5508ae92e49d31977e2c56b096dfd1d822`. **Unreleased**: no tag, GitHub Release or Pages dispatch. Public v0.2.0 remains unchanged. Implementation commit: `644fe1859190b8e427a244206db27a7f5d15938e`; [PR #34](https://github.com/postmelee/drum-vrm/pull/34) records latest CI/review status. Related work: #18, #14, #20; [ADR 0005](../decisions/0005-calibration-pedals-hardware.md).
 
 ## Automated checks
 

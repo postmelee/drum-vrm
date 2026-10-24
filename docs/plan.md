@@ -1,12 +1,12 @@
 # 개발 계획과 GitHub 작업 지도
 
-기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.2.0 공개 유지, PR #33 병합 후 공통 보정·페달·하드웨어 로컬 검증 완료·PR 준비**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
+기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.2.0 공개 유지, PR #33 병합 후 공통 보정·페달·하드웨어 PR #34 검토 중·미배포**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
 
 ## Current execution order — 2026-10-24
 
 The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. PR #31 passed CI and was merged at 28a50a2c19c2b5109c490384f0b03e554f4dea1e. The owner then authorized #28/#29 implementation followed by #30/#17. #28/#29 passed CI and merged in PR #32 at bd1568d4a3cc89913627b04e34f2fd2153a3ffac. PR #33's VRM 1.0/profile/grip foundation passed CI and merged at a2105a5508ae92e49d31977e2c56b096dfd1d822; generic GLB mapping and controlled Studio two-body calibration remain open. VRM model acquisition findings have been added to #17/#18/#30. Public v0.2.0 stays unchanged.
 
-The owner next authorized seat height/forward and contact-target calibration, feet planted on pedals from rest, grip correction, then stable shared stands/pedals with replaceable drum bodies. This batch is implemented and locally verified on `codex/calibration-pedals-hardware`; see [verification](verification/calibration-unreleased.md). It has no release approval. Keep all avatar motion generic; asset-specific extraction belongs only in appearance adapters. #18, #14 and #20 acceptance criteria were expanded rather than creating duplicate issues. [ADR 0005](decisions/0005-calibration-pedals-hardware.md) defines the contract; user instructions are paired in [English](calibration.md) and [Korean](calibration.ko.md).
+The owner next authorized seat height/forward and contact-target calibration, feet planted on pedals from rest, grip correction, then stable shared stands/pedals with replaceable drum bodies. This batch is implemented and locally verified at `644fe1859190b8e427a244206db27a7f5d15938e` on `codex/calibration-pedals-hardware`, with [PR #34](https://github.com/postmelee/drum-vrm/pull/34) open for review; see [verification](verification/calibration-unreleased.md). It has no release approval. Keep all avatar motion generic; asset-specific extraction belongs only in appearance adapters. #18, #14 and #20 acceptance criteria were expanded rather than creating duplicate issues. [ADR 0005](decisions/0005-calibration-pedals-hardware.md) defines the contract; user instructions are paired in [English](calibration.md) and [Korean](calibration.ko.md).
 
 | Priority | Work | Issue / milestone | Boundary |
 | --- | --- | --- | --- |

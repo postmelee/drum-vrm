@@ -1,6 +1,6 @@
 # 현재 상태와 다음 작업
 
-갱신일: 2026-10-24 (Asia/Seoul). 상태: **v0.2.0 공개 유지, PR #33 병합 완료·미배포, 공통 보정·페달·하드웨어 로컬 검증 완료·PR 준비**.
+갱신일: 2026-10-24 (Asia/Seoul). 상태: **v0.2.0 공개 유지, PR #33 병합 완료·미배포, 공통 보정·페달·하드웨어 PR #34 검토 중·미배포**.
 
 ## 현재 우선순위와 릴리스 경계
 
@@ -18,7 +18,7 @@ The latest owner instruction is to implement shared seat height/forward and cont
 - Feet: the Rust profile path now anchors LF/RF to pedalHat/kick even with no foot notes. Fixed hip/knee/ankle chains, small ankle rotation, exact impact contact, and unreachable-pedal diagnostics preserve body lengths and original MIDI. `cargo test --locked` passed 26 tests; formatting and clippy passed for this increment. Web 76 tests, typecheck, WASM/production builds and license generation passed; see [the integrated verification](verification/calibration-unreleased.md).
 - Grip/hardware: generic palm-transverse socket and available finger curl; common standalone hardware and body-only preset/component replacement are implemented. Imported local GLB must have hardware removed by its author. Do not claim per-skin contact or physically exact mounts from socket metrics.
 - Playing style: existing RH-hi-hat/LH-snare preference is a planner cost. Explicit crossed/open/mirrored styles, hand overrides and collision-aware arm/stick ordering remain #14/#20 follow-up work; do not present them as implemented.
-- Verification: full original VRMs passed 128-frame/shuffled-seek browser checks; Twist hand close-ups show the grip. Seat/target controls, preset/GLB swaps and a 923-frame synthesized-audio WebM encode were exercised. Independent playback of the new blob file and the controlled two-export VRoid proportion pair remain open. Current branch: `codex/calibration-pedals-hardware`; review/CI follows, no release.
+- Verification: full original VRMs passed 128-frame/shuffled-seek browser checks; Twist hand close-ups show the grip. Seat/target controls, preset/GLB swaps and a 923-frame synthesized-audio WebM encode were exercised. Independent playback of the new blob file and the controlled two-export VRoid proportion pair remain open. Implementation commit: `644fe1859190b8e427a244206db27a7f5d15938e`, [PR #34](https://github.com/postmelee/drum-vrm/pull/34), branch `codex/calibration-pedals-hardware`. The PR remains open for review; consult its latest checks for CI status. No release.
 
 ## v0.2 사용자 피드백 반영 상태
 
@@ -55,7 +55,7 @@ The latest owner instruction is to implement shared seat height/forward and cont
 
 ## 다음 작업자가 이어갈 순서
 
-1. 위 Active calibration batch와 [ADR 0005](decisions/0005-calibration-pedals-hardware.md), #18/#14/#20의 갱신된 완료 조건을 먼저 읽는다. 좌석·타점/페달 → 공통 하드웨어/교체 → 검증 순으로 현재 승인 범위를 마친다. M3·M4 전체나 교차 주법 후속을 자동 착수하지 않는다.
+1. 위 Calibration batch와 [ADR 0005](decisions/0005-calibration-pedals-hardware.md), #18/#14/#20의 갱신된 완료 조건, [PR #34](https://github.com/postmelee/drum-vrm/pull/34)의 최신 검증·검토 상태를 먼저 읽는다. 좌석·타점/페달 → 공통 하드웨어/교체 구현과 로컬 검증은 완료했다. M3·M4 전체나 교차 주법 후속을 자동 착수하지 않는다.
 2. `npm ci`, `npm run build:wasm` 후 `npm run dev`의 `/drum-vrm/`을 연다. Rust 1.94.1, wasm-pack 0.15.0, Node 24를 사용한다.
 3. 변경에 맞는 Rust/JS 검사를 실행하고, 엔진 변경은 WASM을 다시 생성한다. 새 codec/타임라인 변경은 실제 출력 파일의 프레임·오디오 onset까지 확인한다.
 4. PR과 CI를 완료하고 변경 묶음·검증 commit·미해결 제한을 정리한다. main 반영과 공개 배포를 구분하고, 승인되지 않은 배포는 실행하지 않는다.
