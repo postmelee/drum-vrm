@@ -1,11 +1,15 @@
-## 변경 결과
+## Result
 
-문제와 변경 후 동작을 설명합니다. 관련 이슈:
+Describe the concrete problem and resulting behavior. Related issue(s):
 
-## 검증
+## Validation
 
-실행한 명령·브라우저 테스트와 결과, 미실행 항목을 기록합니다.
+Record executed checks, browser/output evidence, and untested limits.
 
-## 문서와 출처
+## Documentation and provenance
 
-설계·인수인계·라이선스 변경을 기록합니다. 외부 코드·데이터·에셋을 추가했다면 원본 버전과 이용 조건을 연결합니다.
+Update design/handoff/license records as needed. User-facing changes require matching English and Korean documentation. For external code, data, or assets, link the exact source/version and applicable terms.
+
+## Release status
+
+This PR does not authorize a release. Record whether the changes are proposed or implemented/unreleased. Release tags, GitHub Releases, and Pages deployment require explicit owner approval of a reviewed batch.

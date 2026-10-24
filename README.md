@@ -1,46 +1,48 @@
 # Drum VRM
 
-DAW에서 만든 드럼 MIDI를 3D 드러머의 연주 영상으로 바꾸는 브라우저 도구입니다. Rust/WASM이 MIDI와 연주 동작을 계산하고 Three.js가 확장 가능한 기본 리그를 렌더링합니다.
+**English** · [한국어](README.ko.md)
 
-**v0.2.0 배포 완료 · [지금 테스트하기](https://postmelee.github.io/drum-vrm/) · [v0.2.0 릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)**
+A browser tool that turns drum MIDI from a DAW into video of a 3D drummer. Rust/WASM parses MIDI and plans motion; Three.js renders an extensible reference rig.
 
-Chrome 155/macOS에서 실제 파일 업로드부터 오디오 포함 영상 다운로드까지 확인했습니다. [검증 기록](docs/verification/studio-0.2.md)에 환경·측정값·미검증 범위를 기록합니다.
+**v0.2.0 is deployed · [Try the app](https://postmelee.github.io/drum-vrm/) · [Release](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)**
 
-## 첫 MVP
+File upload through video download with audio has been verified in Chrome 155 on macOS. The [verification record](docs/verification/studio-0.2.md) documents the environment, measurements, and untested limits.
 
-`MIDI 업로드 → 사전 분석·연주 계획 → 기본 리그 표시 → 재생 → 영상 다운로드`
+## MVP
 
-- 관절·뼈대·스틱을 표시하는 스켈레톤, 자체 드럼 3종과 Innerscene CC0 어쿠스틱 키트
-- 흰색/검정 작업 화면, 네 설정 메뉴, 마디·박자·음표를 보여주는 피아노 롤
-- 드럼 정면 편집, 부품 선택, 색상·크기·회전 및 로컬 GLB 외형 교체
-- 킥·스네어·하이햇·탐·크래시·라이드, 오른손 주도 기본 계획
-- 템포 변경을 보존한 타격, 양손·양발 배정, 준비·접촉·반동과 불가능한 타격 진단
-- 재생·일시정지·처음으로·탐색, 자체 합성 드럼 소리, 카메라와 배경 조절
-- 1280×720, 30fps 고정 프레임 영상과 합성 오디오; 실행 환경에서 가능한 MP4 또는 WebM
-- 사용자가 고른 MIDI는 브라우저 안에서 처리하며 자동 전송하거나 저장소에 업로드하지 않음
+`Upload MIDI → analyze and plan → display the reference rig → play → download video`
 
-WAV 동기화, VRM·공통 리그 캐릭터 교체, 편집, 프로젝트 저장, 고해상도·3D 출력은 M3·M4 후속 범위입니다.
+- Skeleton with joints, bones, and sticks; three procedural drum styles and an Innerscene CC0 acoustic kit.
+- White/black workspace, four settings menus, and a piano roll with bars, beats, and notes.
+- Front-facing drum editing, part selection, color/scale/rotation, and local GLB appearance replacement.
+- Kick, snare, hi-hat, toms, crash, and ride with a basic right-hand-led plan.
+- Tempo-preserving hit times, hand/foot assignment, preparation/contact/rebound, and diagnostics for unplayable hits.
+- Play, pause, reset, seek, synthesized drum sound, and camera/background controls.
+- Fixed-frame 1280×720, 30 fps video with synthesized audio; MP4 or WebM depending on the available codecs.
+- Selected MIDI is processed in the browser without automatic transmission or repository upload.
 
-## 사용 흐름
+WAV synchronization, VRM/humanoid character replacement, editing, project persistence, higher resolutions, and 3D motion export remain M3/M4 backlog items.
 
-1. **업로드 · 연주정보** 메뉴에서 **30초 데모** 또는 `.mid`/`.midi` 파일을 선택합니다.
-2. 준비가 끝나면 트랙·채널과 분석 알림을 확인합니다. 선택을 바꾼 경우 **선택한 트랙으로 다시 준비**를 누릅니다.
-3. **재생**을 눌러 연주를 시작합니다. 타임라인으로 이동하고 드래그·스크롤 또는 시점 버튼으로 카메라를 조절합니다.
-4. **내보내기** 메뉴에서 **영상 추출**을 누르고 완료 후 다운로드 링크로 파일을 저장합니다. 기본 출력은 합성 드럼 오디오를 포함합니다.
+## Usage
 
-원본 DAW의 음색을 재현하지는 않습니다. 출력에는 시작 준비 0.5초와 끝 여운 0.25초가 포함됩니다. 정확히 30초인 곡은 923프레임, 약 30.7667초로 출력됩니다.
+1. Open **업로드 · 연주정보** (Upload / Performance) and choose **30초 데모** (30-second demo) or a `.mid`/`.midi` file.
+2. Review tracks, channels, and analysis messages after preparation. After changing the selection, press **선택한 트랙으로 다시 준비** (Prepare selected tracks).
+3. Press **재생** (Play). Seek on the timeline and adjust the camera with dragging, scrolling, or the viewpoint buttons.
+4. Open **내보내기** (Export), press **영상 추출** (Export video), and save the completed download. Synthesized drum audio is included by default.
 
-입력은 SMF format 0/1·PPQ 시간축, 최대 10 MiB·선택 트랙 길이 300초·512트랙·전체 200,000이벤트·선택한 지원 타격 50,000개입니다. SMF 2·SMPTE·손상된 파일은 이유를 표시하고 거부합니다. 미매핑 음표는 알림으로, 리그로 표현하지 못한 지원 타격은 원래 시각의 소리와 타점 강조로 남깁니다.
+The app does not reproduce the source DAW's instrument sound. Export includes a 0.5-second preparation interval and a 0.25-second tail. An exactly 30-second song produces 923 frames, approximately 30.7667 seconds.
 
-## 모델 파일 지원
+Input supports SMF formats 0/1 with PPQ timing: up to 10 MiB, 300 seconds across selected tracks, 512 tracks, 200,000 total events, and 50,000 selected supported hits. SMF 2, SMPTE timing, and malformed files are rejected with a reason. Unmapped notes are reported; supported hits the rig cannot perform retain their original audio time and target highlight.
 
-드럼 부품은 텍스처가 포함된 정적 단일 `.glb`(GLB2.0, 최대25MiB)를 지원합니다. 외부 URL/별도 파일 참조와 스킨/뼈대가 있는 모델은 거부합니다. 임의 파일은 자동 크기 맞춤으로 표시하므로 타점과 실제 표면의 정확한 일치는 별도 보정이 필요합니다. 색상·모델을 바꿔도 합성 음향은 동일합니다. GLTF·FBX·OBJ·BLEND는 GLB로 변환해야 합니다.
+## Model formats
 
-캐릭터 파일 업로드는 아직 지원하지 않습니다. 현재는 스켈레톤 표시/숨기기이며 VRM1.0과 휴머노이드 GLB 어댑터는 #17/#18의 후속 기능입니다. 드럼 외형 설정은 현재 세션에만 유지되며 프로젝트 저장은 #15입니다.
+Drum parts accept a self-contained static `.glb` file (GLB 2.0, up to 25 MiB) with embedded textures. External URLs/separate resource references and skinned models are rejected. Arbitrary models are fitted approximately; exact contact between the target and visible surface requires calibration. Changing appearance does not change the synthesized sound. Convert GLTF, FBX, OBJ, or BLEND assets to GLB first.
 
-## 로컬 개발과 검사
+Character upload is not implemented. The current character control shows/hides a reference skeleton; VRM 1.0 and humanoid GLB adapters are tracked in [#17](https://github.com/postmelee/drum-vrm/issues/17)/[#18](https://github.com/postmelee/drum-vrm/issues/18). Drum appearance settings last for the current session; project persistence is [#15](https://github.com/postmelee/drum-vrm/issues/15).
 
-Node.js 24 이상, [rust-toolchain.toml](rust-toolchain.toml)의 Rust 1.94.1 및 `wasm32-unknown-unknown` target, wasm-pack 0.15.0을 사용합니다. npm과 Rust 의존성은 `package-lock.json`과 `Cargo.lock`으로 고정합니다.
+## Local development and checks
+
+Use Node.js 24 or newer, Rust 1.94.1 from [rust-toolchain.toml](rust-toolchain.toml) with the `wasm32-unknown-unknown` target, and wasm-pack 0.15.0. npm and Rust dependencies are pinned in `package-lock.json` and `Cargo.lock`.
 
 ```sh
 npm ci
@@ -49,7 +51,7 @@ npm run build:wasm
 npm run dev
 ```
 
-개발 서버가 출력하는 로컬 주소의 `/drum-vrm/` 경로를 엽니다. `src/wasm/`은 생성물이므로 커밋하지 않습니다. Rust 코드를 변경하면 `npm run build:wasm`으로 다시 생성합니다.
+Open `/drum-vrm/` on the local URL printed by the server. `src/wasm/` is generated and is not committed. Rebuild it after Rust changes with `npm run build:wasm`.
 
 ```sh
 cargo fmt --check
@@ -62,28 +64,32 @@ npm run build
 npm run preview
 ```
 
-위 명령은 재현 절차이며 검사를 통과했다는 기록은 아닙니다. `npm run licenses`는 설치된 npm 패키지, Cargo 잠금 그래프와 원본 라이선스를 대조하므로 먼저 잠긴 Rust 의존성을 빌드하거나 가져와야 합니다. production 출력은 `dist/`, Vite base는 `/drum-vrm/`입니다.
+These commands describe reproduction steps, not evidence of a successful test run. `npm run licenses` compares installed npm packages, the Cargo lock graph, and original license texts; fetch or build the locked Rust dependencies first. Production output is `dist/`, and Vite's base path is `/drum-vrm/`.
 
-## 실행 환경과 제한
+## Environment and limitations
 
-첫 검증 대상은 WebGL·WASM·Web Audio·WebCodecs를 제공하는 데스크톱 Chromium입니다. 영상 출력은 HTTPS 또는 localhost의 secure context가 필요하며, 운영체제와 브라우저가 실제 제공하는 코덱에 따라 달라집니다. MP4(H.264/AAC), WebM(VP9/Opus), WebM(VP8/Opus)를 실제 설정과 짧은 시험 출력의 길이·decoded onset까지 확인합니다. 검증 환경에서 AAC 지연이 기준을 넘으면 VP9/Opus WebM을 선택합니다. 오디오 실패를 무음 성공으로 바꾸지 않습니다.
+The initial verification target is desktop Chromium with WebGL, WASM, Web Audio, and WebCodecs. Export requires HTTPS or localhost and depends on the codecs the browser/OS actually provides. MP4 (H.264/AAC), WebM (VP9/Opus), and WebM (VP8/Opus) are probed with the real configuration and a short export, including duration and decoded audio onset. If AAC delay exceeds the threshold, the verified environment selects VP9/Opus WebM. Audio failure is not silently treated as successful silent output.
 
-MVP 리그는 고정된 기본 체형과 규칙 기반 동작입니다. 밀집 타격·빠른 이동·도달 불가능한 타점은 진단하며, 모든 MIDI를 사람처럼 연주한다고 보장하지 않습니다. PCM과 압축된 출력 파일을 메모리에 보관하므로 긴 곡의 메모리 사용량은 늘어납니다. 5분 입력 상한은 모든 기기에서의 성능 보장이 아니며 Safari·Firefox·모바일 전체 호환성과 최대 길이 성능은 별도 검증 대상입니다.
+The MVP has a fixed reference body and rule-based motion. Dense hits, fast transitions, and unreachable targets are diagnosed; humanlike performance of every MIDI is not guaranteed. PCM and encoded output are kept in memory, so longer songs consume more memory. The five-minute input limit is not a performance guarantee on every device. Safari, Firefox, mobile compatibility, and maximum-length performance need separate verification.
 
-## 문서와 작업 현황
+## Documentation and work tracking
 
-| 목적 | 문서 |
+User-facing guidance is maintained in English and Korean in the same PR. Existing Korean documents are preserved; internal engineering/research documents may be English only. Proposed features are distinguished from publicly deployed behavior.
+
+| Purpose | Reference |
 | --- | --- |
-| 새 작업을 시작하기 | [인수인계와 현재 상태](docs/handoff.md), [작업 지침](AGENTS.md) |
-| 범위와 완료 조건 | [요구사항](docs/product-requirements.md), [개발 계획](docs/plan.md) |
-| 승인 근거 | [구현·배포 승인](docs/approval.md) |
-| 엔진과 리그 연결 | [아키텍처](docs/architecture.md), [설계 결정](docs/decisions/0001-engine-and-rig-boundary.md) |
-| 원 대화의 맥락 | [요구사항 출처와 주제별 기록](docs/context/source-conversation.md) |
-| 연구와 재사용 조건 | [연구·데이터](docs/research/references.md), [기술 조사](docs/research/dependencies.md), [라이선스 정책](docs/research/license-policy.md) |
-| 실행 작업 | [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), [Milestones](https://github.com/postmelee/drum-vrm/milestones) |
+| Resume work | [Handoff](docs/handoff.md), [agent instructions](AGENTS.md) |
+| Scope and acceptance | [Requirements](docs/product-requirements.md), [development plan](docs/plan.md) |
+| Authorization and releases | [Approval history](docs/approval.md), [release policy / 릴리스 정책](docs/release-policy.md) |
+| Engine/rig boundary | [Architecture](docs/architecture.md), [design decision](docs/decisions/0001-engine-and-rig-boundary.md) |
+| Original requirements | [Context and topic record](docs/context/source-conversation.md) |
+| Research and reuse | [Research/data](docs/research/references.md), [dependencies](docs/research/dependencies.md), [license policy](docs/research/license-policy.md) |
+| Execution | [Issues](https://github.com/postmelee/drum-vrm/issues), [milestones](https://github.com/postmelee/drum-vrm/milestones) |
 
-## 배포와 라이선스
+## Releases and licenses
 
-2026-10-24 [Pages](https://postmelee.github.io/drum-vrm/) 배포 및 공개 주소 핵심 경로 검증을 완료했습니다. 배포 commit은 `3e8be9333cedbc9845dbc3e4cebd73961af697b4`, [배포 run](https://github.com/postmelee/drum-vrm/actions/runs/40063363035)은 성공했습니다. [릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)에 실제 정적 artifact와 SHA-256을 보존합니다. 후속 배포는 main에서 `gh workflow run pages.yml --ref main`을 실행하며 전체 CI가 먼저 통과해야 합니다.
+[Pages](https://postmelee.github.io/drum-vrm/) was deployed and its key paths verified on 2026-10-24. The deployed application commit is `3e8be9333cedbc9845dbc3e4cebd73961af697b4`; the [deployment run](https://github.com/postmelee/drum-vrm/actions/runs/40063363035) succeeded. The [release](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) preserves the actual static artifact and its SHA-256.
 
-자체 소스는 [MIT](LICENSE)입니다. 제3자 라이선스는 각각 유지하며 [배포 고지](public/licenses.txt)에 정확한 버전·소스·원문을 제공합니다. Mediabunny는 MPL-2.0이며 대응 소스의 고정 버전 URL을 고지에 포함합니다. Innerscene의 CC0 드럼 GLB와 포함 텍스처를 배포하며 출처·원문·SHA-256을 `public/models`에 보존합니다. 외부 캐릭터·음원 샘플·모션 데이터·ML 가중치는 포함하지 않습니다. [무료 드럼 모델 조사와 지원 형식](docs/research/drum-assets.md)을 참고하세요. 참고 연구의 라이선스를 관련 데이터나 가중치의 사용 허가로 확대하지 않습니다.
+Follow-up work proceeds through issues and PRs. **Do not create release tags, publish GitHub Releases, or deploy Pages until the owner explicitly approves a reviewable batch.** Merging a PR or passing CI is not deployment approval. After approval, publish the batch from a verified commit on main using the [release procedure](docs/release-policy.md).
+
+Original source is [MIT](LICENSE). Third-party licenses remain separate; [distribution notices](public/licenses.txt) provide exact versions, sources, and license texts. Mediabunny is MPL-2.0, with a pinned corresponding-source URL in the notices. The Innerscene CC0 drum GLB and embedded textures are distributed with provenance, terms, and SHA-256 in `public/models`. No external character, sound samples, motion datasets, or ML weights are included. See the [drum asset research](docs/research/drum-assets.md). A paper's license is not assumed to cover its datasets or model weights.

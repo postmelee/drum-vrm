@@ -118,3 +118,8 @@ Rust 구현은 실제 코드이며 MIDI 시각·velocity 기반 키프레임 생
 5. **공개 데모의 실제 배포물을 다시 확인한다.** 데이터셋 후보와 실제 포함 파일을 구분하고, 마지막 배포 전에 고정된 버전·라이선스 안내·출처를 일치시킨다.
 
 현재 이 문서에는 외부 자료의 링크와 자체 요약만 포함했다. 외부 논문·코드·데이터·모델 파일은 배포물로 편입하지 않았다.
+
+
+## Implementation comparison — 2026-10-24
+
+The [rig and motion audit](rig-and-studio-audit.md) compares current code with R01/R03/R04 and VRM 1.0. It explicitly separates independent design ideas from model/code adoption. No DRUMS/Disney learned model, weights, or motion data have been integrated. Basic grip/contact work is tracked in #30 with #17/#18, ahead of advanced #20/#21 work.
