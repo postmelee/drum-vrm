@@ -44,5 +44,6 @@
       1.6176922358572483
     ]
   },
-  "runtimeAdaptation": "Reflect Z into the application coordinate system, reverse triangle winding, group by instrument, merge static meshes by material, resample maps to maximum512pixels, and position actual surface contacts at PerformancePlan targets. Source throne omitted to keep the skeleton view uncluttered."
+  "runtimeAdaptation": "Reflect Z into application coordinates, reverse triangle winding, group by instrument and response role, merge by material, resample maps to maximum 512 pixels, and align actual surface contacts to PerformancePlan targets with uniform per-instrument scaling. Source throne omitted. Tagged shells/cymbals respond while hardware and pedals stay fixed. Floor-connected stand hardware is vertically fitted about the source contact to reach the floor; drum shells, surfaces, pedals and elevated rack mounts keep their proportions.",
+  "licenseFile": "innerscene-LICENSE.txt"
 }

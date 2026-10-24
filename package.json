@@ -18,6 +18,7 @@
     "licenses": "node scripts/licenses.mjs"
   },
   "dependencies": {
+    "lucide": "1.61.0",
     "mediabunny": "1.62.1",
     "three": "0.186.1"
   },

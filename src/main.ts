@@ -1,6 +1,8 @@
 import './style.css';
 import { DrumTimeline } from './timeline';
 import { DrumScene } from './scene';
+import { setButtonIcon } from './icons';
+import type { KitPresetId } from './model-procedural';
 import { EngineClient } from './engine';
 import { DrumAudio } from './audio';
 import { SynthesisClient } from './synthesis';
@@ -12,8 +14,8 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `  <header class="toolbar">
     <h1>Drum VRM</h1>
     <div class="transport" aria-label="재생 제어">
-      <button id="reset" aria-label="처음으로" title="처음으로" disabled>↤</button>
-      <button id="play" aria-label="재생" title="재생 / 일시정지 (Space)" disabled>▶</button>
+      <button id="reset" aria-label="처음으로" title="처음으로" disabled></button>
+      <button id="play" aria-label="재생" title="재생 / 일시정지 (Space)" disabled></button>
       <output class="time-display"><span id="current-time">00:00</span> / <span id="duration">00:00</span></output>
       <input id="volume" aria-label="음량" title="음량" type="range" min="0" max="1" step="0.01" value="0.6"/>
     </div>
@@ -27,12 +29,12 @@ app.innerHTML = `  <header class="toolbar">
   </header>
   <main class="workspace">
     <section class="studio" aria-label="3D 드럼 연주">
-      <div class="stage-bar"><span id="status" role="status">대기</span><div class="view-controls" aria-label="카메라 시점"><button data-camera="stage" aria-pressed="true">연주</button><button data-camera="front" aria-pressed="false">정면</button><button data-camera="top" aria-pressed="false">위</button></div></div>
+      <div class="stage-bar"><span id="status" role="status">대기</span><div class="view-controls" aria-label="카메라 시점"><button data-camera="stage" aria-pressed="true">연주</button><button data-camera="front" aria-pressed="false">정면</button><button data-camera="top" aria-pressed="false">위</button><button data-camera="player" aria-pressed="false">연주자</button></div></div>
       <div class="stage-view" id="stage-view"><canvas id="stage" aria-label="드럼 세트와 연주 스켈레톤"></canvas><div id="stage-empty" class="stage-empty"><button id="start-upload">MIDI 불러오기</button><button id="start-demo">데모 재생 준비</button></div></div>
       <p id="message" class="message" role="status" aria-live="polite">MIDI를 선택하면 연주를 준비합니다.</p>
     </section>
     <aside id="inspector" class="inspector" hidden>
-      <div class="inspector-heading"><h2 id="panel-title"></h2><button id="close-panel" aria-label="설정 닫기" title="닫기 (Esc)">×</button></div>
+      <div class="inspector-heading"><h2 id="panel-title"></h2><button id="close-panel" aria-label="설정 닫기" title="닫기 (Esc)"></button></div>
       <section id="panel-character" class="panel" hidden>
         <label class="check"><input id="character-visible" type="checkbox" checked/> 스켈레톤 표시</label>
         <p class="hint">관절과 뼈대, 스틱으로 연주를 표시합니다.</p>
@@ -40,7 +42,8 @@ app.innerHTML = `  <header class="toolbar">
         <a href="https://github.com/postmelee/drum-vrm/issues/17" target="_blank" rel="noreferrer">캐릭터 지원 계획</a>
       </section>
       <section id="panel-drums" class="panel" hidden>
-        <label class="field">드럼 세트<select id="kit-preset"><option value="studio">기본 · Studio</option><option value="vintage">기본 · Vintage</option><option value="electronic">기본 · Electronic</option><option value="library">어쿠스틱 · Innerscene</option></select></label>
+        <label class="field">드럼 세트<select id="kit-preset"><option value="studio">기본 · Studio</option><option value="vintage">기본 · Vintage</option><option value="electronic">기본 · Electronic</option><option value="library">어쿠스틱 · Innerscene</option><option value="batoski">어쿠스틱 · Batoski</option><option value="smoj">로우 폴리 · smoj</option></select></label>
+        <label class="check"><input id="hit-response" type="checkbox"/> 타격 반응</label><label class="field">반응 강도<input id="hit-strength" aria-label="타격 반응 강도" type="range" min="0" max="1" step="0.05" value="0.65"/></label>
         <p class="hint">드럼을 클릭하면 해당 부품을 설정합니다.</p>
         <label class="field">부품<select id="piece"><option value="kick">Kick</option><option value="snare">Snare</option><option value="hihat">Hi-hat</option><option value="tomHigh">High tom</option><option value="tomMid">Mid tom</option><option value="tomLow">Low tom</option><option value="crash">Crash</option><option value="ride">Ride</option></select></label>
         <label class="field">기본 모델<select id="piece-model"><option value="asset" disabled>프리셋 / 가져온 모델</option><option value="standard">표준</option><option value="deep">깊은 셸</option><option value="compact">컴팩트</option></select></label>
@@ -50,7 +53,7 @@ app.innerHTML = `  <header class="toolbar">
         <button id="piece-reset">부품을 프리셋으로 복원</button><button id="piece-import">이 부품의 GLB 불러오기…</button><input id="model-file" type="file" accept=".glb" hidden/>
         <p id="model-message" class="hint" role="status">텍스처가 포함된 정적 .glb · 최대 25 MiB</p>
         <p class="hint">외형만 변경합니다. 자동 크기 맞춤 후 모델의 표면과 타점이 다를 수 있습니다.</p>
-        <details><summary>모델 출처와 지원 형식</summary><p>기본 3종은 자체 생성 도형입니다. Innerscene 프리셋은 CC0 모델을 부품별로 배치합니다.</p><p>스킨·뼈대가 있는 GLB와 GLTF·FBX·OBJ·BLEND는 직접 지원하지 않습니다. 외부 파일 참조 없는 GLB로 변환하세요.</p><a href="https://github.com/postmelee/drum-vrm/blob/main/docs/research/drum-assets.md" target="_blank" rel="noreferrer">모델 조사 · 라이선스</a></details>
+        <details><summary>모델 출처와 지원 형식</summary><p>기본 3종은 자체 생성 도형입니다. Innerscene은 CC0, Batoski와 smoj는 CC BY 3.0 모델입니다. 부품별로 크기와 타점을 맞춥니다.</p><p>스킨·뼈대가 있는 GLB와 GLTF·FBX·OBJ·BLEND는 직접 지원하지 않습니다. 외부 파일 참조 없는 GLB로 변환하세요.</p><a href="https://github.com/postmelee/drum-vrm/blob/main/docs/research/drum-assets.md" target="_blank" rel="noreferrer">모델 조사 · 라이선스</a></details>
       </section>
       <section id="panel-source" class="panel" hidden>
         <div id="dropzone"><strong id="file-name">MIDI 파일 선택</strong><p id="file-detail" class="hint">여기에 드롭 · 최대 10 MiB / 5분</p><div class="button-row"><button id="upload">MIDI 불러오기…</button><button id="demo">30초 데모</button></div><input id="file" type="file" accept=".mid,.midi,audio/midi,audio/x-midi" hidden/></div>
@@ -73,6 +76,11 @@ app.innerHTML = `  <header class="toolbar">
 `;
 
 const get = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+setButtonIcon(get('reset'), 'reset');
+setButtonIcon(get('play'), 'play');
+setButtonIcon(get('close-panel'), 'close');
+for (const id of ['upload', 'start-upload']) setButtonIcon(get(id), 'upload', get(id).textContent ?? 'MIDI 불러오기');
+setButtonIcon(get('export'), 'download', '영상 추출');
 const stage = get<HTMLCanvasElement>('stage');
 const engine = new EngineClient();
 const synthesis = new SynthesisClient();
@@ -114,7 +122,7 @@ function setTheme(next: 'light' | 'dark') {
   theme = next; document.documentElement.dataset.theme = next;
   scene.setTheme(next); timeline.setTheme(next);
   get<HTMLInputElement>('background').value = next==='light'?'#ffffff':'#000000';
-  get('theme').textContent = next==='light'?'다크':'라이트';
+  setButtonIcon(get('theme'),next==='light'?'dark':'light');
   get('theme').setAttribute('aria-label',next==='light'?'다크 모드로 전환':'라이트 모드로 전환');
   try { localStorage.setItem('drum-theme',next); } catch { /* Storage is optional. */ }
 }
@@ -136,7 +144,7 @@ get<HTMLInputElement>('character-visible').onchange=e=>scene.setCharacterVisible
 get<HTMLSelectElement>('kit-preset').onchange=async e=>{
   const input=e.target as HTMLSelectElement;
   modelBusy=true;controls();get('model-message').textContent='드럼 모델을 준비하고 있습니다…';
-  try {await scene.setKitPreset(input.value as 'studio'|'vintage'|'electronic'|'library');committedPreset=input.value;refreshPiece();get('model-message').textContent=input.value==='library'?'Innerscene · CC0 · 부품별로 크기와 위치를 맞춘 모델':'자체 생성 도형 · 부품별로 외형을 변경할 수 있습니다.';}
+  try {await scene.setKitPreset(input.value as KitPresetId);committedPreset=input.value;refreshPiece();get('model-message').textContent=({library:'Innerscene · CC0',batoski:'Batoski · CC BY 3.0',smoj:'smoj · CC BY 3.0'} as Record<string,string>)[input.value] ?? '자체 생성 도형 · 부품별로 외형을 변경할 수 있습니다.';}
   catch(error){input.value=committedPreset;get('model-message').textContent=`모델 로딩 실패: ${error instanceof Error?error.message:String(error)}`;}
   finally{modelBusy=false;controls();}
 };
@@ -155,6 +163,18 @@ get<HTMLInputElement>('model-file').onchange=async e=>{
   catch(error){get('model-message').textContent=error instanceof Error?error.message:String(error);}
   finally{modelBusy=false;controls();}
 };
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let responseChosen = false;
+get<HTMLInputElement>('hit-response').checked = !reducedMotion.matches;
+function updateHitResponse() {
+  const enabled = get<HTMLInputElement>('hit-response').checked;
+  scene.setHitResponse({enabled, strength:Number(get<HTMLInputElement>('hit-strength').value)});
+  controls();
+}
+get<HTMLInputElement>('hit-response').onchange = () => { responseChosen = true; updateHitResponse(); };
+get<HTMLInputElement>('hit-strength').oninput = updateHitResponse;
+reducedMotion.addEventListener('change', () => { if (!responseChosen) { get<HTMLInputElement>('hit-response').checked = !reducedMotion.matches; updateHitResponse(); } });
+updateHitResponse();
 get<HTMLInputElement>('timeline-zoom').oninput=e=>timeline.setZoom(Number((e.target as HTMLInputElement).value));
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&activePanel)get<HTMLButtonElement>('close-panel').click();});
 setTheme(theme);
@@ -170,6 +190,7 @@ function controls() {
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-panel], #close-panel, #theme, #character-visible')) el.disabled=exporting || modelBusy;
   for (const el of document.querySelectorAll<HTMLInputElement>('#panel-drums input, #panel-drums select, #panel-drums button')) el.disabled=exporting || modelBusy;
   for (const id of ['start-upload','start-demo']) get<HTMLButtonElement>(id).disabled=busy || exporting;
+  get<HTMLInputElement>('hit-strength').disabled = exporting || modelBusy || !get<HTMLInputElement>('hit-response').checked;
   get<HTMLButtonElement>('export').disabled = !plan || busy || exporting || modelBusy;
   get('cancel-analysis').hidden = !busy;
   get('export-progress').hidden = !exporting;
@@ -267,7 +288,7 @@ get('play').onclick=async()=>{
 get('reset').onclick=()=>{audio?.pause();audio?.seek(0);updateFrame(0);status('준비 완료','ready');};
 get<HTMLInputElement>('seek').oninput=()=>{audio?.seek(Number(get<HTMLInputElement>('seek').value));updateFrame(Number(get<HTMLInputElement>('seek').value));};
 get<HTMLInputElement>('volume').oninput=()=>audio?.setVolume(Number(get<HTMLInputElement>('volume').value));
-for(const button of document.querySelectorAll<HTMLButtonElement>('[data-camera]'))button.onclick=()=>{scene.setCamera(button.dataset.camera as 'stage'|'front'|'top');for(const other of document.querySelectorAll('[data-camera]'))other.setAttribute('aria-pressed',String(other===button));};
+for(const button of document.querySelectorAll<HTMLButtonElement>('[data-camera]'))button.onclick=()=>{scene.setCamera(button.dataset.camera as 'stage'|'front'|'top'|'player');for(const other of document.querySelectorAll('[data-camera]'))other.setAttribute('aria-pressed',String(other===button));};
 get<HTMLInputElement>('background').oninput=()=>scene.setBackground(get<HTMLInputElement>('background').value);
 get('cancel-export').onclick=()=>exportController?.abort();
 get('export').onclick=async()=>{
@@ -293,6 +314,6 @@ get('export').onclick=async()=>{
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|SELECT|BUTTON|TEXTAREA/.test((e.target as HTMLElement).tagName)){e.preventDefault();get<HTMLButtonElement>('play').click();}});
 const resizeObserver=new ResizeObserver(()=>{if(!exporting){scene.resize();timeline.resize();}});resizeObserver.observe(get('stage-view'));
 let disposed=false;
-function tick(){if(disposed)return;if(!exporting){const time=audio?.currentTime??0;if(plan){updateFrame(time);get<HTMLInputElement>('seek').value=String(time);get('current-time').textContent=clockText(time);timeline.setTime(time);const playing=audio?.playing??false;get('play').textContent=playing?'Ⅱ':'▶';get('play').setAttribute('aria-label',playing?'일시정지':'재생');if(!playing&&get('status').classList.contains('playing'))status(time>=outputDuration(plan)-.02?'연주 완료':'일시정지',time>=outputDuration(plan)-.02?'ready':'');}scene.render();}requestAnimationFrame(tick);}tick();
+function tick(){if(disposed)return;if(!exporting){const time=audio?.currentTime??0;if(plan){updateFrame(time);get<HTMLInputElement>('seek').value=String(time);get('current-time').textContent=clockText(time);timeline.setTime(time);const playing=audio?.playing??false;if(get('play').dataset.icon!==(playing?'pause':'play')){setButtonIcon(get('play'),playing?'pause':'play');get('play').setAttribute('aria-label',playing?'일시정지':'재생');}if(!playing&&get('status').classList.contains('playing'))status(time>=outputDuration(plan)-.02?'연주 완료':'일시정지',time>=outputDuration(plan)-.02?'ready':'');}scene.render();}requestAnimationFrame(tick);}tick();
 controls();timeline.resize();
 window.addEventListener('beforeunload',()=>{disposed=true;engine.dispose();synthesis.cancel();audio?.dispose();scene.dispose();timeline.dispose();resizeObserver.disconnect();if(downloadUrl)URL.revokeObjectURL(downloadUrl);});

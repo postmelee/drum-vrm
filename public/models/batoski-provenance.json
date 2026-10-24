@@ -1,0 +1,45 @@
+{
+  "title": "Full Drum Kit",
+  "creator": "Batoski",
+  "source": "https://poly.pizza/m/1HvDgRF7fX",
+  "download": "https://static.poly.pizza/75833e82-6e6b-4ca1-9caa-82b3d9c6b73e.glb",
+  "sourceAdded": "2025-11-08",
+  "retrieved": "2026-10-24",
+  "license": "CC-BY-3.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+  "licenseEvidence": "https://poly.pizza/m/1HvDgRF7fX",
+  "licenseEvidenceDescription": "Original Poly Pizza model page identifies the creator and CC-BY 3.0 license and links to the Creative Commons license.",
+  "licenseFile": "CC-BY-3.0.txt",
+  "licenseTextSource": "https://creativecommons.org/licenses/by/3.0/legalcode.txt",
+  "sourceVersion": "No immutable upstream release or commit is published; downloaded original GLB bytes are pinned by SHA-256.",
+  "files": [
+    {
+      "file": "batoski-drum-kit.glb",
+      "bytes": 788112,
+      "sha256": "1ced36a850608f146407ad9387208209c59dd4784377a41c53727632bf00f895"
+    },
+    {
+      "file": "CC-BY-3.0.txt",
+      "bytes": 19467,
+      "sha256": "e6bc9e9c474700b708f568bac9e5a8a9bcb2b1dad53442f5ba449fcb848b8e76"
+    }
+  ],
+  "unmodifiedBinary": true,
+  "inspection": {
+    "gltf": "2.0",
+    "generator": "obj2gltf",
+    "nodes": 17,
+    "meshes": 17,
+    "triangles": 9969,
+    "materials": 1,
+    "embeddedImages": 1,
+    "imageFormat": "PNG",
+    "imageDimensions": [
+      512,
+      512
+    ],
+    "animations": 0,
+    "externalUris": []
+  },
+  "runtimeAdaptation": "Reflect Z, uniformly scale source units by 0.42, ground by 0.004 units, reverse triangle winding, and separate instrument groups by source names. Separate connected kick spurs and floor-tom legs as fixed hardware. Merge by instrument, response role and material. Omit the stool and second crash because the current engine has one crash role. The source has one rack tom and two floor toms; they fill high/mid/low tom roles. Add original application pedal footboards and bases for kick and hi-hat because the source does not contain independent footboards. Fit actual surface contacts to PerformancePlan targets with uniform per-instrument scaling; tagged shells/cymbals respond while hardware stays fixed. Floor-connected stand hardware is vertically fitted about the source contact to reach the floor; drum shells, surfaces, pedals and elevated rack mounts keep their proportions."
+}

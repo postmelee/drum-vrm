@@ -8,6 +8,12 @@ A browser tool that turns drum MIDI from a DAW into video of a 3D drummer. Rust/
 
 File upload through video download with audio has been verified in Chrome 155 on macOS. The [verification record](docs/verification/studio-0.2.md) documents the environment, measurements, and untested limits.
 
+## Unreleased work
+
+The working branch adds Lucide SVG controls, a player viewpoint, optional velocity-scaled hit response, and Batoski/smoj CC BY 3.0 kits. Drum settings expose the response switch and strength; reduced-motion preferences suppress movement. The player view locks navigation and restores after drum editing. These changes are not on Pages yet.
+
+See the bilingual [model acquisition/upload guide](docs/models.md) and [VRM model research](docs/research/vrm-models.md). Research downloads are private test candidates, not bundled avatars or proof of runtime compatibility.
+
 ## MVP
 
 `Upload MIDI → analyze and plan → display the reference rig → play → download video`
@@ -92,4 +98,4 @@ User-facing guidance is maintained in English and Korean in the same PR. Existin
 
 Follow-up work proceeds through issues and PRs. **Do not create release tags, publish GitHub Releases, or deploy Pages until the owner explicitly approves a reviewable batch.** Merging a PR or passing CI is not deployment approval. After approval, publish the batch from a verified commit on main using the [release procedure](docs/release-policy.md).
 
-Original source is [MIT](LICENSE). Third-party licenses remain separate; [distribution notices](public/licenses.txt) provide exact versions, sources, and license texts. Mediabunny is MPL-2.0, with a pinned corresponding-source URL in the notices. The Innerscene CC0 drum GLB and embedded textures are distributed with provenance, terms, and SHA-256 in `public/models`. No external character, sound samples, motion datasets, or ML weights are included. See the [drum asset research](docs/research/drum-assets.md). A paper's license is not assumed to cover its datasets or model weights.
+Original source is [MIT](LICENSE). Third-party licenses remain separate; [distribution notices](public/licenses.txt) provide exact versions, sources, and license texts. Mediabunny is MPL-2.0, with a pinned corresponding-source URL in the notices. The Innerscene CC0 kit and the Batoski/smoj CC BY 3.0 kits are distributed with creator attribution, source links, adaptation details, original terms, and SHA-256 in `public/models`. No external character, sound samples, motion datasets, or ML weights are included. See the [drum asset research](docs/research/drum-assets.md). A paper's license is not assumed to cover its datasets or model weights.
