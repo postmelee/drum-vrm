@@ -1,0 +1,48 @@
+{
+  "title": "Five-piece drum kit",
+  "creator": "Innerscene",
+  "source": "https://www.innerscene.com/tools/library/3d-parts/five-piece-drum-kit-daff10f4",
+  "download": "https://www.innerscene.com/api/library/five-piece-drum-kit-daff10f4/download",
+  "sourceRecord": "five-piece-drum-kit-daff10f4",
+  "sourceAdded": "2026-10-16",
+  "retrieved": "2026-10-24",
+  "license": "CC0-1.0",
+  "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+  "licenseEvidence": "https://www.innerscene.com/tools/library/terms",
+  "sourceVersion": "No immutable upstream release or commit is published; the downloaded bytes are pinned by SHA-256.",
+  "files": [
+    {
+      "file": "innerscene-drum-kit.glb",
+      "bytes": 3361144,
+      "sha256": "3cf8d568b604e99ce63ee82829d7f25044d996ed6cd42c39bc7f226919d1a5a7"
+    },
+    {
+      "file": "innerscene-LICENSE.txt",
+      "bytes": 7048,
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+    }
+  ],
+  "unmodifiedBinary": true,
+  "inspection": {
+    "gltf": "2.0",
+    "generator": "Khronos glTF Blender I/O v5.2.40",
+    "nodes": 323,
+    "meshes": 322,
+    "triangles": 109088,
+    "materials": 9,
+    "embeddedImages": 9,
+    "imageFormat": "PNG",
+    "imageDimensions": [
+      2048,
+      2048
+    ],
+    "animations": 0,
+    "externalUris": [],
+    "dimensionsMetres": [
+      1.8142000157386065,
+      1.238899962976575,
+      1.6176922358572483
+    ]
+  },
+  "runtimeAdaptation": "Reflect Z into the application coordinate system, reverse triangle winding, group by instrument, merge static meshes by material, resample maps to maximum512pixels, and position actual surface contacts at PerformancePlan targets. Source throne omitted to keep the skeleton view uncluttered."
+}

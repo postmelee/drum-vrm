@@ -1,6 +1,9 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Hit, Instrument, KitPiece, PerformancePlan, Vec3 } from './types';
+import { canonicalPieceId, cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
+import { loadLocalGLB } from './model-import';
+export { KIT_PRESETS, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings } from './model-procedural';
 
 /** All coordinates are metres; +Y is up and the performer faces +Z. */
 export interface RigCalibration {
@@ -24,7 +27,6 @@ const POINT = new THREE.Vector3();
 const END = new THREE.Vector3();
 const DELTA = new THREE.Vector3();
 const MID = new THREE.Vector3();
-const GOLD = 0xc5a466;
 const DEFAULT_KIT: KitPiece[] = [
   { id: 'kick', label: 'Kick', position: [.20, .08, .62], radius: .26 },
   { id: 'snare', label: 'Snare', position: [-.18, .79, .40], radius: .22 },
@@ -66,138 +68,87 @@ function rod(parent: THREE.Object3D, a: Vec3, b: Vec3, radius: number, mat: THRE
   connect(node, new THREE.Vector3(...a), new THREE.Vector3(...b));
   return node;
 }
-function disposeObject(root: THREE.Object3D): void {
-  const geometries = new Set<THREE.BufferGeometry>();
-  const materials = new Set<THREE.Material>();
-  const textures = new Set<THREE.Texture>();
-  root.traverse(node => {
-    if (!(node instanceof THREE.Mesh || node instanceof THREE.Line)) return;
-    geometries.add(node.geometry);
-    for (const mat of Array.isArray(node.material) ? node.material : [node.material]) {
-      materials.add(mat);
-      if (mat instanceof THREE.MeshStandardMaterial && mat.map) textures.add(mat.map);
-    }
-  });
-  textures.forEach(texture => texture.dispose());
-  geometries.forEach(geometry => geometry.dispose());
-  materials.forEach(mat => mat.dispose());
-  root.clear();
-}
-
 /** The only class mapping canonical packed joints onto a particular visual rig. */
 export class PrimitiveRigAdapter implements RigAdapter {
   readonly root = new THREE.Group();
-  private readonly bodyMaterial = material(0x6d9d97, .10, .63);
-  private readonly jointMaterial = material(0x252d30, .3, .57);
-  private readonly skinMaterial = material(0xdbd6c5, .08, .48);
+  private readonly boneMaterial = new THREE.MeshBasicMaterial({ color: 0x5c626b });
+  private readonly jointMaterial = new THREE.MeshBasicMaterial({ color: 0x357cdb });
   private readonly limbs: { upper: THREE.Mesh; lower: THREE.Mesh; joint: THREE.Mesh; rootJoint: THREE.Mesh; end: THREE.Mesh; effector: THREE.Mesh }[] = [];
   private readonly torso: THREE.Mesh;
   private readonly hips: THREE.Mesh;
   private readonly neck: THREE.Mesh;
   private readonly head = new THREE.Group();
-  private readonly collar: THREE.Mesh;
+  private readonly chest: THREE.Mesh;
+  private readonly shoulderLinks: THREE.Mesh[] = [];
+  private readonly hipLinks: THREE.Mesh[] = [];
 
   constructor() {
-    this.root.name = 'PrimitiveRigAdapter';
-    const trouserMaterial = material(0x384247, .03, .89);
-    const stickMaterial = material(0xddbc83, .02, .5);
-    const shoeMaterial = material(0x273234, .06, .72);
-    this.torso = cylinder(.145, 1, this.bodyMaterial, this.root, .20, 32);
-    this.hips = sphere(.155, trouserMaterial, this.root);
-    this.hips.scale.set(1.12, .69, .86);
-    this.neck = cylinder(.061, 1, this.skinMaterial, this.root);
-    this.collar = cylinder(.088, .032, this.jointMaterial, this.root);
-    this.head.name = 'head';
-    this.root.add(this.head);
-    const skull = sphere(.127, this.skinMaterial, this.head);
-    skull.scale.set(.91, 1.14, 1);
-    // A quiet face slit and ear cups give the abstract mannequin a readable front.
-    const visor = mesh(new THREE.BoxGeometry(.16, .026, .025), this.jointMaterial, this.head);
-    visor.position.set(0, .015, .119);
-    const nose = sphere(.019, this.skinMaterial, this.head);
-    nose.position.set(0, -.017, .127);
-    for (const side of [-1, 1]) {
-      const ear = cylinder(.052, .037, this.jointMaterial, this.head);
-      ear.rotation.z = Math.PI / 2;
-      ear.position.set(side * .123, .01, 0);
-      const accent = cylinder(.037, .039, material(GOLD, .65, .4), this.head);
-      accent.rotation.z = Math.PI / 2;
-      accent.position.copy(ear.position);
+    this.root.name = 'SkeletonRigAdapter';
+    this.torso = cylinder(.012, 1, this.boneMaterial, this.root, .012, 10);
+    this.hips = sphere(.026, this.jointMaterial, this.root);
+    this.chest = sphere(.026, this.jointMaterial, this.root);
+    this.neck = cylinder(.010, 1, this.boneMaterial, this.root, .010, 10);
+    this.head.name = 'head'; this.root.add(this.head);
+    const headMarker = mesh(new THREE.SphereGeometry(.075, 12, 8), new THREE.MeshBasicMaterial({ color: 0x5c626b, wireframe: true }), this.head);
+    headMarker.name = 'headMarker';
+    for (let side = 0; side < 2; side++) {
+      this.shoulderLinks.push(cylinder(.010, 1, this.boneMaterial, this.root, .010, 10));
+      this.hipLinks.push(cylinder(.010, 1, this.boneMaterial, this.root, .010, 10));
     }
-    const headband = mesh(new THREE.TorusGeometry(.132, .012, 8, 28, Math.PI), this.jointMaterial, this.head);
-    headband.rotation.z = 0;
-    headband.position.y = .004;
-
+    const stickMaterial = new THREE.MeshBasicMaterial({ color: 0xb48642 });
     for (let index = 0; index < 4; index++) {
       const arm = index < 2;
-      const upper = cylinder(arm ? .055 : .078, 1, arm ? this.bodyMaterial : trouserMaterial, this.root, arm ? .069 : .092, 20);
-      const lower = cylinder(arm ? .043 : .056, 1, arm ? this.skinMaterial : trouserMaterial, this.root, arm ? .052 : .073, 20);
-      const joint = sphere(arm ? .056 : .073, this.jointMaterial, this.root);
-      const rootJoint = sphere(arm ? .078 : .088, arm ? this.bodyMaterial : trouserMaterial, this.root);
-      const end = sphere(arm ? .045 : .048, arm ? this.skinMaterial : shoeMaterial, this.root);
-      const effector = arm
-        ? cylinder(.008, 1, stickMaterial, this.root, .005, 10)
-        : cylinder(.054, 1, shoeMaterial, this.root, .045, 16);
+      const upper = cylinder(.012, 1, this.boneMaterial, this.root, .012, 10);
+      const lower = cylinder(.012, 1, this.boneMaterial, this.root, .012, 10);
+      const joint = sphere(.021, this.jointMaterial, this.root);
+      const rootJoint = sphere(.022, this.jointMaterial, this.root);
+      const end = sphere(.019, this.jointMaterial, this.root);
+      const effector = cylinder(arm ? .006 : .012, 1, arm ? stickMaterial : this.boneMaterial, this.root, arm ? .004 : .012, 10);
       effector.name = ['leftStick', 'rightStick', 'leftFoot', 'rightFoot'][index];
       this.limbs.push({ upper, lower, joint, rootJoint, end, effector });
     }
     this.applyPose(defaultPose());
   }
-
   describeRig() {
     return {
-      id: 'primitive-humanoid-v1', poseFloats: 57,
+      id: 'primitive-skeleton-v1', poseFloats: 57,
       joints: ['leftShoulder', 'leftElbow', 'leftWrist', 'leftStickTip', 'rightShoulder', 'rightElbow', 'rightWrist', 'rightStickTip', 'leftHip', 'leftKnee', 'leftAnkle', 'leftToe', 'rightHip', 'rightKnee', 'rightAnkle', 'rightToe', 'pelvis', 'chest', 'head'] as const,
     };
   }
   calibrate(kit: readonly KitPiece[]): RigCalibration {
     const targetPositions: Partial<Record<Instrument, Vec3>> = {};
     kit.forEach(piece => {
-      if (piece.position.length !== 3 || !piece.position.every(Number.isFinite) || !Number.isFinite(piece.radius) || piece.radius <= 0) {
-        throw new Error(`Invalid rig target: ${piece.id}`);
-      }
+      if (piece.position.length !== 3 || !piece.position.every(Number.isFinite) || !Number.isFinite(piece.radius) || piece.radius <= 0) throw new Error(`Invalid rig target: ${piece.id}`);
       targetPositions[piece.id] = [...piece.position];
     });
-    return { id: 'primitive-humanoid-v1', coordinateSystem: '+Y-up/+Z-forward', poseFloats: 57, stickLength: Math.hypot(.09, .30), targetPositions };
+    return { id: 'primitive-v1', coordinateSystem: '+Y-up/+Z-forward', poseFloats: 57, stickLength: Math.hypot(.09, .30), targetPositions };
   }
   applyPose(pose: Float32Array): void {
     if (pose.length !== 57 || !pose.every(Number.isFinite)) throw new Error('Rig pose must contain 57 finite world-space coordinates.');
     this.limbs.forEach((limb, index) => {
       const offset = index * 12;
-      POINT.fromArray(pose, offset);
-      END.fromArray(pose, offset + 3);
-      limb.rootJoint.position.copy(POINT);
-      limb.joint.position.copy(END);
-      connect(limb.upper, POINT, END);
-      POINT.copy(END);
-      END.fromArray(pose, offset + 6);
-      connect(limb.lower, POINT, END);
-      limb.end.position.copy(END);
-      POINT.copy(END);
-      END.fromArray(pose, offset + 9);
-      if (index < 2) {
-        // Grip lies inside the wooden stick. The distal end remains exactly at the canonical tip.
-        POINT.addScaledVector(MID.subVectors(POINT, END), .17);
-      }
+      POINT.fromArray(pose, offset); END.fromArray(pose, offset + 3);
+      limb.rootJoint.position.copy(POINT); limb.joint.position.copy(END); connect(limb.upper, POINT, END);
+      POINT.copy(END); END.fromArray(pose, offset + 6); connect(limb.lower, POINT, END); limb.end.position.copy(END);
+      POINT.copy(END); END.fromArray(pose, offset + 9);
+      if (index < 2) POINT.addScaledVector(MID.subVectors(POINT, END), .17);
       connect(limb.effector, POINT, END);
     });
-    POINT.fromArray(pose, 48);
-    this.hips.position.copy(POINT);
-    POINT.y += .10;
-    END.fromArray(pose, 51);
-    END.y += .12;
-    connect(this.torso, POINT, END);
-    POINT.copy(END);
-    END.fromArray(pose, 54);
-    END.y -= .11;
-    connect(this.neck, POINT, END);
-    this.collar.position.copy(POINT);
-    this.head.position.fromArray(pose, 54);
+    POINT.fromArray(pose, 48); END.fromArray(pose, 51);
+    this.hips.position.copy(POINT); this.chest.position.copy(END); connect(this.torso, POINT, END);
+    POINT.copy(END); END.fromArray(pose, 54); connect(this.neck, POINT, END); this.head.position.copy(END);
+    for (let side = 0; side < 2; side++) {
+      POINT.fromArray(pose, 51); END.fromArray(pose, side * 12); connect(this.shoulderLinks[side], POINT, END);
+      POINT.fromArray(pose, 48); END.fromArray(pose, 24 + side * 12); connect(this.hipLinks[side], POINT, END);
+    }
   }
   setVisualOptions(options: { bodyColor?: string }): void {
-    if (options.bodyColor) this.bodyMaterial.color.set(options.bodyColor);
+    if (options.bodyColor) {
+      this.boneMaterial.color.set(options.bodyColor);
+      (this.head.getObjectByName('headMarker') as THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>).material.color.set(options.bodyColor);
+    }
   }
-  dispose(): void { disposeObject(this.root); }
+  dispose(): void { disposeModel(this.root); }
 }
 
 function defaultPose(): Float32Array {
@@ -210,317 +161,313 @@ function defaultPose(): Float32Array {
   ]);
 }
 
-type KitVisual = { id: Instrument; ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>; head?: THREE.Mesh; cymbal?: THREE.Group; hits: Hit[]; };
+type KitVisual = PieceModel & { id: Instrument; hits: Hit[]; };
+type CameraState = { position: THREE.Vector3; target: THREE.Vector3 };
+type CameraTransition = { from: CameraState; to: CameraState; started: number };
+type ImportedModel = { root: THREE.Group; name: string; approximate: boolean };
 
 export class DrumScene {
   readonly canvas: HTMLCanvasElement;
   readonly renderer: THREE.WebGLRenderer;
   readonly rig: RigAdapter;
+  onPieceSelect: ((id: Instrument | null) => void) | null = null;
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(35, 1, .05, 40);
   private readonly controls: OrbitControls;
   private readonly kitGroup = new THREE.Group();
-  private visuals: KitVisual[] = [];
-  private readonly floorMaterial = material(0x182321, .04, .93);
-  private exportMode = false;
+  private readonly grid = new THREE.GridHelper(5, 20, 0xb9bec5, 0xd9dde2);
+  private readonly raycaster = new THREE.Raycaster();
   private readonly resizeObserver: ResizeObserver;
-  private currentBackground = '#182321';
+  private visuals: KitVisual[] = [];
+  private plan: PerformancePlan | null = null;
+  private kit: readonly KitPiece[] = DEFAULT_KIT;
+  private preset: KitPresetId = 'studio';
+  private readonly overrides = new Map<Instrument, PieceVisualOptions>();
+  private readonly imported = new Map<Instrument, ImportedModel>();
+  private readonly proceduralOverrides = new Set<Instrument>();
+  private readonly pieceLoadVersions = new Map<Instrument, number>();
+  private library: Partial<Record<Instrument, THREE.Group>> | null = null;
+  private libraryPromise: Promise<Partial<Record<Instrument, THREE.Group>>> | null = null;
+  private loadGeneration = 0;
+  private disposed = false;
+  private selected: Instrument | null = null;
+  private selectionBox: THREE.BoxHelper | null = null;
+  private editorMode = false;
+  private characterVisible = true;
+  private exportMode = false;
+  private savedCamera: CameraState | null = null;
+  private transition: CameraTransition | null = null;
+  private pointerStart: { id: number; x: number; y: number; dragged: boolean } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.3;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFShadowMap;
-    this.scene.background = new THREE.Color(this.currentBackground);
-    this.scene.fog = new THREE.Fog(this.currentBackground, 7, 16);
-    this.scene.add(new THREE.HemisphereLight(0xe7f0e9, 0x414038, 2.15));
-    const key = new THREE.DirectionalLight(0xffedd3, 4.4);
-    key.position.set(-3, 5.5, 3.5);
-    key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
-    key.shadow.camera.left = -2.7;
-    key.shadow.camera.right = 2.7;
-    key.shadow.camera.top = 2.7;
-    key.shadow.camera.bottom = -2.7;
-    key.shadow.camera.near = .1;
-    key.shadow.camera.far = 12;
-    key.shadow.normalBias = .025;
-    key.shadow.bias = -.0002;
-    this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0xb3ded6, 2.8);
-    rim.position.set(2.5, 3, -3);
-    this.scene.add(rim);
-    const front = new THREE.DirectionalLight(0xffd6af, .8);
-    front.position.set(3, 1.6, 4);
-    this.scene.add(front);
-    this.buildStage();
+    this.renderer.toneMappingExposure = 1.05;
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8c929a, 2.2));
+    const key = new THREE.DirectionalLight(0xffffff, 3.0); key.position.set(-3, 5, 4); this.scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 1.5); fill.position.set(4, 2, -2); this.scene.add(fill);
+    const gridMaterial = this.grid.material as THREE.LineBasicMaterial;
+    gridMaterial.transparent = true; gridMaterial.opacity = .17;
+    this.grid.position.set(0, -.02, .4); this.grid.visible = false; this.scene.add(this.grid);
     this.scene.add(this.kitGroup);
-    this.rig = new PrimitiveRigAdapter();
-    this.scene.add(this.rig.root);
-    this.buildKit(DEFAULT_KIT);
+    this.rig = new PrimitiveRigAdapter(); this.scene.add(this.rig.root);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = false;
-    this.controls.minDistance = 2;
-    this.controls.maxDistance = 8;
+    this.controls.minDistance = 2; this.controls.maxDistance = 8;
     this.controls.maxPolarAngle = Math.PI * .49;
-    this.controls.target.set(0, .80, .32);
     this.controls.enablePan = true;
-    this.setCamera('stage');
+    this.setCamera('stage'); this.setTheme('light'); this.rebuildKit();
+    canvas.addEventListener('pointerdown', this.pointerDown);
+    canvas.addEventListener('pointermove', this.pointerMove);
+    canvas.addEventListener('pointerup', this.pointerUp);
+    canvas.addEventListener('pointercancel', this.pointerCancel);
     this.resizeObserver = new ResizeObserver(() => { if (!this.exportMode) this.resize(); });
-    this.resizeObserver.observe(canvas);
-    this.resize();
+    this.resizeObserver.observe(canvas); this.resize();
   }
 
   setPlan(plan: PerformancePlan): void {
-    this.rig.calibrate(plan.kit);
-    this.buildKit(plan.kit);
-    this.visuals.forEach(visual => {
-      const instruments: Instrument[] = visual.id === 'hihat' ? ['hihat', 'openHat', 'pedalHat'] : [visual.id];
-      visual.hits = plan.hits.filter(hit => instruments.includes(hit.instrument)).sort((a, b) => a.time - b.time);
-    });
+    this.rig.calibrate(plan.kit); this.plan = plan; this.kit = plan.kit; this.rebuildKit();
+  }
+  setCharacterVisible(visible: boolean): void {
+    this.characterVisible = visible; this.rig.root.visible = visible && !this.editorMode;
+  }
+  setTheme(theme: 'light' | 'dark'): void {
+    this.setBackground(theme === 'light' ? '#ffffff' : '#000000');
+    this.rig.setVisualOptions({ bodyColor: theme === 'light' ? '#5c626b' : '#c3c9d1' });
+    (this.grid.material as THREE.LineBasicMaterial).color.set(theme === 'light' ? 0x8b949e : 0x7d8691);
+  }
+  setGridVisible(visible: boolean): void { this.grid.visible = visible; }
+  setEditorMode(enabled: boolean): void {
+    if (this.editorMode === enabled || this.exportMode) return;
+    this.updateCameraTransition();
+    this.editorMode = enabled;
+    this.controls.enableRotate = !enabled;
+    this.controls.maxPolarAngle = enabled ? Math.PI : Math.PI * .49;
+    this.rig.root.visible = this.characterVisible && !enabled;
+    if (enabled) {
+      this.savedCamera = this.cameraState();
+      this.moveCamera({ position: new THREE.Vector3(0, 1.4, 4.1), target: new THREE.Vector3(0, .76, .50) });
+    } else if (this.savedCamera) {
+      this.moveCamera(this.savedCamera); this.savedCamera = null;
+    }
+    this.updateSelection();
+  }
+  async setKitPreset(preset: KitPresetId): Promise<void> {
+    if (!['studio', 'vintage', 'electronic', 'library'].includes(preset)) throw new Error('지원하지 않는 드럼 키트입니다.');
+    const generation = ++this.loadGeneration;
+    if (preset === 'library') {
+      this.libraryPromise ??= import('./model-library').then(module => module.loadLibraryKit()).then(library => {
+        if (this.disposed) this.disposeLibrary(library); else this.library = library;
+        return library;
+      });
+      try { await this.libraryPromise; }
+      catch (error) { this.libraryPromise = null; throw error; }
+      if (this.disposed || generation !== this.loadGeneration) return;
+    }
+    this.preset = preset; this.overrides.clear(); this.proceduralOverrides.clear();
+    const discarded = [...this.imported.values()]; this.imported.clear(); this.rebuildKit();
+    discarded.forEach(model => disposeModelSource(model.root));
+  }
+  getPieceVisual(id: Instrument): PieceVisualSettings {
+    const canonical = canonicalPieceId(id);
+    const visual = resolvePieceVisual(this.preset, canonical, this.overrides.get(canonical));
+    const imported = this.imported.get(canonical);
+    return { ...visual, source: imported ? 'imported' : this.preset === 'library' && !this.proceduralOverrides.has(canonical) ? 'library' : 'procedural', ...(imported ? { customModel: imported.name, approximateCalibration: imported.approximate } : {}) };
+  }
+  setPieceVisual(id: Instrument, options: PieceVisualOptions): void {
+    const canonical = canonicalPieceId(id);
+    const updated = { ...this.overrides.get(canonical), ...options };
+    resolvePieceVisual(this.preset, canonical, updated);
+    let discarded: ImportedModel | undefined;
+    if (options.model !== undefined) {
+      this.invalidatePieceLoad(canonical);
+      discarded = this.imported.get(canonical);
+      this.imported.delete(canonical); this.proceduralOverrides.add(canonical);
+    }
+    this.overrides.set(canonical, updated); this.rebuildKit();
+    if (discarded) disposeModelSource(discarded.root);
+  }
+  resetPieceVisual(id: Instrument): void {
+    const canonical = canonicalPieceId(id);
+    this.invalidatePieceLoad(canonical);
+    const imported = this.imported.get(canonical);
+    this.imported.delete(canonical); this.overrides.delete(canonical); this.proceduralOverrides.delete(canonical);
+    this.rebuildKit();
+    if (imported) disposeModelSource(imported.root);
+  }
+  async loadPieceModel(id: Instrument, file: File): Promise<{ fileName: string; approximateCalibration: true }> {
+    const canonical = canonicalPieceId(id), generation = this.loadGeneration;
+    const version = this.invalidatePieceLoad(canonical);
+    const root = await loadLocalGLB(file);
+    if (this.disposed || generation !== this.loadGeneration || this.pieceLoadVersions.get(canonical) !== version) { disposeModelSource(root); throw new Error('모델을 불러오는 동안 키트가 변경되었습니다. 다시 선택해 주세요.'); }
+    const previous = this.imported.get(canonical);
+    this.proceduralOverrides.delete(canonical);
+    this.imported.set(canonical, { root, name: file.name, approximate: true }); this.rebuildKit();
+    if (previous) disposeModelSource(previous.root);
+    return { fileName: file.name, approximateCalibration: true };
+  }
+  selectPiece(id: Instrument | null): void {
+    const canonical = id === null ? null : canonicalPieceId(id);
+    if (canonical && !this.visuals.some(visual => visual.id === canonical)) return;
+    this.selected = canonical; this.updateSelection(); this.onPieceSelect?.(canonical);
   }
   applyPose(pose: Float32Array, songTime: number): void {
     this.rig.applyPose(pose);
     for (const visual of this.visuals) {
-      // Binary search means long performances do not require scanning all hits each frame.
-      let low = 0;
-      let high = visual.hits.length;
-      while (low < high) {
-        const mid = (low + high) >>> 1;
-        if (visual.hits[mid].time <= songTime) low = mid + 1;
-        else high = mid;
-      }
-      const hit = visual.hits[low - 1];
-      const age = hit ? songTime - hit.time : Infinity;
+      let low = 0, high = visual.hits.length;
+      while (low < high) { const mid = (low + high) >>> 1; if (visual.hits[mid].time <= songTime) low = mid + 1; else high = mid; }
+      const hit = visual.hits[low - 1], age = hit ? songTime - hit.time : Infinity;
       const envelope = age >= 0 && age < .35 ? Math.exp(-age * 12) * (hit!.velocity / 127) : 0;
-      visual.ring.material.opacity = envelope * .85;
-      visual.ring.visible = envelope > .002;
-      visual.ring.scale.setScalar(1 + (1 - envelope) * .065);
+      visual.ring.material.opacity = this.editorMode && this.imported.has(visual.id) ? .7 : envelope * .7;
+      visual.ring.visible = !this.exportMode && this.editorMode && this.imported.has(visual.id) || envelope > .002;
       if (visual.cymbal) {
-        const motion = age >= 0 && age < .8 ? Math.sin(age * 46) * Math.exp(-age * 7) * .035 * (hit!.velocity / 127) : 0;
-        visual.cymbal.rotation.x = motion;
-        visual.cymbal.rotation.z = motion * .65;
+        const motion = age >= 0 && age < .8 ? Math.sin(age * 46) * Math.exp(-age * 7) * .025 * (hit!.velocity / 127) : 0;
+        visual.cymbal.rotation.x = this.editorMode ? 0 : motion;
+        visual.cymbal.rotation.z = this.editorMode ? 0 : motion * .65;
       }
     }
   }
   render(): void {
-    if (!this.exportMode) this.controls.update();
+    if (!this.exportMode) { this.updateCameraTransition(); this.controls.update(); }
     this.renderer.render(this.scene, this.camera);
   }
   resize(width?: number, height?: number): void {
     const rect = this.canvas.getBoundingClientRect();
     const size = (value: number) => Number.isFinite(value) ? Math.max(1, Math.round(value)) : 1;
-    const w = size(width ?? rect.width);
-    const h = size(height ?? rect.height);
+    const w = size(width ?? rect.width), h = size(height ?? rect.height);
     this.renderer.setPixelRatio(this.exportMode ? 1 : Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setSize(w, h, false);
-    this.camera.aspect = w / h;
-    this.camera.updateProjectionMatrix();
+    this.renderer.setSize(w, h, false); this.camera.aspect = w / h; this.camera.updateProjectionMatrix();
   }
   setCamera(preset: 'front' | 'stage' | 'top'): void {
+    if (this.editorMode) return;
+    this.transition = null;
     const position = { front: [0, 1.95, 4.7], stage: [2.75, 2.4, 3.75], top: [.001, 4.8, .5] }[preset];
-    this.camera.position.set(position[0], position[1], position[2]);
+    this.camera.position.set(...position as Vec3);
     this.controls.target.set(0, preset === 'top' ? .5 : .72, .32);
-    this.controls.update();
+    this.controls.enabled = !this.exportMode; this.controls.update();
   }
-  setBackground(color: string): void {
-    this.currentBackground = color;
-    this.scene.background = new THREE.Color(color);
-    this.scene.fog = new THREE.Fog(color, 7, 16);
-    this.floorMaterial.color.set(color);
-  }
+  setBackground(color: string): void { this.scene.background = new THREE.Color(color); }
   setExportMode(enabled: boolean): void {
-    this.exportMode = enabled;
-    this.controls.enabled = !enabled;
-    if (!enabled) this.resize();
+    if (enabled) this.finishCameraTransition();
+    this.exportMode = enabled; this.controls.enabled = !enabled && !this.transition;
+    this.pointerStart = null; this.updateSelection(); if (!enabled) this.resize();
   }
   dispose(): void {
-    this.resizeObserver.disconnect();
-    this.controls.dispose();
-    disposeObject(this.scene);
+    this.disposed = true; ++this.loadGeneration; this.resizeObserver.disconnect(); this.controls.dispose();
+    this.canvas.removeEventListener('pointerdown', this.pointerDown); this.canvas.removeEventListener('pointermove', this.pointerMove);
+    this.canvas.removeEventListener('pointerup', this.pointerUp); this.canvas.removeEventListener('pointercancel', this.pointerCancel);
+    this.clearSelection(); disposeModel(this.scene);
+    this.imported.forEach(model => disposeModelSource(model.root)); this.imported.clear();
+    if (this.library) this.disposeLibrary(this.library);
     this.renderer.dispose();
   }
 
-  private buildStage(): void {
-    const floor = mesh(new THREE.PlaneGeometry(200, 200), this.floorMaterial, this.scene);
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -.10;
-    floor.castShadow = false;
-    const rug = cylinder(1.54, .055, material(0x333c3b, .05, .97), this.scene, 1.54, 96);
-    rug.position.set(0, -.057, .35);
-    rug.castShadow = false;
-    const border = mesh(new THREE.TorusGeometry(1.48, .005, 6, 128), material(0x78847a, .1, .85), this.scene);
-    border.rotation.x = Math.PI / 2;
-    border.position.set(0, -.025, .35);
-    // The faint concentric weave is geometry, so the stage has no external image assets.
-    const weave = new THREE.LineBasicMaterial({ color: 0x45504b, transparent: true, opacity: .23 });
-    for (let radius = .12; radius < 1.4; radius += .09) {
-      const points = Array.from({ length: 96 }, (_, index) => {
-        const angle = index / 95 * Math.PI * 2;
-        return new THREE.Vector3(Math.sin(angle) * radius, -.027, .35 + Math.cos(angle) * radius);
-      });
-      this.scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), weave));
-    }
-    const steel = material(0x808e8c, .85, .3);
-    const seat = cylinder(.20, .07, material(0x24302f, .05, .75), this.scene, .20);
-    seat.position.set(0, .61, -.20);
-    rod(this.scene, [0, .03, -.20], [0, .59, -.20], .025, steel);
-    for (let i = 0; i < 3; i++) {
-      const angle = i * Math.PI * 2 / 3;
-      rod(this.scene, [0, .25, -.20], [Math.sin(angle) * .28, .015, -.20 + Math.cos(angle) * .28], .016, steel);
-    }
+  private cameraState(): CameraState { return { position: this.camera.position.clone(), target: this.controls.target.clone() }; }
+  private invalidatePieceLoad(id: Instrument): number {
+    const version = (this.pieceLoadVersions.get(id) ?? 0) + 1; this.pieceLoadVersions.set(id, version); return version;
   }
-
-  private buildKit(kit: readonly KitPiece[]): void {
-    disposeObject(this.kitGroup);
-    this.visuals = [];
-    const shell = material(0xd5cbbb, .16, .39);
-    const steel = material(0x8d9b98, .83, .25);
-    const dark = material(0x273031, .35, .52);
-    const headMat = material(0xc6c9bb, .05, .82);
-    const cymbalMat = material(GOLD, .78, .39);
-    cymbalMat.side = THREE.DoubleSide;
-    const cymbalLine = material(0x94723b, .66, .48);
-    const stage = this.kitGroup;
-    const stand = (x: number, y: number, z: number, tripod = true) => {
-      rod(stage, [x, .04, z], [x, y, z], .012, steel);
-      cylinder(.024, .045, dark, stage).position.set(x, y * .54, z);
-      if (tripod) {
-        for (let i = 0; i < 3; i++) {
-          const angle = i * Math.PI * 2 / 3 + .4;
-          rod(stage, [x, .28, z], [x + Math.sin(angle) * .20, .015, z + Math.cos(angle) * .20], .012, steel);
-          const foot = sphere(.024, dark, stage);
-          foot.position.set(x + Math.sin(angle) * .20, .012, z + Math.cos(angle) * .20);
-          foot.scale.y = .5;
-        }
-      }
-    };
-    const addRing = (id: Instrument, target: Vec3, radius: number): KitVisual => {
-      const mat = new THREE.MeshBasicMaterial({ color: 0xc2f0c9, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
-      const ring = new THREE.Mesh(new THREE.RingGeometry(radius * .87, radius * .98, 64), mat);
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(target[0], target[1] + .007, target[2]);
-      ring.visible = false;
-      stage.add(ring);
-      const visual = { id, ring, hits: [] };
-      this.visuals.push(visual);
-      return visual;
-    };
-
-    for (const piece of kit) {
-      const [x, y, z] = piece.position;
-      const radius = piece.radius;
-      if (piece.id === 'openHat' || piece.id === 'pedalHat') continue;
-      if (piece.id === 'kick') {
-        const bass = new THREE.Group();
-        stage.add(bass);
-        const centreZ = z + .34;
-        const drumRadius = Math.max(.31, radius);
-        bass.position.set(x, drumRadius + .005, centreZ);
-        bass.rotation.x = Math.PI / 2;
-        cylinder(drumRadius, .40, shell, bass);
-        for (const side of [-1, 1]) {
-          cylinder(drumRadius + .016, .030, dark, bass).position.y = side * .202;
-          cylinder(drumRadius, .006, side === -1 ? dark : headMat, bass).position.y = side * .220;
-          for (let i = 0; i < 10; i++) {
-            const angle = i / 10 * Math.PI * 2;
-            const lug = cylinder(.012, .065, steel, bass, .012, 10);
-            lug.position.set(Math.sin(angle) * (drumRadius + .008), side * .15, Math.cos(angle) * (drumRadius + .008));
+  private disposeLibrary(library: Partial<Record<Instrument, THREE.Group>>): void {
+    const root = new THREE.Group(); Object.values(library).forEach(group => { if (group) root.add(group); }); disposeModelSource(root);
+  }
+  private moveCamera(to: CameraState): void {
+    this.transition = { from: this.cameraState(), to: { position: to.position.clone(), target: to.target.clone() }, started: performance.now() };
+    this.controls.enabled = false;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) this.finishCameraTransition();
+  }
+  private updateCameraTransition(): void {
+    if (!this.transition) return;
+    const t = Math.min(1, (performance.now() - this.transition.started) / 350), eased = t * t * (3 - 2 * t);
+    this.camera.position.lerpVectors(this.transition.from.position, this.transition.to.position, eased);
+    this.controls.target.lerpVectors(this.transition.from.target, this.transition.to.target, eased);
+    if (t === 1) { this.transition = null; this.controls.enabled = !this.exportMode; }
+  }
+  private finishCameraTransition(): void {
+    if (this.transition) { this.camera.position.copy(this.transition.to.position); this.controls.target.copy(this.transition.to.target); this.transition = null; }
+    this.controls.update(); this.controls.enabled = !this.exportMode;
+  }
+  private clearSelection(): void {
+    if (this.selectionBox) { this.scene.remove(this.selectionBox); this.selectionBox.geometry.dispose(); this.selectionBox.material.dispose(); this.selectionBox = null; }
+  }
+  private updateSelection(): void {
+    this.clearSelection();
+    if (!this.editorMode || this.exportMode || !this.selected) return;
+    const model = this.visuals.find(visual => visual.id === this.selected); if (!model) return;
+    model.root.updateMatrixWorld(true);
+    this.selectionBox = new THREE.BoxHelper(model.root, 0x388bfd);
+    this.selectionBox.material.depthTest = false; this.selectionBox.material.transparent = true; this.selectionBox.material.opacity = .8;
+    this.selectionBox.renderOrder = 10; this.scene.add(this.selectionBox);
+  }
+  private pointerDown = (event: PointerEvent) => {
+    if (event.button === 0 && this.editorMode && !this.exportMode && !this.transition) this.pointerStart = { id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false };
+  };
+  private pointerMove = (event: PointerEvent) => {
+    if (this.pointerStart && Math.hypot(event.clientX - this.pointerStart.x, event.clientY - this.pointerStart.y) > 5) this.pointerStart.dragged = true;
+  };
+  private pointerCancel = () => { this.pointerStart = null; };
+  private pointerUp = (event: PointerEvent) => {
+    const start = this.pointerStart; this.pointerStart = null;
+    if (!start || start.id !== event.pointerId || start.dragged || !this.editorMode || this.exportMode || this.transition) return;
+    const rect = this.canvas.getBoundingClientRect(); if (!rect.width || !rect.height) return;
+    this.raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), this.camera);
+    this.kitGroup.updateMatrixWorld(true);
+    const hit = this.raycaster.intersectObjects(this.visuals.map(value => value.root), true)[0];
+    let object: THREE.Object3D | null = hit?.object ?? null;
+    while (object && !object.userData.pieceId) object = object.parent;
+    this.selectPiece(object?.userData.pieceId as Instrument ?? null);
+  };
+  private rebuildKit(): void {
+    this.clearSelection(); disposeModel(this.kitGroup); this.visuals = [];
+    for (const piece of this.kit) {
+      if (canonicalPieceId(piece.id) !== piece.id) continue;
+      const settings = this.getPieceVisual(piece.id);
+      const built = createPieceModel(piece, settings, this.preset, this.kit);
+      const source = this.imported.get(piece.id)?.root ?? (this.preset === 'library' && !this.proceduralOverrides.has(piece.id) ? this.library?.[piece.id] : undefined);
+      if (source) {
+        built.ring.removeFromParent(); disposeModel(built.root); built.cymbal = undefined;
+        const display = cloneModel(source), pivot = new THREE.Group(); pivot.add(display); built.root.add(pivot, built.ring);
+        const custom = this.imported.has(piece.id);
+        if (custom) {
+          display.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
+          display.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(display), size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
+          const fit = piece.radius * 2 / Math.max(size.x, size.z, .0001) * settings.scale;
+          pivot.scale.setScalar(fit);
+          pivot.position.set(piece.position[0] - center.x * fit, piece.position[1] - box.max.y * fit, piece.position[2] - center.z * fit);
+          if (piece.id === 'kick') pivot.position.y = .32 - center.y * fit;
+        } else {
+          this.alignLibraryPiece(display, pivot, source, piece, settings);
+          if (piece.id === 'hihat' && this.library?.pedalHat) {
+            const pedal = this.kit.find(item => item.id === 'pedalHat');
+            if (pedal) {
+              const pedalDisplay = cloneModel(this.library.pedalHat), pedalPivot = new THREE.Group();
+              pedalPivot.add(pedalDisplay); built.root.add(pedalPivot);
+              this.alignLibraryPiece(pedalDisplay, pedalPivot, this.library.pedalHat, pedal, settings);
+            }
           }
         }
-        const labelCanvas = document.createElement('canvas');
-        labelCanvas.width = 512;
-        labelCanvas.height = 512;
-        const ctx = labelCanvas.getContext('2d');
-        if (ctx) {
-          ctx.fillStyle = '#25302f';
-          ctx.fillRect(0, 0, 512, 512);
-          ctx.textAlign = 'center';
-          ctx.fillStyle = '#dcd5bf';
-          ctx.font = '500 51px sans-serif';
-          ctx.fillText('DRUM', 256, 207);
-          ctx.font = '300 37px sans-serif';
-          ctx.fillText('V R M', 256, 258);
-          ctx.strokeStyle = '#879d8b';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(204, 286); ctx.lineTo(308, 286); ctx.stroke();
-          const map = new THREE.CanvasTexture(labelCanvas);
-          map.colorSpace = THREE.SRGBColorSpace;
-          const badge = mesh(new THREE.CircleGeometry(drumRadius * .95, 64), new THREE.MeshStandardMaterial({ map, roughness: .8 }), stage);
-          badge.position.set(x, drumRadius + .005, centreZ + .226);
-        }
-        for (const side of [-1, 1]) rod(stage, [x + side * .23, .2, centreZ + .1], [x + side * .36, .016, centreZ + .19], .013, steel);
-        const pedal = mesh(new THREE.BoxGeometry(.12, .035, .23), dark, stage);
-        pedal.position.set(x, .025, z - .02);
-        for (let i = 0; i < 4; i++) {
-          const stripe = mesh(new THREE.BoxGeometry(.09, .002, .005), steel, stage);
-          stripe.position.set(x, .044, z - .08 + i * .036);
-        }
-        rod(stage, [x, .07, z + .06], [x, .30, z + .11], .008, steel);
-        sphere(.029, headMat, stage).position.set(x, .30, z + .12);
-        addRing(piece.id, [x, .049, z -.01], .11);
-        continue;
+        if (this.overrides.get(piece.id)?.finish) display.traverse(node => {
+          if (node instanceof THREE.Mesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) if (material instanceof THREE.MeshStandardMaterial) material.color.set(settings.finish);
+        });
+      } else if (settings.rotation) {
+        // Rotate around the canonical contact, never around the scene origin.
+        const pivot = new THREE.Group(); pivot.position.set(...piece.position); pivot.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
+        const model = new THREE.Group(); model.position.copy(pivot.position).multiplyScalar(-1);
+        [...built.root.children].forEach(child => { if (!child.userData.fixedContact) model.add(child); }); pivot.add(model); built.root.add(pivot);
       }
-      if (['hihat', 'crash', 'ride'].includes(piece.id)) {
-        // Kit coordinates denote the playable bow, not the obstructed stand mount.
-        const mountZ = z + radius * .50;
-        stand(x, y + .07, mountZ);
-        const cymbal = new THREE.Group();
-        cymbal.position.set(x, y + .0294, mountZ);
-        stage.add(cymbal);
-        // The bell rises behind the target; the playable bow meets its canonical height.
-        const profile = [new THREE.Vector2(.008, -.004), new THREE.Vector2(radius * .12, 0), new THREE.Vector2(radius * .24, -.022), new THREE.Vector2(radius * .8, -.038), new THREE.Vector2(radius, -.044)];
-        mesh(new THREE.LatheGeometry(profile, 80), cymbalMat, cymbal);
-        if (piece.id === 'hihat') {
-          const bottom = mesh(new THREE.LatheGeometry(profile, 64), cymbalMat, cymbal);
-          bottom.position.y = -.028;
-          const pedalTarget = kit.find(p => p.id === 'pedalHat')?.position ?? [-.22, .08, .55];
-          rod(stage, [x, .05, mountZ], [pedalTarget[0], .04, pedalTarget[2]], .012, steel);
-          const pedal = mesh(new THREE.BoxGeometry(.10, .025, .20), dark, stage);
-          pedal.position.set(pedalTarget[0], .035, pedalTarget[2] - .02);
-        }
-        for (const fraction of [.34, .45, .57, .69, .81, .93]) {
-          const line = mesh(new THREE.TorusGeometry(radius * fraction, .0007, 4, 64), cymbalLine, cymbal);
-          line.rotation.x = Math.PI / 2;
-          line.position.y = -.022 - ((fraction - .24) / .76) * .022 + .001;
-        }
-        cylinder(.016, .015, dark, cymbal).position.y = .011;
-        const wing = mesh(new THREE.BoxGeometry(.048, .009, .008), steel, cymbal);
-        wing.position.y = .026;
-        const visual = addRing(piece.id, [x, y, z], radius * .35);
-        visual.cymbal = cymbal;
-        continue;
-      }
-      const depth = piece.id === 'snare' ? .13 : piece.id === 'tomLow' ? .29 : .22;
-      const drum = new THREE.Group();
-      drum.position.set(x, y - depth / 2, z);
-      stage.add(drum);
-      cylinder(radius, depth, shell, drum);
-      const top = cylinder(radius - .006, .008, headMat, drum);
-      top.position.y = depth / 2 - .004;
-      // The head is exposed above the annular rim, never hidden behind a solid cap.
-      const rim = mesh(new THREE.TorusGeometry(radius, .009, 8, 64), steel, drum);
-      rim.rotation.x = Math.PI / 2;
-      rim.position.y = depth / 2 - .002;
-      const bottomRim = rim.clone();
-      bottomRim.position.y = -depth / 2 + .005;
-      drum.add(bottomRim);
-      for (let i = 0; i < 8; i++) {
-        const angle = i / 8 * Math.PI * 2;
-        cylinder(.010, depth * .67, steel, drum, .010, 10).position.set(Math.sin(angle) * (radius + .006), 0, Math.cos(angle) * (radius + .006));
-      }
-      if (piece.id === 'tomLow') {
-        for (let i = 0; i < 3; i++) {
-          const angle = i / 3 * Math.PI * 2;
-          rod(stage, [x + Math.sin(angle) * radius, y - depth * .7, z + Math.cos(angle) * radius], [x + Math.sin(angle) * (radius + .06), .02, z + Math.cos(angle) * (radius + .06)], .012, steel);
-        }
-      } else stand(x, y - depth, z, piece.id === 'snare');
-      const visual = addRing(piece.id, piece.position, radius);
-      visual.head = top;
+      built.root.userData.pieceId = piece.id; this.kitGroup.add(built.root);
+      const instruments: Instrument[] = piece.id === 'hihat' ? ['hihat', 'openHat', 'pedalHat'] : [piece.id];
+      this.visuals.push({ ...built, id: piece.id, hits: this.plan?.hits.filter(hit => instruments.includes(hit.instrument)).sort((a, b) => a.time - b.time) ?? [] });
     }
+    this.updateSelection();
+  }
+  private alignLibraryPiece(display: THREE.Group, pivot: THREE.Group, source: THREE.Group, piece: KitPiece, settings: PieceVisualSettings): void {
+    const contact = new THREE.Vector3(...source.userData.contact as Vec3);
+    display.position.copy(contact).multiplyScalar(-1);
+    pivot.position.set(...piece.position);
+    // Preserve source proportions; contact stays exact even if stand feet vary in height.
+    pivot.scale.setScalar(settings.scale);
+    pivot.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
   }
 }

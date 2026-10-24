@@ -45,7 +45,7 @@ production 의존성의 전이 폐쇄를 기록한다. `@types/` 두 패키지�
 
 - 원본 라이선스/저작권 문구는 [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md)와 배포물 `licenses.txt`에 그대로 포함한다. dual-license crate는 원본에 있는 양쪽 라이선스 모두 보존한다.
 - Mediabunny의 MPL-2.0 covered source는 수정하지 않았다. 정확한 npm archive에는 `src/`와 원본 LICENSE가 포함되며, 사용자가 별도 비용 없이 해당 버전의 대응 소스를 받을 수 있다. 자체 앱 파일은 MIT다.
-- 외부 샘플·캐릭터·텍스처·모션·데이터·가중치는 도입하지 않았다. 참고 조사 링크는 실행 코드 도입과 별개다.
+- Innerscene CC0 드럼 모델과 포함 텍스처를 도입했다. public/models/innerscene-provenance.json의 파일 크기·SHA-256을 검증하고 CC0 원문을 고지에 합친다. 외부 음원 샘플·캐릭터·모션·데이터·ML 가중치는 도입하지 않았다. 글꼴 파일은 배포하지 않고 운영체제의 시스템 글꼴을 사용한다. 참고 조사 링크는 실행 코드 도입과 별개다.
 - 이 고지는 실제 설치 패키지와 잠금 체크섬을 근거로 한다. 확인하지 않은 Git tag/commit은 기재하지 않는다. 버전 변경 시 설치·잠금·고지를 함께 갱신한다.
 
 ## 원본 고지 예외와 툴체인

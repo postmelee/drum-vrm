@@ -6,7 +6,9 @@ export interface Diagnostic { code: string; message: string; hitId?: number; tim
 export interface TrackInfo { index: number; name: string; noteCount: number; drumNotes: number; channels: number[]; }
 export interface MidiInfo { tracks: TrackInfo[]; suggestedTracks: number[]; format: number; ppq: number; }
 export interface Selection { tracks: number[]; channel: number | null; }
-export interface PerformancePlan { engineVersion?: string; plannerVersion?: string; midiHash?: string; calibrationId?: string; preRoll?: number; tail?: number; schemaVersion: number; duration: number; hits: Hit[]; diagnostics: Diagnostic[]; kit: KitPiece[]; tempoCount: number; }
+export interface TempoAnchor { tick: number; time: number; microsecondsPerQuarter: number; }
+export interface TimeSignature { tick: number; numerator: number; denominator: number; }
+export interface PerformancePlan { engineVersion?: string; plannerVersion?: string; midiHash?: string; calibrationId?: string; preRoll?: number; tail?: number; schemaVersion: number; duration: number; hits: Hit[]; diagnostics: Diagnostic[]; kit: KitPiece[]; tempoCount: number; ppq?: number; endTick?: number; tempoMap?: TempoAnchor[]; timeSignatures?: TimeSignature[]; }
 // Packed world-space XYZ: left arm, right arm, left leg, right leg, each
 // root, middle joint, end joint, stick tip/foot toe (12 floats); pelvis,
 // chest and head at 48, 51, 54. Total 57 floats. Metres, +Y up, +Z forward.

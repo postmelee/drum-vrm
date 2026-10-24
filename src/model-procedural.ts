@@ -1,0 +1,187 @@
+import * as THREE from 'three';
+import type { Instrument, KitPiece, Vec3 } from './types';
+
+export type KitPresetId = 'studio' | 'vintage' | 'electronic' | 'library';
+export type PieceModelId = 'standard' | 'deep' | 'compact';
+export interface PieceVisualOptions { finish?: string; model?: PieceModelId; scale?: number; rotation?: number; }
+export interface PieceVisualSettings { finish: string; model: PieceModelId; scale: number; rotation: number; source?: 'procedural' | 'library' | 'imported'; customModel?: string; approximateCalibration?: boolean; }
+export const KIT_PRESETS = [
+  { id: 'studio', label: 'Studio Acoustic' }, { id: 'vintage', label: 'Vintage Maple' },
+  { id: 'electronic', label: 'Electronic' }, { id: 'library', label: 'Innerscene Acoustic · CC0' },
+] as const;
+export const canonicalPieceId = (id: Instrument): Instrument => id === 'openHat' || id === 'pedalHat' ? 'hihat' : id;
+export function resolvePieceVisual(preset: KitPresetId, id: Instrument, override: PieceVisualOptions = {}): PieceVisualSettings {
+  const cymbal = ['hihat', 'crash', 'ride'].includes(canonicalPieceId(id));
+  const defaults = {
+    studio: { finish: cymbal ? '#ba995b' : '#e1e1dd', model: 'standard' as const },
+    vintage: { finish: cymbal ? '#a18346' : '#8e4d2e', model: 'deep' as const },
+    electronic: { finish: '#33363a', model: 'compact' as const },
+    library: { finish: '#9b582f', model: 'standard' as const },
+  }[preset];
+  const scale = override.scale ?? 1;
+  if (!Number.isFinite(scale) || scale < .65 || scale > 1.4) throw new Error('크기는 65%–140% 범위여야 합니다.');
+  if (override.finish !== undefined && !/^#[0-9a-f]{6}$/i.test(override.finish)) throw new Error('마감 색상은 #RRGGBB 형식이어야 합니다.');
+  if (override.model !== undefined && !['standard', 'deep', 'compact'].includes(override.model)) throw new Error('지원하지 않는 드럼 형태입니다.');
+  const rotation = override.rotation ?? 0;
+  if (!Number.isFinite(rotation) || rotation < -360 || rotation > 360) throw new Error('회전은 -360°–360° 범위여야 합니다.');
+  return { ...defaults, ...override, scale, rotation };
+}
+
+export function disposeModel(root: THREE.Object3D): void {
+  const geometries = new Set<THREE.BufferGeometry>();
+  const materials = new Set<THREE.Material>();
+  const textures = new Set<THREE.Texture>();
+  root.traverse(node => {
+    if (!(node instanceof THREE.Mesh || node instanceof THREE.Line || node instanceof THREE.LineSegments)) return;
+    geometries.add(node.geometry);
+    for (const mat of Array.isArray(node.material) ? node.material : [node.material]) {
+      materials.add(mat);
+      Object.values(mat).forEach(value => { if (value instanceof THREE.Texture) textures.add(value); });
+    }
+  });
+  textures.forEach(value => value.dispose()); geometries.forEach(value => value.dispose()); materials.forEach(value => value.dispose()); root.clear();
+}
+/** Final cached-source disposal only: render clones share these decoded images. */
+export function disposeModelSource(root: THREE.Object3D): void {
+  const images = new Set<{ close: () => void }>();
+  const collect = (value: unknown): void => {
+    if (Array.isArray(value)) { value.forEach(collect); return; }
+    if (value && typeof value === 'object' && 'close' in value && typeof value.close === 'function') images.add(value as { close: () => void });
+  };
+  root.traverse(node => {
+    if (!(node instanceof THREE.Mesh)) return;
+    for (const material of Array.isArray(node.material) ? node.material : [node.material]) {
+      Object.values(material).forEach(value => { if (value instanceof THREE.Texture) collect(value.image); });
+    }
+  });
+  disposeModel(root);
+  images.forEach(image => image.close());
+}
+export function cloneModel(root: THREE.Group): THREE.Group {
+  const clone = root.clone(true);
+  clone.traverse(node => {
+    if (!(node instanceof THREE.Mesh)) return;
+    node.geometry = node.geometry.clone();
+    const copy = (source: THREE.Material) => {
+      const mat = source.clone();
+      for (const [key, value] of Object.entries(mat)) {
+        if (value instanceof THREE.Texture) (mat as unknown as Record<string, unknown>)[key] = value.clone();
+      }
+      return mat;
+    };
+    node.material = Array.isArray(node.material) ? node.material.map(copy) : copy(node.material);
+  });
+  return clone;
+}
+
+const mat = (color: THREE.ColorRepresentation, metalness = 0, roughness = .6) => new THREE.MeshStandardMaterial({ color, metalness, roughness });
+const up = new THREE.Vector3(0, 1, 0);
+function mesh(root: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material) {
+  const value = new THREE.Mesh(geometry, material); root.add(value); return value;
+}
+function cylinder(root: THREE.Object3D, radius: number, height: number, material: THREE.Material, segments = 48) {
+  return mesh(root, new THREE.CylinderGeometry(radius, radius, height, segments), material);
+}
+function rod(root: THREE.Object3D, a: Vec3, b: Vec3, radius: number, material: THREE.Material) {
+  const start = new THREE.Vector3(...a), end = new THREE.Vector3(...b), delta = end.clone().sub(start);
+  const value = cylinder(root, radius, delta.length(), material, 12);
+  value.position.copy(start).addScaledVector(delta, .5); value.quaternion.setFromUnitVectors(up, delta.normalize());
+  return value;
+}
+export interface PieceModel { root: THREE.Group; ring: THREE.Mesh<THREE.RingGeometry, THREE.MeshBasicMaterial>; cymbal?: THREE.Group; }
+
+/** Procedural models keep the canonical playing surface fixed while changing their silhouette. */
+export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, preset: KitPresetId, kit: readonly KitPiece[]): PieceModel {
+  const root = new THREE.Group(); root.name = piece.id; root.userData.pieceId = piece.id;
+  const [x, y, z] = piece.position;
+  const radius = piece.radius * visual.scale;
+  const electronic = preset === 'electronic';
+  const shell = mat(visual.finish, electronic ? .05 : .16, electronic ? .83 : .4);
+  const metal = mat(preset === 'vintage' ? 0x777876 : 0x9ca0a3, .76, .3);
+  const dark = mat(0x26282b, .15, .7);
+  const head = mat(electronic ? 0x303238 : 0xd9dbda, .02, .82);
+  const modelDepth = visual.model === 'deep' ? 1.38 : visual.model === 'compact' ? .53 : 1;
+  const ringMat = new THREE.MeshBasicMaterial({ color: 0x388bfd, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(radius * .81, radius * .94, 48), ringMat);
+  ring.rotation.x = -Math.PI / 2; ring.position.set(x, y + .008, z); ring.visible = false; root.add(ring);
+  const stand = (sx: number, sy: number, sz: number, tripod = true) => {
+    rod(root, [sx, .025, sz], [sx, sy, sz], .011, metal);
+    cylinder(root, .023, .04, dark).position.set(sx, sy * .55, sz);
+    if (tripod) for (let i = 0; i < 3; i++) {
+      const angle = i * Math.PI * 2 / 3 + .4;
+      rod(root, [sx, .25, sz], [sx + Math.sin(angle) * .19, .012, sz + Math.cos(angle) * .19], .012, metal);
+    }
+  };
+  if (piece.id === 'kick') {
+    const bass = new THREE.Group(); root.add(bass);
+    const drumRadius = electronic ? .17 * visual.scale : Math.max(.31, piece.radius) * visual.scale;
+    const depth = electronic ? .075 : .4 * modelDepth;
+    bass.position.set(x, electronic ? .27 : drumRadius + .01, z + .34); bass.rotation.x = Math.PI / 2;
+    cylinder(bass, drumRadius, depth, shell);
+    for (const side of [-1, 1]) {
+      cylinder(bass, drumRadius + .012, .018, metal).position.y = side * depth / 2;
+      cylinder(bass, drumRadius - .004, .008, dark).position.y = side * (depth / 2 + .012);
+      if (!electronic) for (let i = 0; i < 10; i++) {
+        const angle = i / 10 * Math.PI * 2;
+        cylinder(bass, .009, .07, metal, 10).position.set(Math.sin(angle) * (drumRadius + .008), side * depth * .34, Math.cos(angle) * (drumRadius + .008));
+      }
+    }
+    if (electronic) stand(x, .27, z + .34);
+    else for (const side of [-1, 1]) rod(root, [x + side * drumRadius * .8, .18, z + .4], [x + side * (drumRadius + .04), .015, z + .49], .012, metal);
+    const pedal = mesh(root, new THREE.BoxGeometry(.12, .032, .23), dark); pedal.position.set(x, y - .016, z - .02); pedal.name = 'contactSurface';
+    rod(root, [x, .07, z + .06], [x, .28, z + .13], .008, metal);
+    mesh(root, new THREE.SphereGeometry(.028, 16, 12), head).position.set(x, .28, z + .14);
+    ring.geometry.dispose(); ring.geometry = new THREE.RingGeometry(.08, .10, 36); ring.position.set(x, y + .008, z);
+    return { root, ring };
+  }
+  if (['hihat', 'crash', 'ride'].includes(piece.id)) {
+    const mountZ = z + radius * .5;
+    stand(x, y + .065, mountZ);
+    const cymbal = new THREE.Group(); root.add(cymbal);
+    if (electronic) {
+      cymbal.position.set(x, y - .013, mountZ);
+      const pad = cylinder(cymbal, radius, .026, shell); pad.name = 'contactSurface';
+      const edge = mesh(cymbal, new THREE.TorusGeometry(radius, .008, 8, 64), dark); edge.rotation.x = Math.PI / 2;
+    } else {
+      cymbal.position.set(x, y + .02942857142857, mountZ);
+      shell.metalness = .78; shell.side = THREE.DoubleSide;
+      const profile = [new THREE.Vector2(.008, -.004), new THREE.Vector2(radius * .12, 0), new THREE.Vector2(radius * .24, -.022), new THREE.Vector2(radius * .8, -.038), new THREE.Vector2(radius, -.044)];
+      const bow = mesh(cymbal, new THREE.LatheGeometry(profile, 80), shell); bow.name = 'contactSurface';
+      if (piece.id === 'hihat') mesh(cymbal, new THREE.LatheGeometry(profile, 64), shell).position.y = -.026;
+      const etched = mat(0x88713f, .68, .46);
+      for (const fraction of [.36, .52, .68, .84]) {
+        const line = mesh(cymbal, new THREE.TorusGeometry(radius * fraction, .0006, 4, 64), etched);
+        line.rotation.x = Math.PI / 2; line.position.y = -.022 - (fraction - .24) / .76 * .022;
+      }
+    }
+    cylinder(cymbal, .015, .015, dark).position.y = electronic ? .022 : .011;
+    if (piece.id === 'hihat') {
+      const pedal = kit.find(value => value.id === 'pedalHat')?.position ?? [-.22, .08, .55];
+      const pedalRoot = new THREE.Group(); pedalRoot.userData.fixedContact = true; root.add(pedalRoot);
+      rod(pedalRoot, [x, .04, mountZ], [pedal[0], .04, pedal[2]], .011, metal);
+      const footboard = mesh(pedalRoot, new THREE.BoxGeometry(.10, .024, .20), dark);
+      footboard.position.set(pedal[0], pedal[1] - .012, pedal[2] - .02); footboard.name = 'pedalContactSurface';
+    }
+    ring.geometry.dispose(); ring.geometry = new THREE.RingGeometry(radius * .24, radius * .31, 40);
+    return { root, ring, cymbal };
+  }
+  const depth = electronic ? .04 : (piece.id === 'snare' ? .13 : piece.id === 'tomLow' ? .29 : .22) * modelDepth;
+  const drum = new THREE.Group(); drum.position.set(x, y - depth / 2, z); root.add(drum);
+  cylinder(drum, radius, depth, shell);
+  const surface = cylinder(drum, radius - .007, .008, head); surface.position.y = depth / 2 - .004; surface.name = 'contactSurface';
+  for (const side of [1, -1]) {
+    const rim = mesh(drum, new THREE.TorusGeometry(radius, electronic ? .009 : .007, 8, 64), electronic ? dark : metal);
+    rim.rotation.x = Math.PI / 2; rim.position.y = side * depth / 2 - .003;
+  }
+  if (!electronic) for (let i = 0; i < (preset === 'vintage' ? 6 : 8); i++) {
+    const angle = i / (preset === 'vintage' ? 6 : 8) * Math.PI * 2;
+    cylinder(drum, .009, depth * .7, metal, 10).position.set(Math.sin(angle) * (radius + .005), 0, Math.cos(angle) * (radius + .005));
+  }
+  if (piece.id === 'tomLow' && !electronic) {
+    for (let i = 0; i < 3; i++) {
+      const angle = i / 3 * Math.PI * 2;
+      rod(root, [x + Math.sin(angle) * radius, y - depth * .6, z + Math.cos(angle) * radius], [x + Math.sin(angle) * (radius + .05), .015, z + Math.cos(angle) * (radius + .05)], .011, metal);
+    }
+  } else stand(x, y - depth, z, piece.id === 'snare' || electronic);
+  return { root, ring };
+}

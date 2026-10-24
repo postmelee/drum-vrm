@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { Vector3 } from 'three';
+import { describe, expect, it, vi } from 'vitest';
+import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, Raycaster, Texture, Vector3 } from 'three';
 import { PrimitiveRigAdapter } from '../src/scene';
+import { cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId } from '../src/model-procedural';
+import { validateSelfContainedGLB } from '../src/model-import';
 import type { KitPiece } from '../src/types';
 
 const pose = () => new Float32Array([
@@ -73,5 +75,99 @@ describe('PrimitiveRigAdapter canonical pose contract', () => {
     expect(capture(rig)).toEqual(initial);
     expect(() => rig.calibrate([{ id: 'snare', label: 'Invalid', position: [0, NaN, 0], radius: .2 }])).toThrow('Invalid rig target');
     rig.dispose();
+  });
+});
+
+describe('editable procedural models preserve playing contacts', () => {
+  const pieces: KitPiece[] = [
+    { id: 'kick', label: 'Kick', position: [.2, .08, .62], radius: .26 },
+    { id: 'snare', label: 'Snare', position: [-.18, .79, .40], radius: .22 },
+    { id: 'hihat', label: 'Hi-hat', position: [-.48, .96, .44], radius: .22 },
+    { id: 'pedalHat', label: 'Pedal', position: [-.22, .08, .55], radius: .12 },
+    { id: 'tomHigh', label: 'High tom', position: [-.26, 1, .72], radius: .18 },
+    { id: 'ride', label: 'Ride', position: [.66, 1.15, .67], radius: .28 },
+  ];
+  it('keeps the real surface at every canonical target across all procedural presets and width limits', () => {
+    for (const preset of ['studio', 'vintage', 'electronic'] as KitPresetId[]) {
+      for (const scale of [.65, 1, 1.4]) for (const piece of pieces.filter(piece => piece.id !== 'pedalHat')) {
+        const model = createPieceModel(piece, resolvePieceVisual(preset, piece.id, { scale }), preset, pieces);
+        model.root.updateMatrixWorld(true);
+        const surface = model.root.getObjectByName('contactSurface')!;
+        expect(surface, `${preset} ${piece.id}`).toBeDefined();
+        const ray = new Raycaster(new Vector3(piece.position[0], piece.position[1] + 1, piece.position[2]), new Vector3(0, -1, 0));
+        const contact = ray.intersectObject(surface, false)[0];
+        expect(contact, `${preset} ${piece.id} ×${scale}`).toBeDefined();
+        expect(contact.point.y).toBeCloseTo(piece.position[1], 5);
+        if (piece.id === 'hihat') {
+          const pedal = pieces.find(piece => piece.id === 'pedalHat')!;
+          const pedalRay = new Raycaster(new Vector3(pedal.position[0], 1, pedal.position[2]), new Vector3(0, -1, 0));
+          expect(pedalRay.intersectObject(model.root.getObjectByName('pedalContactSurface')!, false)[0].point.y).toBeCloseTo(pedal.position[1], 6);
+        }
+        disposeModel(model.root);
+      }
+    }
+  });
+  it('changes drum depth and width without translating its playing head', () => {
+    const piece = pieces[1];
+    const bounds = (model: 'standard' | 'deep' | 'compact', scale: number) => {
+      const built = createPieceModel(piece, resolvePieceVisual('studio', piece.id, { model, scale }), 'studio', pieces);
+      built.root.updateMatrixWorld(true);
+      const head = new Box3().setFromObject(built.root.getObjectByName('contactSurface')!);
+      const body = new Box3().setFromObject(built.root.getObjectByName('contactSurface')!.parent!);
+      disposeModel(built.root);
+      return { head, body };
+    };
+    const standard = bounds('standard', 1), deep = bounds('deep', 1.4), compact = bounds('compact', .65);
+    expect(deep.body.getSize(new Vector3()).y).toBeGreaterThan(standard.body.getSize(new Vector3()).y);
+    expect(compact.body.getSize(new Vector3()).y).toBeLessThan(standard.body.getSize(new Vector3()).y);
+    expect(deep.head.getSize(new Vector3()).x).toBeGreaterThan(standard.head.getSize(new Vector3()).x);
+    for (const variant of [standard, deep, compact]) {
+      expect(variant.head.max.y).toBeCloseTo(piece.position[1], 6);
+      expect(variant.head.getCenter(new Vector3()).x).toBeCloseTo(piece.position[0], 6);
+      expect(variant.head.getCenter(new Vector3()).z).toBeCloseTo(piece.position[2], 6);
+    }
+  });
+  it('rejects unsafe or nonfinite editor inputs before building geometry', () => {
+    expect(() => resolvePieceVisual('studio', 'snare', { scale: NaN })).toThrow('65%');
+    expect(() => resolvePieceVisual('studio', 'snare', { rotation: Infinity })).toThrow('회전');
+    expect(() => resolvePieceVisual('studio', 'snare', { finish: 'url(https://example.com)' })).toThrow('#RRGGBB');
+  });
+});
+
+function glb(json: object): ArrayBuffer {
+  const raw = new TextEncoder().encode(JSON.stringify(json));
+  const length = Math.ceil(raw.length / 4) * 4;
+  const buffer = new ArrayBuffer(20 + length), view = new DataView(buffer);
+  view.setUint32(0, 0x46546c67, true); view.setUint32(4, 2, true); view.setUint32(8, buffer.byteLength, true);
+  view.setUint32(12, length, true); view.setUint32(16, 0x4e4f534a, true);
+  new Uint8Array(buffer, 20).fill(32); new Uint8Array(buffer, 20).set(raw);
+  return buffer;
+}
+describe('local model privacy validation', () => {
+  it('keeps shared decoded images alive during visual rebuild and closes them once when the source is discarded', () => {
+    const bitmap = { close: vi.fn(), width: 1, height: 1 };
+    const texture = new Texture(bitmap);
+    const root = new Group();
+    root.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial({ map: texture })));
+    root.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial({ map: texture })));
+    const rendered = cloneModel(root);
+    disposeModel(rendered);
+    expect(bitmap.close).not.toHaveBeenCalled();
+    disposeModelSource(root);
+    expect(bitmap.close).toHaveBeenCalledTimes(1);
+  });
+  it('accepts embedded GLB resources and blocks external references before any loader request', () => {
+    expect(() => validateSelfContainedGLB(glb({ asset: { version: '2.0' }, buffers: [{ byteLength: 12 }] }))).not.toThrow();
+    expect(() => validateSelfContainedGLB(glb({ asset: { version: '2.0' }, images: [{ uri: 'data:image/png;base64,AAAA' }] }))).not.toThrow();
+    for (const uri of ['https://example.com/image.png', '//example.com/image.png', '../image.png', 'file:///private/image.png', 'blob:outside', 'data:text/html;base64,AAAA']) {
+      expect(() => validateSelfContainedGLB(glb({ asset: { version: '2.0' }, images: [{ uri }] }))).toThrow('외부');
+    }
+  });
+  it('rejects incomplete and corrupted GLB containers', () => {
+    expect(() => validateSelfContainedGLB(new ArrayBuffer(12))).toThrow('GLB');
+    const bytes = glb({ asset: { version: '2.0' } });
+    new DataView(bytes).setUint32(12, bytes.byteLength, true);
+    expect(() => validateSelfContainedGLB(bytes)).toThrow('청크');
+    expect(() => validateSelfContainedGLB(glb({ asset: { version: '1.0' } }))).toThrow('2.0');
   });
 });

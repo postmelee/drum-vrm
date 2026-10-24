@@ -149,6 +149,24 @@ pub struct Selection {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TempoAnchor {
+    pub tick: u64,
+    /// Unrounded segment origin in seconds, for beat-grid conversion. Hit timeUs
+    /// remains the canonical once-rounded timestamp used by sound and motion.
+    pub time: f64,
+    pub microseconds_per_quarter: u32,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimeSignature {
+    pub tick: u64,
+    pub numerator: u8,
+    pub denominator: u16,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PerformancePlan {
     pub schema_version: u32,
     pub engine_version: String,
@@ -162,4 +180,12 @@ pub struct PerformancePlan {
     pub diagnostics: Vec<Diagnostic>,
     pub kit: Vec<KitPiece>,
     pub tempo_count: usize,
+    #[serde(default)]
+    pub ppq: Option<u16>,
+    #[serde(default)]
+    pub end_tick: Option<u64>,
+    #[serde(default)]
+    pub tempo_map: Vec<TempoAnchor>,
+    #[serde(default)]
+    pub time_signatures: Vec<TimeSignature>,
 }

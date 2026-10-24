@@ -17,6 +17,15 @@ struct Segment {
     micros: u32,
 }
 
+#[derive(Clone, Copy)]
+struct SignatureEvent {
+    tick: u64,
+    track: usize,
+    event: usize,
+    numerator: u8,
+    denominator: u16,
+}
+
 pub struct Parsed<'a> {
     smf: Smf<'a>,
     pub info: MidiInfo,
@@ -24,6 +33,7 @@ pub struct Parsed<'a> {
     segments: Vec<Segment>,
     diagnostics: Vec<Diagnostic>,
     tempo_count: usize,
+    time_signatures: Vec<TimeSignature>,
 }
 
 /// A length preflight prevents malformed chunk lengths from hiding truncated data.
@@ -108,6 +118,8 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
     let mut tracks = Vec::new();
     let mut track_ends = Vec::new();
     let mut tempos = Vec::new();
+    let mut signatures = Vec::new();
+    let mut diagnostics = Vec::new();
     let mut channel_ten_tracks = Vec::new();
     for (index, track) in smf.tracks.iter().enumerate() {
         let mut info = TrackInfo {
@@ -156,6 +168,19 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
                         micros: micros.as_int(),
                     });
                 }
+                TrackEventKind::Meta(MetaMessage::TimeSignature(numerator, power, _, _)) => {
+                    if numerator == 0 || power > 7 {
+                        diagnostics.push(Diagnostic::new("INVALID_TIME_SIGNATURE", format!("트랙 {} tick {tick}의 지원하지 않는 박자표를 무시했습니다. 타격 시각은 유지합니다.", index + 1)));
+                    } else {
+                        signatures.push(SignatureEvent {
+                            tick,
+                            track: index,
+                            event: event_index,
+                            numerator,
+                            denominator: 1u16 << power,
+                        });
+                    }
+                }
                 TrackEventKind::Midi {
                     channel,
                     message: MidiMessage::NoteOn { key, vel },
@@ -196,7 +221,6 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
         channel_ten_tracks
     };
     tempos.sort_by_key(|t| (t.tick, t.track, t.event));
-    let mut diagnostics = Vec::new();
     let mut chosen = Vec::new();
     let mut i = 0;
     while i < tempos.len() {
@@ -233,6 +257,42 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
             micros: tempo.micros,
         });
     }
+    signatures.sort_by_key(|s| (s.tick, s.track, s.event));
+    let mut time_signatures = vec![TimeSignature {
+        tick: 0,
+        numerator: 4,
+        denominator: 4,
+    }];
+    let mut i = 0;
+    while i < signatures.len() {
+        let start = i;
+        while i < signatures.len() && signatures[i].tick == signatures[start].tick {
+            i += 1;
+        }
+        let group = &signatures[start..i];
+        let selected = group
+            .iter()
+            .rev()
+            .find(|s| s.track == 0)
+            .unwrap_or(group.last().unwrap());
+        if group
+            .iter()
+            .any(|s| (s.numerator, s.denominator) != (selected.numerator, selected.denominator))
+        {
+            diagnostics.push(Diagnostic::new("TIME_SIGNATURE_CONFLICT", format!("tick {}의 박자표 충돌: 트랙 {}의 {}/{}를 선택했습니다 (트랙 1 우선, 동일 트랙 마지막 이벤트).", selected.tick, selected.track + 1, selected.numerator, selected.denominator)));
+        }
+        if time_signatures
+            .last()
+            .is_some_and(|s| s.tick == selected.tick)
+        {
+            time_signatures.pop();
+        }
+        time_signatures.push(TimeSignature {
+            tick: selected.tick,
+            numerator: selected.numerator,
+            denominator: selected.denominator,
+        });
+    }
     Ok(Parsed {
         smf,
         info: MidiInfo {
@@ -245,6 +305,7 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
         segments,
         diagnostics,
         tempo_count,
+        time_signatures,
     })
 }
 
@@ -273,9 +334,8 @@ impl Parsed<'_> {
         if selected.iter().any(|i| *i >= self.smf.tracks.len()) {
             return Err("선택한 MIDI 트랙이 존재하지 않습니다.".into());
         }
-        let duration = self.time_us(selected.iter().map(|i| self.track_ends[*i]).max().unwrap())?
-            as f64
-            / 1_000_000.0;
+        let end_tick = selected.iter().map(|i| self.track_ends[*i]).max().unwrap();
+        let duration = self.time_us(end_tick)? as f64 / 1_000_000.0;
         if duration > MAX_DURATION {
             return Err(format!(
                 "선택한 트랙 길이가 {duration:.2}초입니다. 300초 이하의 MIDI를 사용하세요."
@@ -353,6 +413,18 @@ impl Parsed<'_> {
             diagnostics,
             kit,
             tempo_count: self.tempo_count,
+            ppq: Some(self.info.ppq),
+            end_tick: Some(end_tick),
+            tempo_map: self
+                .segments
+                .iter()
+                .map(|s| TempoAnchor {
+                    tick: s.tick,
+                    time: s.numerator as f64 / self.info.ppq as f64 / 1_000_000.0,
+                    microseconds_per_quarter: s.micros,
+                })
+                .collect(),
+            time_signatures: self.time_signatures.clone(),
         })
     }
 }
