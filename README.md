@@ -14,6 +14,8 @@ The unreleased main/PR batch adds Lucide SVG controls, a player viewpoint, optio
 
 See the bilingual [model acquisition/upload guide](docs/models.md) and [VRM model research](docs/research/vrm-models.md). Research downloads remain private and are not bundled avatars. Three VRM 1.0 candidates have passed the limited contact/seek checks documented in that guide.
 
+PR #33's VRM foundation is merged on main and remains unreleased. The next unreleased batch implements shared seat/contact calibration, feet planted on pedals with ankle motion, a palm-aligned grip, and drum-body swaps that retain common stands/pedals. Read the [seat and drum calibration guide](docs/calibration.md) for controls, session-only settings, and limitations. See the [local verification record](docs/verification/calibration-unreleased.md); explicit crossed/open-handed styles and collision avoidance remain follow-up work.
+
 ## MVP
 
 `Upload MIDI → analyze and plan → display the reference rig → play → download video`
@@ -86,6 +88,7 @@ User-facing guidance is maintained in English and Korean in the same PR. Existin
 | --- | --- |
 | Resume work | [Handoff](docs/handoff.md), [agent instructions](AGENTS.md) |
 | Scope and acceptance | [Requirements](docs/product-requirements.md), [development plan](docs/plan.md) |
+| Seat, contact points, and drum parts | [Calibration guide](docs/calibration.md), [design contract](docs/decisions/0005-calibration-pedals-hardware.md) |
 | Authorization and releases | [Approval history](docs/approval.md), [release policy / 릴리스 정책](docs/release-policy.md) |
 | Engine/rig boundary | [Architecture](docs/architecture.md), [design decision](docs/decisions/0001-engine-and-rig-boundary.md) |
 | Original requirements | [Context and topic record](docs/context/source-conversation.md) |

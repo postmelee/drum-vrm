@@ -44,6 +44,6 @@
       1.6176922358572483
     ]
   },
-  "runtimeAdaptation": "Reflect Z into application coordinates, reverse triangle winding, group by instrument and response role, merge by material, resample maps to maximum 512 pixels, and align actual surface contacts to PerformancePlan targets with uniform per-instrument scaling. Source throne omitted. Tagged shells/cymbals respond while hardware and pedals stay fixed. Floor-connected stand hardware is vertically fitted about the source contact to reach the floor; drum shells, surfaces, pedals and elevated rack mounts keep their proportions.",
+  "runtimeAdaptation": "Reflect Z into application coordinates, reverse triangle winding, group by instrument and response role, merge by material, and resample maps to maximum 512 pixels. Source throne omitted. Render only tagged shells and playing surfaces; remove source stands, pedals and other support hardware from render clones. Fit body width and rotation around shared kit mounts, align playing surfaces to calibrated strike heights, and align the kick body to the common shell mount. Original application stands and pedal contacts belong to a separate persistent hardware layer, independent of body replacements and hit response. Source binaries remain unmodified.",
   "licenseFile": "innerscene-LICENSE.txt"
 }

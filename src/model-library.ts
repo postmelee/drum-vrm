@@ -150,7 +150,7 @@ function splitBatoskiHardware(geometry: THREE.BufferGeometry, name: string): [TH
   }
   const result: [THREE.BufferGeometry, ResponseRole][] = [];
   for (const [list, role] of [[shell, 'shell'], [hardware, 'hardware']] as const) {
-    if (list.length) { const part = geometry.clone(); part.setIndex(list); result.push([part, role]); }
+    if (list.length) { const indexed = geometry.clone(); indexed.setIndex(list); const part = indexed.toNonIndexed(); part.setIndex(Array.from({ length: part.getAttribute('position').count }, (_, index) => index)); indexed.dispose(); result.push([part, role]); }
   }
   geometry.dispose(); return result;
 }

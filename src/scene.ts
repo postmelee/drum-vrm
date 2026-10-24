@@ -1,9 +1,12 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { Hit, Instrument, KitPiece, PerformancePlan, RigProfile, Vec3 } from './types';
-import { NativeHumanoidRigAdapter, type HumanoidRigAdapter, type RigContactSample } from './rig-humanoid';
+import { createRestRigPose, NativeHumanoidRigAdapter, type HumanoidRigAdapter, type RigContactSample } from './rig-humanoid';
+import { validateKitLayout } from './kit-calibration';
 import { canonicalPieceId, cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
 import { loadLocalGLB } from './model-import';
+import { KitHardwareLayer } from './kit-hardware';
+import { alignInstrumentBody, cloneLibraryBody } from './instrument-body';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack, evaluateHitResponse, validateHitResponse, type HitResponseBinding, type HitResponseSettings, type HitResponseTrack } from './hit-response';
 export { KIT_PRESETS, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings } from './model-procedural';
 export type { HitResponseSettings } from './hit-response';
@@ -33,26 +36,6 @@ export function cameraPresetState(view: CameraView): CameraState {
   };
 }
 const isLibraryPreset = (preset: KitPresetId): preset is 'library' | 'batoski' | 'smoj' => ['library', 'batoski', 'smoj'].includes(preset);
-
-/** Library adapters bake stand geometry in the source world basis. Resize only
- * stand hardware around the source contact, so source floor Y=0 remains floor
- * Y=0 after the outer contact translation and uniform instrument scale. */
-export function fitLibraryStandHardware(display: THREE.Group, contactY: number, targetY: number, scale: number): void {
-  for (const child of display.children) {
-    if (!(child instanceof THREE.Mesh) || child.userData.hitResponseRole !== 'hardware') continue;
-    const positions = child.geometry.getAttribute('position'), indices = child.geometry.getIndex();
-    if (!positions) continue;
-    let floor = Infinity;
-    // Split meshes may retain unused vertices, so a geometry bounding box can
-    // incorrectly include the drum shell when measuring its separate legs.
-    for (let i = 0, count = indices?.count ?? positions.count; i < count; i++) floor = Math.min(floor, positions.getY(indices ? indices.getX(i) : i));
-    if (Math.abs(floor) > .025) continue; // rack-tom mounts are not floor stands
-    const factor = targetY / ((contactY - floor) * scale);
-    if (!Number.isFinite(factor) || factor <= 0) continue;
-    child.scale.y = factor;
-    child.position.y = contactY * (1 - factor);
-  }
-}
 
 /** All coordinates are metres; +Y is up and the performer faces +Z. */
 export interface RigCalibration {
@@ -229,6 +212,7 @@ export class DrumScene {
   private readonly camera = new THREE.PerspectiveCamera(35, 1, .05, 40);
   private readonly controls: OrbitControls;
   private readonly kitGroup = new THREE.Group();
+  private readonly hardware = new KitHardwareLayer();
   private readonly grid = new THREE.GridHelper(5, 20, 0xb9bec5, 0xd9dde2);
   private readonly raycaster = new THREE.Raycaster();
   private readonly resizeObserver: ResizeObserver;
@@ -272,7 +256,7 @@ export class DrumScene {
     const gridMaterial = this.grid.material as THREE.LineBasicMaterial;
     gridMaterial.transparent = true; gridMaterial.opacity = .17;
     this.grid.position.set(0, -.02, .4); this.grid.visible = false; this.scene.add(this.grid);
-    this.scene.add(this.displayRoot); this.displayRoot.add(this.kitGroup);
+    this.scene.add(this.displayRoot); this.displayRoot.add(this.kitGroup, this.hardware.root);
     this.rig = new NativeHumanoidRigAdapter(); this.scene.add(this.rig.root);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = false;
@@ -292,11 +276,17 @@ export class DrumScene {
   setPlan(plan: PerformancePlan): void {
     this.rig.calibrate(plan.kit); this.plan = plan; this.kit = plan.kit; this.rebuildKit();
   }
+  clearPlan(): void {
+    this.plan = null; this.songTime = -.5;
+    for (const visual of this.visuals) { visual.hits = []; visual.responseTrack = createHitResponseTrack([], visual.id); }
+    this.rig.applyPose(createRestRigPose(this.rig.getProfile())); this.updateHitResponses();
+  }
   setRig(adapter: HumanoidRigAdapter): void {
     if (adapter === this.rig) return;
     this.rig.dispose(); this.rig = adapter;
     // Native VRM bone hierarchies never inherit the legacy kit reflection.
     this.scene.add(adapter.root); adapter.calibrate(this.kit);
+    if (!this.plan) adapter.applyPose(createRestRigPose(adapter.getProfile()));
     adapter.root.visible = this.characterVisible && !this.editorMode;
     adapter.setSkeletonVisible(this.skeletonVisible); adapter.setModelVisible(this.modelVisible);
     adapter.setVisualOptions({ bodyColor: this.theme === 'light' ? '#5c626b' : '#c3c9d1' });
@@ -304,6 +294,18 @@ export class DrumScene {
     if (!this.editorMode && this.cameraView === 'player') this.setCamera('player');
   }
   getRigProfile(): RigProfile { return this.rig.getProfile(); }
+  getKitLayout(): KitPiece[] { return this.kit.map(piece => ({ ...piece, position: [...piece.position] })); }
+  setKitLayout(kit: readonly KitPiece[]): void {
+    this.kit = validateKitLayout(kit); this.rebuildKit();
+  }
+  getCalibration() { return this.rig.getCalibration(); }
+  getAutomaticCalibration() { return this.rig.getAutomaticCalibration(this.kit); }
+  setCalibration(value: Parameters<HumanoidRigAdapter['setCalibration']>[0]): RigProfile {
+    const profile = this.rig.setCalibration(value, this.kit);
+    if (!this.plan) this.rig.applyPose(createRestRigPose(profile));
+    if (!this.editorMode && this.cameraView === 'player') this.setCamera('player');
+    return profile;
+  }
   getRigContactSamples(): RigContactSample[] { return this.rig.getContactSamples(); }
   setSkeletonVisible(visible: boolean): void { this.skeletonVisible = visible; this.rig.setSkeletonVisible(visible); }
   setModelVisible(visible: boolean): void { this.modelVisible = visible; this.rig.setModelVisible(visible); }
@@ -510,51 +512,27 @@ export class DrumScene {
     const rect = this.canvas.getBoundingClientRect(); if (!rect.width || !rect.height) return;
     this.raycaster.setFromCamera(new THREE.Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1), this.camera);
     this.displayRoot.updateMatrixWorld(true);
-    const hit = this.raycaster.intersectObjects(this.visuals.map(value => value.root), true)[0];
+    const hit = this.raycaster.intersectObjects([...this.visuals.map(value => value.root), this.hardware.root], true)[0];
     let object: THREE.Object3D | null = hit?.object ?? null;
     while (object && !object.userData.pieceId) object = object.parent;
     this.selectPiece(object?.userData.pieceId as Instrument ?? null);
   };
   private rebuildKit(): void {
-    this.clearSelection(); disposeModel(this.kitGroup); this.visuals = [];
+    this.clearSelection(); this.hardware.setLayout(this.kit); disposeModel(this.kitGroup); this.visuals = [];
     const library = this.libraries.get(this.preset);
     for (const piece of this.kit) {
       if (canonicalPieceId(piece.id) !== piece.id) continue;
       const settings = this.getPieceVisual(piece.id);
-      const built = createPieceModel(piece, settings, this.preset, this.kit);
+      const built = createPieceModel(piece, settings, this.preset, this.kit, false);
       const source = this.imported.get(piece.id)?.root ?? (isLibraryPreset(this.preset) && !this.proceduralOverrides.has(piece.id) ? library?.[piece.id] : undefined);
       if (source) {
         built.ring.removeFromParent(); disposeModel(built.root); built.cymbal = undefined;
-        const display = cloneModel(source), pivot = new THREE.Group(); pivot.add(display); built.root.add(pivot, built.ring);
         const custom = this.imported.has(piece.id);
-        if (custom) {
-          display.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
-          display.updateMatrixWorld(true);
-          const box = new THREE.Box3().setFromObject(display), size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
-          const fit = piece.radius * 2 / Math.max(size.x, size.z, .0001) * settings.scale;
-          pivot.scale.setScalar(fit);
-          pivot.position.set(piece.position[0] - center.x * fit, piece.position[1] - box.max.y * fit, piece.position[2] - center.z * fit);
-          if (piece.id === 'kick') pivot.position.y = .32 - center.y * fit;
-        } else {
-          this.alignLibraryPiece(display, pivot, source, piece, settings);
-          if (piece.id === 'hihat' && library?.pedalHat) {
-            const pedal = this.kit.find(item => item.id === 'pedalHat');
-            if (pedal) {
-              const pedalDisplay = cloneModel(library.pedalHat), pedalPivot = new THREE.Group();
-              pedalPivot.userData.hitResponseRole = 'pedal';
-              pedalPivot.add(pedalDisplay); built.root.add(pedalPivot);
-              this.alignLibraryPiece(pedalDisplay, pedalPivot, library.pedalHat, pedal, settings);
-            }
-          }
-        }
+        const display = custom ? cloneModel(source) : cloneLibraryBody(source), pivot = new THREE.Group(); pivot.add(display); built.root.add(pivot, built.ring);
+        alignInstrumentBody(display, pivot, piece, settings);
         if (this.overrides.get(piece.id)?.finish) display.traverse(node => {
           if (node instanceof THREE.Mesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) if (material instanceof THREE.MeshStandardMaterial) material.color.set(settings.finish);
         });
-      } else if (settings.rotation) {
-        // Rotate around the canonical contact, never around the scene origin.
-        const pivot = new THREE.Group(); pivot.position.set(...piece.position); pivot.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
-        const model = new THREE.Group(); model.position.copy(pivot.position).multiplyScalar(-1);
-        [...built.root.children].forEach(child => { if (!child.userData.fixedContact) model.add(child); }); pivot.add(model); built.root.add(pivot);
       }
       const response = bindHitResponse(built.root, piece.position, this.imported.has(piece.id));
       built.root.userData.pieceId = piece.id; this.kitGroup.add(built.root);
@@ -563,14 +541,5 @@ export class DrumScene {
       this.visuals.push({ ...built, id: piece.id, hits, response, responseTrack: createHitResponseTrack(hits, piece.id) });
     }
     this.updateHitResponses(); this.updateSelection();
-  }
-  private alignLibraryPiece(display: THREE.Group, pivot: THREE.Group, source: THREE.Group, piece: KitPiece, settings: PieceVisualSettings): void {
-    const contact = new THREE.Vector3(...source.userData.contact as Vec3);
-    if (piece.id !== 'kick' && piece.id !== 'pedalHat') fitLibraryStandHardware(display, contact.y, piece.position[1], settings.scale);
-    display.position.copy(contact).multiplyScalar(-1);
-    pivot.position.set(...piece.position);
-    // Shells and heads keep source proportions; only stand lengths are adjusted.
-    pivot.scale.setScalar(settings.scale);
-    pivot.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
   }
 }

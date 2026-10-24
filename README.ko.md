@@ -16,6 +16,8 @@ VRM 1.0 단일 `.vrm`(최대 50 MiB) 로더, 필수 본 15개·손가락 본·�
 
 [모델 확보·업로드 안내](docs/models.ko.md)와 [VRM 모델 조사](docs/research/vrm-models.md)를 함께 유지한다. 조사용 다운로드는 공개 번들에 포함하지 않는다. VRM 1.0 후보 3개의 제한된 접촉·탐색 검증 결과는 안내 문서에 기록했다.
 
+PR #33의 VRM 기반 구현은 main에 병합했으며 미배포 상태입니다. 다음 미출시 묶음에서는 공통 좌석·타점 보정, 페달에 발을 둔 상태의 발목 동작, 손바닥 기준 그립, 공통 받침대·페달을 유지하는 드럼 몸체 교체를 구현했습니다. 컨트롤·세션 내 설정·한계는 [좌석·드럼 보정 안내](docs/calibration.ko.md)를 참고하세요. [로컬 검증 기록](docs/verification/calibration-unreleased.md)에 검사 결과와 제한을 남겼으며, 명시적인 교차/오픈핸드 주법과 충돌 회피는 후속 작업입니다.
+
 ## 첫 MVP
 
 `MIDI 업로드 → 사전 분석·연주 계획 → 기본 리그 표시 → 재생 → 영상 다운로드`
@@ -88,6 +90,7 @@ npm run preview
 | --- | --- |
 | 새 작업을 시작하기 | [인수인계와 현재 상태](docs/handoff.md), [작업 지침](AGENTS.md) |
 | 범위와 완료 조건 | [요구사항](docs/product-requirements.md), [개발 계획](docs/plan.md) |
+| 좌석·타점·드럼 부품 | [보정 안내](docs/calibration.ko.md), [설계 계약](docs/decisions/0005-calibration-pedals-hardware.md) |
 | 승인과 릴리스 | [승인 기록](docs/approval.md), [릴리스 정책](docs/release-policy.md) |
 | 엔진과 리그 연결 | [아키텍처](docs/architecture.md), [설계 결정](docs/decisions/0001-engine-and-rig-boundary.md) |
 | 원 대화의 맥락 | [요구사항 출처와 주제별 기록](docs/context/source-conversation.md) |

@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, PerspectiveCamera, Raycaster, Texture, Vector3 } from 'three';
-import { cameraPresetState, createLegacyDisplayRoot, legacyPointToDisplay, PrimitiveRigAdapter } from '../src/scene';
+import { cameraPresetState, createLegacyDisplayRoot, legacyPointToDisplay, PrimitiveRigAdapter, DrumScene } from '../src/scene';
 import { cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId } from '../src/model-procedural';
 import { validateSelfContainedGLB } from '../src/model-import';
+import { NativeHumanoidRigAdapter } from '../src/rig-humanoid';
+import { applyHitResponse, bindHitResponse, createHitResponseTrack } from '../src/hit-response';
 import type { KitPiece } from '../src/types';
 
 const pose = () => new Float32Array([
@@ -200,5 +202,28 @@ describe('local model privacy validation', () => {
     new DataView(bytes).setUint32(12, bytes.byteLength, true);
     expect(() => validateSelfContainedGLB(bytes)).toThrow('청크');
     expect(() => validateSelfContainedGLB(glb({ asset: { version: '1.0' } }))).toThrow('2.0');
+  });
+});
+
+
+describe('scene performance lifecycle', () => {
+  it('clears stale response tracks and restores the current calibrated idle pose without replacing the drum body', () => {
+    const rig = new NativeHumanoidRigAdapter();
+    rig.setCalibration({ seatHeight: .60, seatForward: -.05 });
+    const piece: KitPiece = { id: 'snare', label: 'Snare', position: [-.18, .79, .40], radius: .22 };
+    const model = createPieceModel(piece, resolvePieceVisual('studio', piece.id), 'studio', [piece], false);
+    const response = bindHitResponse(model.root, piece.position); applyHitResponse(response, { scale: 1.02, tiltX: .02, tiltZ: .01 });
+    model.ring.visible = true; model.ring.material.opacity = .5;
+    const visual = { ...model, id: piece.id, hits: [], response, responseTrack: createHitResponseTrack([], piece.id) };
+    // Exercise the production lifecycle method without constructing a WebGL renderer.
+    const scene = Object.create(DrumScene.prototype) as DrumScene;
+    Object.assign(scene, { rig, plan: { hits: [] }, songTime: 1, visuals: [visual], imported: new Map(), editorMode: false, exportMode: false, reducedMotion: { matches: false }, hitResponse: { enabled: true, strength: 1 } });
+    scene.clearPlan();
+    expect(Reflect.get(scene, 'plan')).toBeNull(); expect(Reflect.get(scene, 'songTime')).toBe(-.5);
+    expect(visual.root).toBe(model.root); expect(visual.responseTrack.anchors).toEqual([]);
+    expect(response.pivot.scale.toArray()).toEqual([1, 1, 1]); expect(model.ring.visible).toBe(false);
+    expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
+    expect(rig.getProfile().pelvis[1]).toBeCloseTo(.60);
+    rig.dispose(); disposeModel(model.root);
   });
 });

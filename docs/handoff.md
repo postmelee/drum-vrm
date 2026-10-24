@@ -1,12 +1,24 @@
 # 현재 상태와 다음 작업
 
-갱신일: 2026-10-24 (Asia/Seoul). 상태: **M0·M1·M2 완료, v0.2.0 UI/드럼 모델 개선 공개 배포·검증 완료**.
+갱신일: 2026-10-24 (Asia/Seoul). 상태: **v0.2.0 공개 유지, PR #33 병합 완료·미배포, 공통 보정·페달·하드웨어 로컬 검증 완료·PR 준비**.
 
 ## 현재 우선순위와 릴리스 경계
 
-PR #31의 CI를 확인하고 `28a50a2c19c2b5109c490384f0b03e554f4dea1e`로 병합했다. 사용자는 #28·#29 구현 후 #30·#17 리그 개선을 지시했다. Lucide SVG, 연주자 시점, 결정적 선택형 타격 반응, Batoski/smoj 프리셋은 PR #32의 CI 성공 후 `bd1568d4a3cc89913627b04e34f2fd2153a3ffac`로 병합했다. VRM 1.0 normalized humanoid와 손목/그립·실제 렌더 접촉 계측, 로컬 파일·조건 표시는 [PR #33](https://github.com/postmelee/drum-vrm/pull/33)으로 추적한다. 구현·수치 검증·브라우저 검증은 완료했으며 릴리스 승인 대상 묶음이다. Rust 22개/웹 63개, 타입 검사와 세 실제 모델의 128프레임·탐색 검증이 통과했다. 실제 앱 업로드·재생·1인칭과 923프레임 오디오 포함 영상 인코딩을 확인했다. 자동화 브라우저의 blob 수신 제한으로 새 다운로드 파일의 별도 플레이어/ffprobe 검증은 남아 있다. [이번 검증 기록](verification/vrm-studio-unreleased.md)에 범위와 제한을 구분했다. #18은 체형별 검증을 추적한다. [VRM 모델 조사](research/vrm-models.md), [영문 안내](models.md), [한국어 안내](models.ko.md)를 추가했고 #17/#18/#30의 완료 조건을 갱신했다. 외부 VRM 파일은 `.local/vrm-test-models`에만 있으며 공개 저장소/배포물에 포함하지 않는다.
+PR #31의 CI를 확인하고 `28a50a2c19c2b5109c490384f0b03e554f4dea1e`로 병합했다. 사용자는 #28·#29 구현 후 #30·#17 리그 개선을 지시했다. Lucide SVG, 연주자 시점, 결정적 선택형 타격 반응, Batoski/smoj 프리셋은 PR #32의 CI 성공 후 `bd1568d4a3cc89913627b04e34f2fd2153a3ffac`로 병합했다. VRM 1.0 normalized humanoid와 손목/그립·실제 렌더 접촉 계측, 로컬 파일·조건 표시는 [PR #33](https://github.com/postmelee/drum-vrm/pull/33)의 CI 성공 후 `a2105a5508ae92e49d31977e2c56b096dfd1d822`로 병합했다. 구현·수치 검증·브라우저 검증은 완료했으며 릴리스 승인 대상 묶음이다. Rust 22개/웹 63개, 타입 검사와 세 실제 모델의 128프레임·탐색 검증이 통과했다. 실제 앱 업로드·재생·1인칭과 923프레임 오디오 포함 영상 인코딩을 확인했다. 자동화 브라우저의 blob 수신 제한으로 새 다운로드 파일의 별도 플레이어/ffprobe 검증은 남아 있다. [이번 검증 기록](verification/vrm-studio-unreleased.md)에 범위와 제한을 구분했다. #18은 체형별 검증을 추적한다. [VRM 모델 조사](research/vrm-models.md), [영문 안내](models.md), [한국어 안내](models.ko.md)를 추가했고 #17/#18/#30의 완료 조건을 갱신했다. 외부 VRM 파일은 `.local/vrm-test-models`에만 있으며 공개 저장소/배포물에 포함하지 않는다.
 
 **사용자 승인 전 새 태그·Release·Pages 배포 금지.** 이슈·PR·CI를 진행한 후 검토 가능한 변경 묶음으로 승인받아 한 번에 릴리스한다. 과거 MVP 승인과 아래 배포 기록은 향후 배포 권한이 아니다. [릴리스 정책](release-policy.md)을 따른다. README는 [영어](../README.md)와 [한국어](../README.ko.md)를 함께 유지한다.
+
+## Calibration batch — implemented, unreleased
+
+PR #33 passed CI and merged at `a2105a5508ae92e49d31977e2c56b096dfd1d822`. Its numerical/import/encoding checks are recorded in [the unreleased VRM verification](verification/vrm-studio-unreleased.md); that evidence does not automatically validate the new batch below. Main and public Pages remain separate states.
+
+The latest owner instruction is to implement shared seat height/forward and contact adjustment first, keep feet on pedals with ankle-only strokes immediately, improve the generic visible grip, then keep stands/pedals while replacing drum bodies. #18/#14/#20 completion criteria were updated without duplicate issues. [ADR 0005](decisions/0005-calibration-pedals-hardware.md) and the [English](calibration.md)/[Korean](calibration.ko.md) user guides preserve the contract.
+
+- Seat controls: 30–120 cm height, −50–50 cm forward position, and automatic fitting. Selected-role XYZ contact adjustment couples closed/open hi-hat while keeping pedalHat independent. Update kit contacts and corresponding hit targets together, then replan with the measured body. Settings are session-only.
+- Feet: the Rust profile path now anchors LF/RF to pedalHat/kick even with no foot notes. Fixed hip/knee/ankle chains, small ankle rotation, exact impact contact, and unreachable-pedal diagnostics preserve body lengths and original MIDI. `cargo test --locked` passed 26 tests; formatting and clippy passed for this increment. Web 76 tests, typecheck, WASM/production builds and license generation passed; see [the integrated verification](verification/calibration-unreleased.md).
+- Grip/hardware: generic palm-transverse socket and available finger curl; common standalone hardware and body-only preset/component replacement are implemented. Imported local GLB must have hardware removed by its author. Do not claim per-skin contact or physically exact mounts from socket metrics.
+- Playing style: existing RH-hi-hat/LH-snare preference is a planner cost. Explicit crossed/open/mirrored styles, hand overrides and collision-aware arm/stick ordering remain #14/#20 follow-up work; do not present them as implemented.
+- Verification: full original VRMs passed 128-frame/shuffled-seek browser checks; Twist hand close-ups show the grip. Seat/target controls, preset/GLB swaps and a 923-frame synthesized-audio WebM encode were exercised. Independent playback of the new blob file and the controlled two-export VRoid proportion pair remain open. Current branch: `codex/calibration-pedals-hardware`; review/CI follows, no release.
 
 ## v0.2 사용자 피드백 반영 상태
 
@@ -43,7 +55,7 @@ PR #31의 CI를 확인하고 `28a50a2c19c2b5109c490384f0b03e554f4dea1e`로 병�
 
 ## 다음 작업자가 이어갈 순서
 
-1. [현재 검증 기록](verification/studio-0.2.md)과 [최초 MVP 검증](verification/mvp-0.1.md)과 사용자 피드백을 읽고 재현할 MIDI 사례/관련 이슈를 정한다. M3·M4를 자동으로 모두 착수하지 않는다.
+1. 위 Active calibration batch와 [ADR 0005](decisions/0005-calibration-pedals-hardware.md), #18/#14/#20의 갱신된 완료 조건을 먼저 읽는다. 좌석·타점/페달 → 공통 하드웨어/교체 → 검증 순으로 현재 승인 범위를 마친다. M3·M4 전체나 교차 주법 후속을 자동 착수하지 않는다.
 2. `npm ci`, `npm run build:wasm` 후 `npm run dev`의 `/drum-vrm/`을 연다. Rust 1.94.1, wasm-pack 0.15.0, Node 24를 사용한다.
 3. 변경에 맞는 Rust/JS 검사를 실행하고, 엔진 변경은 WASM을 다시 생성한다. 새 codec/타임라인 변경은 실제 출력 파일의 프레임·오디오 onset까지 확인한다.
 4. PR과 CI를 완료하고 변경 묶음·검증 commit·미해결 제한을 정리한다. main 반영과 공개 배포를 구분하고, 승인되지 않은 배포는 실행하지 않는다.
@@ -55,7 +67,7 @@ PR #31의 CI를 확인하고 `28a50a2c19c2b5109c490384f0b03e554f4dea1e`로 병�
 
 - 원본 MIDI tick·트랙·event index·음표·velocity·정수 μs 시각을 보존한다. 해결이 어려워도 원본 시각을 이동하지 않는다.
 - 출력 시작 준비 0.5초·끝 여운 0.25초, 30fps를 프리뷰와 오디오에 함께 적용한다. `ceil((0.5 + D + 0.25) × 30)` 프레임이며 30초 곡은 923프레임이다.
-- `PerformancePlan`은 타격·타점·손발 배정·진단의 기준이고, 리그는 세계 좌표 57개 Float32 값을 적용한다. 공개 v0.2의 기본 체형은 `primitive-v1`이다. 미배포 PR #33은 별도 JSON RigProfile과 73-float 자세를 추가하고 VRM 1.0 및 기본 semantic Bone 리그를 공통 처리한다. 일반 GLB 매핑과 사용자 체형/좌석/신발 보정은 #17/#18에 남는다.
+- `PerformancePlan`은 타격·타점·손발 배정·진단의 기준이다. 공개 v0.2의 기본 체형은 `primitive-v1`/57-float이다. 병합·미배포 PR #33은 별도 JSON RigProfile과 73-float 자세로 VRM 1.0 및 기본 semantic Bone 리그를 공통 처리한다. 현재 묶음은 좌석·타점 수동 보정을 구현했으며 일반 GLB 매핑·정밀 피부/신발 보정은 #17/#18에 남는다.
 - 입력 상한: 10MiB, 선택 트랙 길이 300초, 512트랙, 전체 200,000이벤트, 선택한 지원 타격 50,000개. 같은 시각 그룹은 처음 32개까지 beam 후보를 확장하고 나머지는 소리/진단을 보존한다.
 - 각 손발은 45ms보다 짧은 재타격, 12m/s를 넘는 타점 이동, 도달 불가능한 타격을 배정하지 않는다. 생체역학적 사실을 보장하는 수치가 아니라 MVP의 보수적 규칙이다. 충돌 회피·정밀 주법·사용자 손 편집은 후속이다.
 - 미매핑 음표는 트랙/채널/음표별 개수를 알리고 합성 소리에 넣지 않는다. 지원하지만 배정 불가능한 타격은 합성 소리와 타점 강조를 유지한다.

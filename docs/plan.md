@@ -1,18 +1,22 @@
 # 개발 계획과 GitHub 작업 지도
 
-기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.2.0 공개 유지, 후속 조사·이슈·PR 준비**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
+기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.2.0 공개 유지, PR #33 병합 후 공통 보정·페달·하드웨어 로컬 검증 완료·PR 준비**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
 
 ## Current execution order — 2026-10-24
 
-The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. PR #31 passed CI and was merged at 28a50a2c19c2b5109c490384f0b03e554f4dea1e. The owner then authorized #28/#29 implementation followed by #30/#17. #28/#29 passed CI and merged in PR #32 at bd1568d4a3cc89913627b04e34f2fd2153a3ffac. #30/#17 VRM 1.0/profile/grip implementation is on codex/vrm-humanoid-grip with limited real-model contact/seek evidence; generic GLB mapping and controlled Studio two-body calibration remain open. VRM model acquisition findings have been added to #17/#18/#30. Public v0.2.0 stays unchanged.
+The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. PR #31 passed CI and was merged at 28a50a2c19c2b5109c490384f0b03e554f4dea1e. The owner then authorized #28/#29 implementation followed by #30/#17. #28/#29 passed CI and merged in PR #32 at bd1568d4a3cc89913627b04e34f2fd2153a3ffac. PR #33's VRM 1.0/profile/grip foundation passed CI and merged at a2105a5508ae92e49d31977e2c56b096dfd1d822; generic GLB mapping and controlled Studio two-body calibration remain open. VRM model acquisition findings have been added to #17/#18/#30. Public v0.2.0 stays unchanged.
+
+The owner next authorized seat height/forward and contact-target calibration, feet planted on pedals from rest, grip correction, then stable shared stands/pedals with replaceable drum bodies. This batch is implemented and locally verified on `codex/calibration-pedals-hardware`; see [verification](verification/calibration-unreleased.md). It has no release approval. Keep all avatar motion generic; asset-specific extraction belongs only in appearance adapters. #18, #14 and #20 acceptance criteria were expanded rather than creating duplicate issues. [ADR 0005](decisions/0005-calibration-pedals-hardware.md) defines the contract; user instructions are paired in [English](calibration.md) and [Korean](calibration.ko.md).
 
 | Priority | Work | Issue / milestone | Boundary |
 | --- | --- | --- | --- |
 | Complete (#31) | Preserve Korean README, add English, record batch-release policy and audit | [#27](https://github.com/postmelee/drum-vrm/issues/27) / M3 | Documentation/review PR; no release |
 | Complete (#32) | Lucide SVG controls; player camera; optional hit response | [#28](https://github.com/postmelee/drum-vrm/issues/28) / M3 | Icons can start independently; player camera requires a left/right fixture; response must preserve contact and seek/export determinism |
 | Complete (#32) | Batoski then smoj preset adaptation; investigate electronic kit | [#29](https://github.com/postmelee/drum-vrm/issues/29) / M3 | Only verified model rights/files enter implementation; electronic file remains unverified |
-| Implemented (#33), unreleased | Rendered contact baseline, wrist/grip orientation, versioned rig profile | [#30](https://github.com/postmelee/drum-vrm/issues/30) + #17 / M3 | Pull minimal measurement out of #23 and basic grip out of #20; preserve their broader backlog |
-| After the foundation | Two-body seat/grip/target/pedal calibration | #18 / M3 | Preserve source-event timing, recompute body-dependent reach/assignment as needed |
+| Complete (#33), unreleased | Rendered contact baseline, wrist/grip orientation, versioned rig profile | [#30](https://github.com/postmelee/drum-vrm/issues/30) + #17 / M3 | Pull minimal measurement out of #23 and basic grip out of #20; preserve their broader backlog |
+| Implemented, unreleased | Shared seat/target calibration; planted pedals; generic palm/finger grip | [#18](https://github.com/postmelee/drum-vrm/issues/18) + #20 / M3–M4 | Preserve source times/audio; replan reach; keep fixed bone lengths and deterministic seek/export. Controlled Studio body pair remains open |
+| Implemented, unreleased | Stable stands/pedals with replaceable bodies and calibrated anchors | #14 + #18 / M3 | Presets/components keep hardware; source adapters normalize body geometry. Local GLB must be body-only; no new unverified model bundle |
+| Specified follow-up | Crossed/open-handed/mirrored styles, hand overrides, arm/stick separation | [#14](https://github.com/postmelee/drum-vrm/issues/14) + [#20](https://github.com/postmelee/drum-vrm/issues/20) / M3–M4 | Current RH-hat/LH-snare cost preference is not explicit style control or collision avoidance |
 | Next production phase | WAV sync, mapping/hand editing, persistence, higher-resolution output | #13–#16 / M3 | Keep open; stabilize model/rig settings before project persistence; validate current output before raising resolution |
 | Later | Advanced expression, motion baking, learned models, platform expansion, full inspection tools | #19–#23 / M4 | Literature review can happen now; model adoption follows a measured baseline and verified code/data/weight terms |
 

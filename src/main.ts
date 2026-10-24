@@ -2,7 +2,8 @@ import './style.css';
 import { DrumTimeline } from './timeline';
 import { DrumScene } from './scene';
 import { setButtonIcon } from './icons';
-import { NativeHumanoidRigAdapter } from './rig-humanoid';
+import { NativeHumanoidRigAdapter, type HumanoidCalibration } from './rig-humanoid';
+import { moveKitTarget } from './kit-calibration';
 import { VRMHumanoidRigAdapter } from './rig-vrm';
 import { loadLocalVRM, type VRMInspection } from './vrm-import';
 import { VRMUtils } from '@pixiv/three-vrm';
@@ -12,7 +13,7 @@ import { DrumAudio } from './audio';
 import { SynthesisClient } from './synthesis';
 import { probeExport, exportVideo } from './export';
 import { makeDemo } from './demo';
-import { MAX_FILE_BYTES, PRE_ROLL, outputDuration, type PerformancePlan, type MidiInfo, type Instrument } from './types';
+import { MAX_FILE_BYTES, PRE_ROLL, outputDuration, type PerformancePlan, type MidiInfo, type Instrument, type KitPiece, type Vec3 } from './types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 app.innerHTML = `  <header class="toolbar">
@@ -47,6 +48,11 @@ app.innerHTML = `  <header class="toolbar">
         <p id="character-message" class="hint" role="status">VRM 1.0 표준 본 · 기본 스켈레톤</p>
         <p class="hint">단일 .vrm · VRM 1.0 · 최대 50 MiB<br>.vroid는 편집 파일입니다. VRM 1.0으로 내보내세요.</p>
         <div id="character-info"></div>
+        <h3>좌석</h3>
+        <label class="field">높이 (cm)<input id="seat-height" type="number" min="30" max="120" step="0.1" required/></label>
+        <label class="field">앞뒤 위치 (cm · 앞쪽 +)<input id="seat-forward" type="number" min="-50" max="50" step="0.1" required/></label>
+        <div class="button-row"><button id="seat-apply">좌석 적용</button><button id="seat-auto">자동 맞춤</button></div>
+        <p id="calibration-message" class="hint" role="status">팔·다리 길이를 유지하며 좌석과 타점을 조절합니다.</p>
         <details><summary>접촉 계측</summary><p id="contact-info" class="hint">실제 손에 부착한 스틱 끝과 발의 기준점을 계획과 비교합니다.</p><p class="hint">발 기준점은 신발 표면의 충돌 검사가 아닙니다. 도달하지 못한 타격은 연주 정보에 표시됩니다.</p></details>
         <p class="hint">파일은 브라우저에서만 처리합니다. 영상 공개와 모델 재배포의 이용 조건은 별개입니다. 머리카락·옷 물리는 재생과 탐색의 일치를 위해 정지합니다.</p>
         <a href="https://github.com/postmelee/drum-vrm/blob/main/docs/models.ko.md" target="_blank" rel="noreferrer">모델 확보 · 업로드 안내 / English</a>
@@ -56,13 +62,21 @@ app.innerHTML = `  <header class="toolbar">
         <label class="check"><input id="hit-response" type="checkbox"/> 타격 반응</label><label class="field">반응 강도<input id="hit-strength" aria-label="타격 반응 강도" type="range" min="0" max="1" step="0.05" value="0.65"/></label>
         <p class="hint">드럼을 클릭하면 해당 부품을 설정합니다.</p>
         <label class="field">부품<select id="piece"><option value="kick">Kick</option><option value="snare">Snare</option><option value="hihat">Hi-hat</option><option value="tomHigh">High tom</option><option value="tomMid">Mid tom</option><option value="tomLow">Low tom</option><option value="crash">Crash</option><option value="ride">Ride</option></select></label>
+        <details><summary>타점 위치</summary>
+          <label class="field">조절할 타점<select id="target-piece"><option value="kick">Kick 페달 · 킥 배치</option><option value="snare">Snare</option><option value="hihat">Hi-hat 심벌</option><option value="pedalHat">Hi-hat 페달</option><option value="tomHigh">High tom</option><option value="tomMid">Mid tom</option><option value="tomLow">Low tom</option><option value="crash">Crash</option><option value="ride">Ride</option></select></label>
+          <label class="field">좌우 (cm · 연주자 오른쪽 +)<input id="target-x" type="number" min="-200" max="200" step="1"/></label>
+          <label class="field">높이 (cm)<input id="target-y" type="number" min="2" max="250" step="1"/></label>
+          <label class="field">앞뒤 (cm · 앞쪽 +)<input id="target-z" type="number" min="-50" max="250" step="1"/></label>
+          <div class="button-row"><button id="target-apply">타점 적용</button><button id="target-reset">타점 초기화</button></div>
+          <p id="target-message" class="hint" role="status">실제 배치와 손발 계획을 함께 변경합니다. 열린·닫힌 하이햇은 같은 타점을 사용합니다.</p>
+        </details>
         <label class="field">기본 모델<select id="piece-model"><option value="asset" disabled>프리셋 / 가져온 모델</option><option value="standard">표준</option><option value="deep">깊은 셸</option><option value="compact">컴팩트</option></select></label>
         <label class="field horizontal">색상<input id="piece-finish" type="color" value="#6b7280"/></label>
         <label class="field">크기 <output id="piece-scale-value">100%</output><input id="piece-scale" type="range" min="0.75" max="1.25" step="0.01" value="1"/></label>
         <label class="field">회전 <output id="piece-rotation-value">0°</output><input id="piece-rotation" aria-label="부품 회전" type="range" min="-180" max="180" step="1" value="0"/></label>
         <button id="piece-reset">부품을 프리셋으로 복원</button><button id="piece-import">이 부품의 GLB 불러오기…</button><input id="model-file" type="file" accept=".glb" hidden/>
         <p id="model-message" class="hint" role="status">텍스처가 포함된 정적 .glb · 최대 25 MiB</p>
-        <p class="hint">외형만 변경합니다. 자동 크기 맞춤 후 모델의 표면과 타점이 다를 수 있습니다.</p>
+        <p class="hint">모델 교체는 드럼 본체만 바꿉니다. 받침대·페달과 배치는 유지됩니다. GLB는 받침대·페달을 제외한 부품 파일을 사용하세요. 자동 맞춤 뒤 표면과 타점을 확인하세요.</p>
         <details><summary>모델 출처와 지원 형식</summary><p>기본 3종은 자체 생성 도형입니다. Innerscene은 CC0, Batoski와 smoj는 CC BY 3.0 모델입니다. 부품별로 크기와 타점을 맞춥니다.</p><p>스킨·뼈대가 있는 GLB와 GLTF·FBX·OBJ·BLEND는 직접 지원하지 않습니다. 외부 파일 참조 없는 GLB로 변환하세요.</p><a href="https://github.com/postmelee/drum-vrm/blob/main/docs/research/drum-assets.md" target="_blank" rel="noreferrer">모델 조사 · 라이선스</a></details>
       </section>
       <section id="panel-source" class="panel" hidden>
@@ -96,7 +110,8 @@ const engine = new EngineClient();
 const synthesis = new SynthesisClient();
 let scene: DrumScene;
 try { scene = new DrumScene(stage); } catch { get('message').textContent = '3D 화면을 시작할 수 없습니다. WebGL을 지원하는 최신 브라우저를 사용해 주세요.'; throw new Error('WebGL unavailable'); }
-engine.setProfile(scene.getRigProfile());
+const defaultKit = scene.getKitLayout();
+engine.setSetup(scene.getRigProfile(), defaultKit);
 let plan: PerformancePlan | null = null;
 let bytes: Uint8Array | null = null;
 let audio: DrumAudio | null = null;
@@ -146,6 +161,56 @@ function refreshPiece() {
   get('piece-scale-value').textContent = `${Math.round(visual.scale*100)}%`;
   get<HTMLInputElement>('piece-rotation').value=String(visual.rotation);get('piece-rotation-value').textContent=`${visual.rotation}°`;
 }
+function refreshCalibration() {
+  const seat = scene.getCalibration();
+  get<HTMLInputElement>('seat-height').value = String(Math.round(seat.seatHeight*1000)/10);
+  get<HTMLInputElement>('seat-forward').value = String(Math.round(seat.seatForward*1000)/10);
+}
+function refreshTarget() {
+  const piece = scene.getKitLayout().find(p=>p.id===get<HTMLSelectElement>('target-piece').value)!;
+  const pedal=piece.id==='kick'||piece.id==='pedalHat', height=get<HTMLInputElement>('target-y');
+  height.min=pedal?'4':'2';height.max=pedal?'20':'250';
+  for (const [i,axis] of ['x','y','z'].entries()) get<HTMLInputElement>(`target-${axis}`).value=String(Math.round(piece.position[i]*1000)/10);
+}
+function invalidateVideo() {
+  if(downloadUrl)URL.revokeObjectURL(downloadUrl); downloadUrl=null; get('download').hidden=true;
+}
+function applyCalibration(seat: HumanoidCalibration, kit: KitPiece[], feedbackId: string) {
+  if(busy||exporting||modelBusy)return;
+  const oldSeat=scene.getCalibration(), oldKit=scene.getKitLayout();
+  const time=audio?.pause()??0;
+  try {
+    scene.setKitLayout(kit);
+    const profile=scene.setCalibration(seat);
+    const next=engine.setSetup(profile,kit);
+    if(next&&plan){plan=next;scene.setPlan(plan);timeline.setPlan(plan);renderDiagnostics();updateFrame(time);}
+    invalidateVideo();
+    const unavailable=plan?.hits.filter(h=>h.limb===null).length??0;
+    get(feedbackId).textContent=`보정 적용 완료${unavailable?` · 표현하지 못한 타격 ${unavailable}개 (연주정보 확인)`:''}`;
+  } catch(error) {
+    scene.setKitLayout(oldKit);scene.setCalibration(oldSeat);updateFrame(time);
+    get(feedbackId).textContent=error instanceof Error?error.message:String(error);
+  }
+  refreshCalibration();refreshTarget();
+}
+refreshCalibration();refreshTarget();
+get('seat-apply').onclick=()=>{
+  const height=get<HTMLInputElement>('seat-height'), forward=get<HTMLInputElement>('seat-forward');
+  if(!height.reportValidity()||!forward.reportValidity())return;
+  applyCalibration({seatHeight:height.valueAsNumber/100,seatForward:forward.valueAsNumber/100},scene.getKitLayout(),'calibration-message');
+};
+get('seat-auto').onclick=()=>applyCalibration(scene.getAutomaticCalibration(),scene.getKitLayout(),'calibration-message');
+get<HTMLSelectElement>('target-piece').onchange=refreshTarget;
+get('target-apply').onclick=()=>{
+  const fields=['x','y','z'].map(axis=>get<HTMLInputElement>(`target-${axis}`));
+  if(fields.some(field=>!field.reportValidity()))return;
+  try{applyCalibration(scene.getCalibration(),moveKitTarget(scene.getKitLayout(),get<HTMLSelectElement>('target-piece').value as Instrument,fields.map(field=>field.valueAsNumber/100) as Vec3),'target-message');}
+  catch(error){get('target-message').textContent=String(error);refreshTarget();}
+};
+get('target-reset').onclick=()=>{
+  const id=get<HTMLSelectElement>('target-piece').value as Instrument;
+  applyCalibration(scene.getCalibration(),moveKitTarget(scene.getKitLayout(),id,defaultKit.find(p=>p.id===id)!.position),'target-message');
+};
 for (const button of document.querySelectorAll<HTMLButtonElement>('[data-panel]')) button.onclick=()=>openPanel(activePanel===button.dataset.panel?null:button.dataset.panel as Panel);
 get('close-panel').onclick=()=>{const previous=activePanel;openPanel(null);document.querySelector<HTMLButtonElement>(`[data-panel="${previous}"]`)?.focus();};
 get('theme').onclick=()=>setTheme(theme==='light'?'dark':'light');
@@ -168,12 +233,14 @@ function showModelInfo(info: VRMInspection | null) {
   host.append(details);
 }
 function adoptRig(adapter: NativeHumanoidRigAdapter | VRMHumanoidRigAdapter) {
-  const next = engine.setProfile(adapter.getProfile());
+  const kit=scene.getKitLayout();
+  const profile=adapter.setCalibration(adapter.getAutomaticCalibration(kit),kit);
+  const next = engine.setSetup(profile,kit);
   scene.setRig(adapter);
   scene.setSkeletonVisible(get<HTMLInputElement>('skeleton-visible').checked);
   scene.setModelVisible(get<HTMLInputElement>('model-visible').checked);
   if (next && plan) { plan = next; scene.setPlan(plan); timeline.setPlan(plan); renderDiagnostics(); updateFrame(audio?.currentTime ?? 0); }
-  if(downloadUrl)URL.revokeObjectURL(downloadUrl); downloadUrl=null; get('download').hidden=true;
+  invalidateVideo();refreshCalibration();
 }
 get('character-import').onclick=()=>get<HTMLInputElement>('character-file').click();
 get<HTMLInputElement>('character-file').onchange=async e=>{
@@ -204,8 +271,8 @@ get<HTMLSelectElement>('kit-preset').onchange=async e=>{
   catch(error){input.value=committedPreset;get('model-message').textContent=`모델 로딩 실패: ${error instanceof Error?error.message:String(error)}`;}
   finally{modelBusy=false;controls();}
 };
-get<HTMLSelectElement>('piece').onchange=()=>{scene.selectPiece(selectedPiece());refreshPiece();};
-scene.onPieceSelect=id=>{if(!id)return;get<HTMLSelectElement>('piece').value=id==='openHat'||id==='pedalHat'?'hihat':id;refreshPiece();};
+get<HTMLSelectElement>('piece').onchange=()=>{scene.selectPiece(selectedPiece());get<HTMLSelectElement>('target-piece').value=selectedPiece();refreshPiece();refreshTarget();};
+scene.onPieceSelect=id=>{if(!id)return;get<HTMLSelectElement>('piece').value=id==='openHat'||id==='pedalHat'?'hihat':id;get<HTMLSelectElement>('target-piece').value=id==='openHat'?'hihat':id;refreshPiece();refreshTarget();};
 get<HTMLSelectElement>('piece-model').onchange=e=>{scene.setPieceVisual(selectedPiece(),{model:(e.target as HTMLSelectElement).value as 'standard'|'deep'|'compact'});refreshPiece();};
 get<HTMLInputElement>('piece-finish').oninput=e=>scene.setPieceVisual(selectedPiece(),{finish:(e.target as HTMLInputElement).value});
 get<HTMLInputElement>('piece-scale').oninput=e=>{const scale=Number((e.target as HTMLInputElement).value);scene.setPieceVisual(selectedPiece(),{scale});get('piece-scale-value').textContent=`${Math.round(scale*100)}%`;};
@@ -244,7 +311,7 @@ function controls() {
   for (const el of document.querySelectorAll<HTMLInputElement>('#tracks input')) el.disabled = busy || exporting;
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-camera]')) el.disabled = exporting || activePanel==='drums';
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-panel], #close-panel, #theme, #character-visible')) el.disabled=exporting || modelBusy;
-  for (const el of document.querySelectorAll<HTMLInputElement>('#panel-drums input, #panel-drums select, #panel-drums button')) el.disabled=exporting || modelBusy;
+  for (const el of document.querySelectorAll<HTMLInputElement>('#panel-drums input, #panel-drums select, #panel-drums button')) el.disabled=busy || exporting || modelBusy;
   for (const id of ['start-upload','start-demo']) get<HTMLButtonElement>(id).disabled=busy || exporting;
   for (const el of document.querySelectorAll<HTMLInputElement>('#panel-character input, #panel-character button')) el.disabled=busy || exporting || modelBusy;
   get<HTMLInputElement>('hit-strength').disabled = exporting || modelBusy || !get<HTMLInputElement>('hit-response').checked;
@@ -308,8 +375,8 @@ function renderDiagnostics() {
   status('준비 완료','ready'); message(unresolved?`준비 완료. 표현하지 못한 ${unresolved}개 타격은 알림을 확인해 주세요.`:'준비가 끝났습니다. 재생 버튼을 눌러 연주를 시작하세요.'); timeline.resize();
 }
 function clearPerformance() {
-  if(plan){const resting=engine.evaluate(-PRE_ROLL);if(resting)scene.applyPose(resting,-PRE_ROLL);}
   audio?.dispose(); audio=null; buffer=null; plan=null;
+  engine.clearPerformance(); scene.clearPlan();
   for (const id of ['metric-duration','metric-hits','metric-tempos','plan-label']) get(id).textContent='—';
   for (const id of ['duration','current-time']) get(id).textContent='00:00';
   get('stage-empty').hidden=false; get('diagnostics').hidden=true;

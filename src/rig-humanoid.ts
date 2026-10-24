@@ -21,11 +21,24 @@ export interface RigContactSample {
 }
 export interface HumanoidRigAdapter extends RigAdapter {
   getProfile(): RigProfile;
+  getCalibration(): HumanoidCalibration;
+  getAutomaticCalibration(kit?: readonly KitPiece[]): HumanoidCalibration;
+  setCalibration(value: HumanoidCalibration, kit?: readonly KitPiece[]): RigProfile;
   getContactSamples(): RigContactSample[];
   setSkeletonVisible(visible: boolean): void;
   setModelVisible(visible: boolean): void;
   getPlayerPosition(): Vec3;
 }
+/** Absolute pelvis height and forward position in metres. Bone lengths never change. */
+export interface HumanoidCalibration { seatHeight: number; seatForward: number; }
+const DEFAULT_PEDALS: [Vec3, Vec3] = [[-.22, .08, .55], [.20, .08, .62]];
+const pedalTargets = (kit?: readonly KitPiece[]): [Vec3, Vec3] => {
+  return ['pedalHat', 'kick'].map((id, index) => {
+    const point = kit?.find(piece => piece.id === id)?.position ?? DEFAULT_PEDALS[index];
+    if (point.length !== 3 || !point.every(Number.isFinite)) throw new Error(`Invalid pedal target: ${id}`);
+    return [...point];
+  }) as [Vec3, Vec3];
+};
 interface AdapterHooks {
   beforePose?(): void;
   afterPose?(): void;
@@ -46,9 +59,18 @@ export function createRestRigPose(profile: RigProfile): Float32Array {
     const root = new THREE.Vector3(...profile.roots[limb]), q = new THREE.Quaternion(...profile.contactRotations[limb]);
     const offset = new THREE.Vector3(...profile.gripOffsets[limb]).add(new THREE.Vector3(...profile.tipOffsets[limb])).applyQuaternion(q);
     const tip = new THREE.Vector3(...profile.restTips[limb]), end = tip.clone().sub(offset), direction = end.clone().sub(root);
-    const distance = direction.length(); direction.normalize();
-    const [a, b] = profile.lengths[limb], along = (a * a - b * b + distance * distance) / (2 * distance);
-    const pole = new THREE.Vector3(...profile.bendPoles[limb]); pole.addScaledVector(direction, -pole.dot(direction)).normalize();
+    const [a, b] = profile.lengths[limb];
+    const distance = THREE.MathUtils.clamp(direction.length(), Math.abs(a - b) + 1e-6, a + b - 1e-6);
+    if (direction.length() < 1e-10) direction.set(0, 1, 0); else direction.normalize();
+    end.copy(root).addScaledVector(direction, distance); tip.copy(end).add(offset);
+    const along = (a * a - b * b + distance * distance) / (2 * distance);
+    const pole = new THREE.Vector3(...profile.bendPoles[limb]); pole.addScaledVector(direction, -pole.dot(direction));
+    if (pole.lengthSq() < 1e-10) {
+      const values=direction.toArray().map(Math.abs), axis=values.indexOf(Math.min(...values));
+      pole.set(0,0,0).setComponent(axis,1);
+      pole.addScaledVector(direction, -pole.dot(direction));
+    }
+    pole.normalize();
     const middle = root.clone().addScaledVector(direction, along).addScaledVector(pole, Math.sqrt(Math.max(0, a * a - along * along)));
     pose.set([...root.toArray(), ...middle.toArray(), ...end.toArray(), ...tip.toArray()], limb * 12);
     pose.set(q.toArray(), 57 + limb * 4);
@@ -76,6 +98,11 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
   private readonly originalMeshVisibility = new Map<THREE.Mesh, boolean>();
   private firstPerson = false;
   private disposed = false;
+  private calibration: HumanoidCalibration;
+  private readonly baseProfile: RigProfile;
+  private readonly baseCalibration: HumanoidCalibration;
+  private pedals: [Vec3, Vec3] = pedalTargets();
+  private readonly fingerPose: { node: THREE.Object3D; rotation: THREE.Quaternion }[] = [];
 
   constructor(humanoid: VRMHumanoid, source: THREE.Object3D, id: string, hooks: AdapterHooks = {}) {
     this.humanoid = humanoid; this.source = source; this.hooks = hooks;
@@ -109,7 +136,10 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       const horizontalSq = (target[0] - relative.x) ** 2 + (target[2] - footLength - (.06 + relative.z)) ** 2;
       if (horizontalSq < reach * reach) seatHeight = Math.min(seatHeight, target[1] + .025 + Math.sqrt(reach * reach - horizontalSq) - relative.y);
     }
-    const seat = new THREE.Vector3(0, Math.max(.45, seatHeight), .06), translation = seat.clone().sub(restPelvis);
+    const seat = new THREE.Vector3(0, Math.max(.3, seatHeight), .06), translation = seat.clone().sub(restPelvis);
+    this.calibration = { seatHeight: seat.y, seatForward: seat.z };
+    this.baseCalibration = { ...this.calibration };
+    const measuredGrips = this.prepareMatchedGrip();
     const roots: Vec3[] = [], lengths: [number, number][] = [], rests: Vec3[] = [], grips: Vec3[] = [], tips: Vec3[] = [], rotations: Quat[] = [];
     const poles: Vec3[] = [[-1, -.35, -.2], [1, -.35, -.2], [0, 0, 1], [0, 0, 1]];
     const chainData = CHAIN_NAMES.map((names, limb) => {
@@ -121,17 +151,15 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       const root = points[0].clone().add(translation), arm = limb < 2;
       const nativeQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), arm ? .29 : 0);
       const side = limb === 0 || limb === 2 ? 'left' : 'right';
-      const index = arm ? humanoid.getNormalizedBoneNode(`${side}IndexProximal`) : null;
-      const indexOffset = index?.getWorldPosition(new THREE.Vector3()).sub(points[2]);
-      // Put the shaft in the index finger's curl plane, rather than passing
-      // through the palm centre. Optional fingers fall back to a neutral socket.
-      const grip: Vec3 = arm ? [indexOffset ? (limb === 0 ? -1 : 1) * indexOffset.z : 0, -.023, .035] : [0, -.025, 0];
+      // The shaft crosses the finger curl planes, as in a matched grip. Its
+      // centre follows measured finger geometry rather than an avatar preset.
+      const grip: Vec3 = arm ? measuredGrips[limb] : [0, -.025, 0];
       const toe = !arm ? humanoid.getNormalizedBoneNode(`${side}Toes`) : null;
       const footLength = toe ? THREE.MathUtils.clamp(toe.getWorldPosition(new THREE.Vector3()).distanceTo(points[2]), .07, .25) : .14;
       const tip: Vec3 = arm ? [0, 0, .31] : [0, 0, footLength];
       const restReach = Math.max(Math.abs(measures[0] - measures[1]) + .001, (measures[0] + measures[1]) * .78);
       const end = root.clone().add(new THREE.Vector3(arm ? (limb === 0 ? .07 : -.07) : 0, arm ? -.48 : -.68, arm ? .36 : .48).normalize().multiplyScalar(restReach));
-      const restTip = end.add(new THREE.Vector3(...grip).add(new THREE.Vector3(...tip)).applyQuaternion(nativeQ));
+      const restTip = arm ? end.add(new THREE.Vector3(...grip).add(new THREE.Vector3(...tip)).applyQuaternion(nativeQ)) : toVector(this.pedals[limb - 2]);
       roots.push(legacyPositionToNative(root.toArray())); lengths.push(measures); rests.push(legacyPositionToNative(restTip.toArray()));
       grips.push(legacyPositionToNative(grip)); tips.push(legacyPositionToNative(tip)); rotations.push(legacyQuaternionToNative(nativeQ.toArray()));
       return { nodes, restAxes: axes.map(axis => axis.normalize()) as Chain['restAxes'] };
@@ -143,6 +171,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       pelvis: legacyPositionToNative(seat.toArray()), chest: legacyPositionToNative(chest.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
       head: legacyPositionToNative(head.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
     };
+    this.baseProfile = structuredClone(this.profile);
     // All validation above precedes taking ownership of the source scene.
     this.root.name = id; this.root.add(source, this.skeletonOverlay);
     this.root.userData.coordinateSystem = 'native-vrm1-y-up-z-forward-left-positive-x';
@@ -151,7 +180,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     for (let limb = 0; limb < 4; limb++) {
       const names = CHAIN_NAMES[limb], rawEnd = humanoid.getRawBoneNode(names[2])!;
       const restWorld = rawEnd.getWorldQuaternion(new THREE.Quaternion());
-      const handToTool = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), limb < 2 ? (limb === 0 ? 1 : -1) * Math.PI / 2 : 0);
+      const handToTool = new THREE.Quaternion();
       const socket = new THREE.Group(); socket.name = `${names[2]}ToolSocket`; socket.userData.rigTool = true;
       socket.quaternion.copy(restWorld).invert().multiply(handToTool); rawEnd.add(socket);
       // Neutralize any inherited rest scale in the socket, never in the bones.
@@ -170,6 +199,34 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
   }
 
   getProfile(): RigProfile { return structuredClone(this.profile); }
+  getCalibration(): HumanoidCalibration { return { ...this.calibration }; }
+  getAutomaticCalibration(kit?: readonly KitPiece[]): HumanoidCalibration {
+    const pedals = kit ? pedalTargets(kit) : this.pedals;
+    let height = .73;
+    const forward = .06;
+    for (let limb = 2; limb < 4; limb++) {
+      const relative = new THREE.Vector3(...this.baseProfile.roots[limb]).sub(new THREE.Vector3(...this.baseProfile.pelvis));
+      const ankle = new THREE.Vector3(...pedals[limb - 2]).sub(new THREE.Vector3(...this.baseProfile.gripOffsets[limb])).sub(new THREE.Vector3(...this.baseProfile.tipOffsets[limb]));
+      const reach = (this.baseProfile.lengths[limb][0] + this.baseProfile.lengths[limb][1]) * .94;
+      const horizontalSq = (ankle.x - relative.x) ** 2 + (ankle.z - forward - relative.z) ** 2;
+      if (horizontalSq < reach * reach) height = Math.min(height, ankle.y + Math.sqrt(reach * reach - horizontalSq) - relative.y);
+    }
+    return { seatHeight: THREE.MathUtils.clamp(height, .3, 1.2), seatForward: forward };
+  }
+  setCalibration(value: HumanoidCalibration, kit?: readonly KitPiece[]): RigProfile {
+    if (!Number.isFinite(value.seatHeight) || value.seatHeight < .3 || value.seatHeight > 1.2 || !Number.isFinite(value.seatForward) || Math.abs(value.seatForward) > .5) {
+      throw new Error('좌석 높이는 0.3–1.2m, 앞뒤 위치는 −0.5–0.5m 범위여야 합니다.');
+    }
+    const pedals = kit ? pedalTargets(kit) : this.pedals;
+    const profile = structuredClone(this.baseProfile);
+    const offset: Vec3 = [0, value.seatHeight - this.baseCalibration.seatHeight, value.seatForward - this.baseCalibration.seatForward];
+    const translate = (point: Vec3): Vec3 => point.map((v, i) => v + offset[i]) as Vec3;
+    profile.roots = profile.roots.map(translate) as RigProfile['roots'];
+    profile.pelvis = translate(profile.pelvis); profile.chest = translate(profile.chest); profile.head = translate(profile.head);
+    profile.restTips = [translate(profile.restTips[0]), translate(profile.restTips[1]), [...pedals[0]], [...pedals[1]]];
+    Object.assign(this.profile, profile); this.pedals = pedals; this.calibration = { ...value };
+    return this.getProfile();
+  }
   describeRig() { return { id: this.profile.id, joints: Object.keys(this.humanoid.rawHumanBones), poseFloats: RIG_POSE_FLOATS }; }
   calibrate(kit: readonly KitPiece[]): RigCalibration {
     const targetPositions: RigCalibration['targetPositions'] = {};
@@ -230,17 +287,67 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     node.quaternion.copy(parent.invert().multiply(rotation)); node.updateWorldMatrix(false, true);
   }
   private applyMatchedGrip(): void {
+    for (const { node, rotation } of this.fingerPose) node.quaternion.copy(rotation);
+  }
+  /** Prepare one deterministic pose from semantic finger joints. No skin names,
+   * avatar IDs or per-model exceptions are involved. The shaft runs across the
+   * closed fingers; the thumb opposes their measured centre. */
+  private prepareMatchedGrip(): [Vec3, Vec3] {
+    const offsets: Vec3[] = [];
     for (const side of ['left', 'right'] as const) {
-      const sign = side === 'left' ? -1 : 1;
-      for (const finger of ['Index', 'Middle', 'Ring', 'Little'] as const) for (const [index, segment] of ['Proximal', 'Intermediate', 'Distal'].entries()) {
-        const node = this.humanoid.getNormalizedBoneNode(`${side}${finger}${segment}` as VRMHumanBoneName);
-        node?.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), sign * [.82, 1.05, .7][index]);
+      const hand = this.humanoid.getNormalizedBoneNode(`${side}Hand`)!;
+      const curls: { node: THREE.Object3D; axis: THREE.Vector3; angle: number }[] = [];
+      const fingers: THREE.Object3D[][] = [];
+      for (const finger of ['Index', 'Middle', 'Ring', 'Little'] as const) {
+        const nodes = ['Proximal', 'Intermediate', 'Distal'].map(segment => this.humanoid.getNormalizedBoneNode(`${side}${finger}${segment}` as VRMHumanBoneName));
+        if (nodes.every(node => node !== null)) fingers.push(nodes as THREE.Object3D[]);
+        nodes.forEach((node, index) => {
+          if (!node) return;
+          const child = nodes[index + 1], previous = nodes[index - 1];
+          const axis = child ? child.getWorldPosition(new THREE.Vector3()).sub(node.getWorldPosition(new THREE.Vector3()))
+            : previous ? node.getWorldPosition(new THREE.Vector3()).sub(previous.getWorldPosition(new THREE.Vector3())) : new THREE.Vector3(side === 'left' ? 1 : -1, 0, 0);
+          axis.normalize().cross(new THREE.Vector3(0, -1, 0));
+          if (axis.lengthSq() < 1e-8) axis.set(0, 0, side === 'left' ? -1 : 1);
+          curls.push({ node, axis: axis.normalize(), angle: [1.13, 1.31, .79][index] });
+        });
       }
-      for (const [index, segment] of ['Metacarpal', 'Proximal', 'Distal'].entries()) {
-        const node = this.humanoid.getNormalizedBoneNode(`${side}Thumb${segment}` as VRMHumanBoneName);
-        if (node) node.quaternion.setFromEuler(new THREE.Euler(index === 0 ? -.4 : 0, sign * .35, sign * [.5, .55, .45][index]));
+      curls.forEach(({ node, axis, angle }) => node.quaternion.setFromAxisAngle(axis, angle));
+      this.humanoid.normalizedHumanBonesRoot.updateWorldMatrix(true, true);
+      const centres = fingers.map(nodes => {
+        const [a, b, c] = nodes.map(node => hand.worldToLocal(node.getWorldPosition(new THREE.Vector3())));
+        const ab = b.clone().sub(a), ac = c.clone().sub(a), cross = ab.clone().cross(ac);
+        if (cross.lengthSq() < 1e-12) return a.clone().add(new THREE.Vector3(0, -.023, 0));
+        return a.clone().add(ac.clone().cross(cross).multiplyScalar(ab.lengthSq()).add(cross.clone().cross(ab).multiplyScalar(ac.lengthSq())).divideScalar(2 * cross.lengthSq()));
+      });
+      const grip = centres.length ? centres.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(centres.length) : new THREE.Vector3(0, -.023, .035);
+      // Keep the butt beyond the little finger and the tip beyond the index.
+      if (fingers.length) grip.z = Math.max(...fingers.map(nodes => hand.worldToLocal(nodes[0].getWorldPosition(new THREE.Vector3())).z));
+      offsets.push(tuple(grip));
+      const thumb = ['Metacarpal', 'Proximal', 'Distal'].map(segment => this.humanoid.getNormalizedBoneNode(`${side}Thumb${segment}` as VRMHumanBoneName));
+      if (thumb.every(node => node !== null)) {
+        const joints = thumb as THREE.Object3D[], end = new THREE.Object3D();
+        const distal = joints[2], axis = distal.getWorldPosition(new THREE.Vector3()).sub(joints[1].getWorldPosition(new THREE.Vector3()));
+        axis.setLength(THREE.MathUtils.clamp(axis.length() * .7, .008, .03));
+        end.position.copy(axis); distal.add(end);
+        const target = hand.localToWorld(grip.clone().add(new THREE.Vector3(0, .009, .004)));
+        // Bounded CCD opposes the thumb to the shaft. The resulting local pose
+        // is cached, so playback/seek/export never integrate solver state.
+        for (let step = 0; step < 12; step++) for (let i = joints.length - 1; i >= 0; i--) {
+          const node = joints[i]; node.updateWorldMatrix(true, true);
+          const pivot = node.getWorldPosition(new THREE.Vector3()), from = end.getWorldPosition(new THREE.Vector3()).sub(pivot), to = target.clone().sub(pivot);
+          if (from.lengthSq() < 1e-12 || to.lengthSq() < 1e-12) continue;
+          const world = new THREE.Quaternion().setFromUnitVectors(from.normalize(), to.normalize()).multiply(node.getWorldQuaternion(new THREE.Quaternion()));
+          const local = node.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(world);
+          node.quaternion.copy(new THREE.Quaternion().rotateTowards(local, [1.1, 1.3, 1.3][i]));
+        }
+        end.removeFromParent();
+      }
+      for (const bone of Object.entries(this.humanoid.normalizedHumanBones)) {
+        if (bone[0].startsWith(side) && /Thumb|Index|Middle|Ring|Little/.test(bone[0])) this.fingerPose.push({ node: bone[1].node, rotation: bone[1].node.quaternion.clone() });
       }
     }
+    this.humanoid.resetNormalizedPose(); this.humanoid.normalizedHumanBonesRoot.updateWorldMatrix(true, true);
+    return offsets as [Vec3, Vec3];
   }
   private buildOverlay(): void {
     const sphere = new THREE.SphereGeometry(.012, 8, 6), cylinder = new THREE.CylinderGeometry(.006, .006, 1, 6);
