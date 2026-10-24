@@ -1,3 +1,5 @@
+> Research record preserved from [baseline 66951cd](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/snare-ready-and-kit-fit.md). Dated findings and statements of implementation status below belong to that record; use the [current specifications](../../specs/README.md) and [model guide](../models.md) for current behavior.
+
 # Snare ready pose and body-to-kit fit assessment
 
 Date: 2026-10-24. Code assessed: `1e79532ea8c1d1e387ed052511718cd43cdf4e41` (open PR #34). This is an engineering assessment and proposed follow-up, not implemented behavior or a new release approval. Related: #18 (body/kit calibration), #20 (stroke/style), #14 (editing/hardware).

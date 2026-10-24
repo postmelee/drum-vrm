@@ -1,12 +1,15 @@
-# Bundled drum model
+# Bundled drum models
 
-**Five-piece drum kit** by [Innerscene](https://www.innerscene.com/tools/library/3d-parts/five-piece-drum-kit-daff10f4), dedicated under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). Attribution is provided for provenance; CC0 does not require it.
+**English** · [한국어](README.ko.md)
 
-- `innerscene-drum-kit.glb`: unmodified upstream binary, downloaded 2026-10-24 from the original library's public download endpoint.
-- `innerscene-LICENSE.txt`: complete CC0 legal text from Creative Commons.
-- `innerscene-provenance.json`: original URL, retrieval date, exact SHA-256 checksums, and inspected model structure.
-- `NOTICE.txt`: short notice that the distribution license generator can append.
+| Model | Author | Original terms | Exact source and files |
+| --- | --- | --- | --- |
+| Five-piece drum kit | Innerscene | CC0 1.0 | [Provenance](innerscene-provenance.json) |
+| Full Drum Kit | Batoski | CC BY 3.0 | [Provenance](batoski-provenance.json) |
+| Drum Kit | smoj | CC BY 3.0 | [Provenance](smoj-provenance.json) |
 
-The application adapts coordinates, groups individual instruments, merges static meshes by material, resamples textures to at most 512 pixels, and moves surface contacts to the planned targets at runtime. The binary remains unchanged. The source throne is omitted to keep the skeleton view uncluttered. These adaptations neither change the source MIDI timing nor replace audio: the model is visual only.
+The provenance JSON records source/download links, retrieval dates, exact binary/license hashes and runtime adaptation. It is the attribution source for generated [NOTICE.txt](NOTICE.txt) and [distribution notices](../licenses.txt); run `npm run licenses` to refresh them. Original GLB files and full license texts are preserved. CC0 does not require attribution; its author is still credited for provenance. CC BY attribution and adaptation details remain in the notices.
 
-Research, alternatives, and current limitations: [drum asset research](../../docs/research/drum-assets.md).
+These models change appearance, not the synthesized sound. Runtime extraction, coordinate normalization and placement are recorded per asset. Imported local drum parts need body-only geometry to preserve shared stands/pedals; see [calibration](../../docs/calibration.md). No external character or audio sample is bundled.
+
+[Source research](../../docs/research/drum-assets-followup.md) · [Product](../../README.md)

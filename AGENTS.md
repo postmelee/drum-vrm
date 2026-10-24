@@ -1,42 +1,36 @@
-# Drum VRM 작업 지침
+# Drum VRM project instructions
 
-## 다시 시작할 때
+## Start and scope
 
-1. `docs/handoff.md`에서 현재 상태와 다음 작업을 읽는다.
-2. `docs/product-requirements.md`, `docs/plan.md`, `docs/architecture.md`를 읽는다.
-3. GitHub의 해당 이슈와 마일스톤 상태를 확인한다. 이슈가 실행 작업의 기준이고 문서는 설계의 기준이다.
-4. `docs/decisions/`의 결정과 `docs/research/`의 채택 조건을 확인한다.
+- Read the relevant GitHub issue/PR, [work entrypoint](docs/handoff.md), and the affected [technical specification](specs/README.md). Read linked decisions/evidence when needed; do not load the entire archive by default.
+- Continue within the owner's approved scope without repeated routine approvals. Preserve other workers' changes. Use `codex/` branches.
+- Keep scope and acceptance on the issue; explain the final change, executed checks and limitations in the PR. Complex work may need one linked plan or evidence report; scale the process to the change.
+- Do not merge a PR without the owner's instruction. Release tags, GitHub Releases and Pages deployment require separate explicit approval of the reviewed batch and exact candidate commit. CI success and previous approvals are insufficient. Follow the [release policy](docs/release-policy.md).
 
-## Current authorization and release policy
+## Documents and language
 
-The owner approved the original MVP implementation and deployment on 2026-10-24. That historical approval is recorded in `docs/approval.md` and does not authorize future releases.
+- Speak with the owner in Korean. Write new issues, PRs and internal records in English.
+- Maintain English/Korean pairs for README, public guides and public technical specifications: `name.md` and `name.ko.md`, with reciprocal links and equivalent facts in the same PR.
+- Internal research, ADRs and verification records may be English only. Preserve existing Korean historical text, original legal text and generated inventories without forced translation.
+- Keep useful features, usage and local commands in README. Put brief task guidance in existing topic documents under `docs/`; detailed current contracts and explanations live in `specs/`.
+- Preserve ADR IDs and supersession relationships in `docs/decisions/`, research sources in `docs/research/`, and commit/environment-specific results in `docs/verification/`. New evidence does not rewrite an old measured result.
+- An executable limit is owned by code; update its matching specification with the implementation. Issues own live status. Guides summarize and link rather than maintain independent status histories.
+- Prefer one coherent topic over many short pages. Keep authored documents under 500 lines; original legal text and generated inventories are exceptions. Add directory indexes only when they improve navigation.
+- Use Mermaid for relationships that benefit from a diagram; check rendering when diagrams change. Preserve meaningful detail and source credits, not only short summaries.
+- Keep current behavior, proposed design and public deployment distinct. A specification or merged PR does not establish what the public app runs.
 
-The owner's latest instruction supersedes earlier release guidance: work through issues and PRs, then release an approved batch once. Do not create release tags, publish GitHub Releases, or dispatch Pages deployment without an explicit owner instruction approving that batch. Passing CI, merging a PR, finishing a milestone, or a previous deployment is not release approval. Continue authorized implementation, verification, documentation, and PR work without asking again for each reversible step. Prepare a concrete change summary, tested commit, known limitations, and release scope before requesting release approval. See `docs/release-policy.md`.
+## Engineering and provenance
 
-## Documentation languages
+- Rust owns MIDI interpretation and planning; WASM is the browser boundary; Three.js renders through `RigAdapter`. Keep `PerformancePlan` independent of scene object names.
+- Do not shift original MIDI hit times to conceal motion problems. Diagnose impossible hits. `evaluate_at(t)` must return the same primary pose regardless of playback/seek order.
+- Fit through semantic humanoid measurements and common numeric constraints, without avatar-name branches or stretching bones. Actual stick/sole-marker contact is not proof of natural posture or skin collision clearance.
+- Run meaningful checks appropriate to the changed boundary before claiming success. Rebuild WASM for Rust changes. Media changes need actual output evidence, not just encoder completion.
+- Pin dependency/source versions and preserve applicable licenses. Distinguish papers, code, data, weights and assets; a license for one does not cover the others. Model provenance JSON owns attribution metadata; generate notices with `npm run licenses`.
+- Never commit uploaded MIDI/WAV/VRM, private downloads, secrets or raw conversations. `.local/` stays private. Author public demo/test fixtures independently.
 
-- Communicate with the owner in Korean.
-- `README.md` is English; `README.ko.md` is Korean. Preserve existing Korean documentation.
-- Maintain user-facing instructions, supported-format information, and release guidance in English and Korean in the same PR, with reciprocal links or paired sections. Keep both versions factually equivalent.
-- Internal engineering notes, research audits, ADRs, issues, and PR descriptions may be English only. Existing Korean engineering documents need not be destructively replaced.
-- Distinguish proposed, implemented/unreleased, and publicly deployed behavior. A merged PR does not mean the public site has changed.
+## Finish
 
-## 개발 원칙
-
-- 핵심 MIDI 해석과 연주 계획은 Rust, 브라우저 연결은 WASM, 시각화는 Three.js로 구현한다.
-- 원본 타격 시각을 이동해 동작 문제를 숨기지 않는다. 불가능한 타격은 진단으로 반환한다.
-- `PerformancePlan`과 `RigAdapter` 경계를 유지한다. 기본 리그의 객체 이름을 엔진에 하드코딩하지 않는다.
-- `evaluate_at(t)`는 재생 순서와 관계없이 같은 주요 자세를 반환해야 한다.
-- 신규 작업 브랜치는 기본적으로 `codex/` 접두어를 사용한다.
-- 구현 변경에 맞는 의미 있는 검사만 실행하고 결과를 기록한다. 테스트 실행 전 통과했다고 쓰지 않는다.
-- 의존성은 도입 시 버전·커밋·라이선스를 고정한다. 논문, 소스, 데이터, 가중치, 에셋을 구분한다.
-- 업로드 MIDI/WAV/VRM과 대화 원문은 커밋하지 않는다. 기본 데모와 테스트 fixture는 직접 생성한다.
-- `.local/`은 개인 보관·작업 자료다. 비밀 정보, 원본 대화, 외부 다운로드를 공개 저장소에 올리지 않는다.
-
-## 작업을 마칠 때
-
-- 변경한 설계와 사실을 관련 문서·ADR에 갱신한다.
-- 이슈에 변경 커밋/PR, 실행한 검증, 남은 제한을 남긴다.
-- `docs/handoff.md`에 완료 사항, 현재 이슈, 다음 실행 순서, 막힌 점을 갱신한다.
-- 라이선스가 달라지거나 새 에셋을 넣었다면 연구 대장과 배포 고지를 갱신한다.
-- 실제 배포 시 테스트 URL과 배포 commit SHA를 기록한다.
+- Update affected contracts, both public languages, relevant issue/PR evidence and the short work entrypoint if the next action changed.
+- Run `npm run docs:check` for document changes. It checks structure, not semantic translation, source authenticity or source reuse rights.
+- Keep one-time migration audits in their report/PR rather than making a past directory layout a permanent CI requirement.
+- At an approved deployment, record the URL, exact commit and actual validation. Do not infer release approval from completion of this checklist.

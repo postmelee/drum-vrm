@@ -33,3 +33,9 @@ The owner explicitly requested issue/PR work only unless instructed otherwise, f
 - Public user documentation must be maintained in English and Korean; existing Korean documents are preserved. Engineering-only material may be English.
 
 See [release policy / 릴리스 정책](release-policy.md). This record documents the owner's instruction; it does not itself grant a future release approval.
+
+## 2026-10-25 — merge and Pages-only deployment approval
+
+The owner instructed: “남은 PR도 검토후 문제없다면 병합하고 현재까지 진행된 것을 Pages에 배포해줘. 릴리즈는 하지 말아줘.”
+
+This authorizes review and merge of the remaining PRs #34/#39 and one Pages deployment of the verified integrated main commit. Record that exact commit, workflow run and public checks on the PRs and #36. It does **not** authorize a version bump, release tag or GitHub Release. The earlier v0.2.0 public-state statements above remain historical. Further feature work waits for the owner's next instruction; this is not ongoing deployment approval.

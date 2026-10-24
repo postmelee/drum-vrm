@@ -1,3 +1,5 @@
+> Research record preserved from [baseline 66951cd](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/license-policy.md). Dated findings and statements of implementation status below belong to that record; use the [current specifications](../../specs/README.md) and [model guide](../models.md) for current behavior.
+
 # 라이선스와 출처 관리
 
 기준일: 2026-10-24. 현재 저장소에는 계획 문서만 있으며 외부 소스·모델·모션·데이터를 포함하지 않는다. 자체 코드에는 MIT 채택을 제안하며, 실제 라이선스 파일 추가는 구현 승인 때 확정한다.

@@ -1,3 +1,5 @@
+> Research record preserved from [baseline 66951cd](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/references.md). Dated findings and statements of implementation status below belong to that record; use the [current specifications](../../specs/README.md) and [model guide](../models.md) for current behavior.
+
 # 선행 연구·구현·데이터 참고자료
 
 검토일: **2026-10-24 (Asia/Seoul)**. 대상 대화: `6adb2413-1850-83ec-9448-bea937287b82`, 「드럼 MIDI 3D 구현」의 두 사용자 요청과 두 답변 전체.
