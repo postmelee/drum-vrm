@@ -4,8 +4,8 @@ import { disposeModelSource } from './model-procedural';
 
 export const MAX_MODEL_BYTES = 25 * 1024 * 1024;
 /** Inspect the actual GLB before GLTFLoader can resolve any referenced resources. */
-export function validateSelfContainedGLB(buffer: ArrayBuffer): void {
-  if (buffer.byteLength > MAX_MODEL_BYTES) throw new Error('3D 모델은 25 MiB 이하여야 합니다.');
+export function validateSelfContainedGLB(buffer: ArrayBuffer, maxBytes = MAX_MODEL_BYTES): void {
+  if (buffer.byteLength > maxBytes) throw new Error(`3D 모델은 ${maxBytes / 1024 / 1024} MiB 이하여야 합니다.`);
   if (buffer.byteLength < 20) throw new Error('올바른 GLB 2.0 파일이 아닙니다.');
   const view = new DataView(buffer);
   if (view.getUint32(0, true) !== 0x46546c67 || view.getUint32(4, true) !== 2 || view.getUint32(8, true) !== buffer.byteLength) {

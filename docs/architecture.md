@@ -144,3 +144,8 @@ GitHub Pages는 정적 호스팅이다. 대형 사용자 원음·모델·데이�
 [ADR0003](decisions/0003-minimal-studio-and-models.md)에 따라 `main.ts`는 네 inspector의 상태와 transport를 연결하고, `timeline.ts`는 tempoMap/timeSignatures 기반 피아노 롤을 표시한다. Rust 계획의 추가 metadata는 optional TS 필드로 이전 fixture와 호환한다.
 
 `scene.ts`는 스켈레톤·카메라·부품 선택을 담당한다. `model-procedural.ts`는 자체 키트 외형, `model-library.ts`는 CC0 키트의 부품 분류/타점 정렬, `model-import.ts`는 외부 자원이 없는 로컬 GLB 검증을 담당한다. 외형은 canonical 엔진 좌표를 수정하지 않는다. 원본/라이선스/해시와 runtime 변형 기록은 `public/models/innerscene-provenance.json`에 보존하며 라이선스 생성기가 배포 때 검증한다.
+
+
+## Unreleased VRM 1.0 adapter update — 2026-10-24
+
+[ADR 0004](decisions/0004-vrm-humanoid-and-grip.md) defines the new semantic Bone hierarchy, 73-float orientation-capable profile path, actual hand-local contact measurement, explicit native/legacy basis conversion, and deterministic constraint/spring policy. The previous 57-float primitive-v1 path remains a legacy comparison API. Both initial planning and character changes now use measured body profiles; immutable MIDI timing and synthesized audio are preserved. See [model evidence](research/vrm-models.md) for measured scope and limitations. This section describes unreleased work; historical v0.1/v0.2 behavior above remains a record of those releases.

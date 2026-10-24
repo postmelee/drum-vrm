@@ -1,4 +1,16 @@
 export type Vec3 = [number, number, number];
+export type Quat = [number, number, number, number];
+/** Numeric Rust contract. Geometry is reflected only at the native VRM adapter boundary. */
+export interface RigProfile {
+  schemaVersion: 1; id: string;
+  coordinateSystem: 'legacy-y-up-z-forward-left-negative-x';
+  roots: [Vec3, Vec3, Vec3, Vec3];
+  lengths: [[number, number], [number, number], [number, number], [number, number]];
+  restTips: [Vec3, Vec3, Vec3, Vec3]; bendPoles: [Vec3, Vec3, Vec3, Vec3];
+  gripOffsets: [Vec3, Vec3, Vec3, Vec3]; tipOffsets: [Vec3, Vec3, Vec3, Vec3];
+  contactRotations: [Quat, Quat, Quat, Quat]; pelvis: Vec3; chest: Vec3; head: Vec3;
+}
+export const RIG_POSE_FLOATS = 73;
 export type Instrument = 'kick'|'snare'|'hihat'|'openHat'|'pedalHat'|'tomHigh'|'tomMid'|'tomLow'|'crash'|'ride';
 export interface KitPiece { id: Instrument; label: string; position: Vec3; radius: number; }
 export interface Hit { eventIndex?: number; timeUs?: number; id: number; time: number; tick: number; track: number; channel: number; note: number; velocity: number; instrument: Instrument; limb: number | null; target: Vec3; }

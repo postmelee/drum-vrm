@@ -1,10 +1,20 @@
 import init, { Performance } from './wasm/drum_engine';
-import type { MidiInfo, PerformancePlan, Selection } from './types';
+import type { MidiInfo, PerformancePlan, RigProfile, Selection } from './types';
 export class EngineClient {
   private worker: Worker | null = null;
   private reject: ((reason: Error) => void) | null = null;
   private ready: Promise<unknown> | null = null;
   private performance: Performance | null = null;
+  private sourcePlan: PerformancePlan | null = null;
+  private profile: RigProfile | null = null;
+  setProfile(profile: RigProfile): PerformancePlan | null {
+    // Construct before committing: a rejected profile retains the previous evaluator.
+    const next = this.sourcePlan ? Performance.from_json_with_profile(JSON.stringify(this.sourcePlan), JSON.stringify(profile)) : null;
+    const plan = next ? JSON.parse(next.plan_json()) as PerformancePlan : null;
+    this.profile = profile;
+    if (next) { this.performance?.free(); this.performance = next; }
+    return plan;
+  }
   cancel() {
     this.worker?.terminate(); this.worker = null;
     this.reject?.(new DOMException('분석을 취소했습니다.', 'AbortError'));
@@ -26,10 +36,14 @@ export class EngineClient {
     const plan = await this.request<PerformancePlan>('plan', bytes, selection);
     this.ready ??= init();
     try { await this.ready; } catch (error) { this.ready = null; throw error; }
-    const performance = Performance.from_json(JSON.stringify(plan));
+    const performance = this.profile
+      ? Performance.from_json_with_profile(JSON.stringify(plan), JSON.stringify(this.profile))
+      : Performance.from_json(JSON.stringify(plan));
+    const calibrated = JSON.parse(performance.plan_json()) as PerformancePlan;
+    this.sourcePlan = plan;
     this.performance?.free(); this.performance = performance;
-    return plan;
+    return calibrated;
   }
-  evaluate(time: number) { return this.performance?.evaluate_at(time); }
+  evaluate(time: number) { return this.profile ? this.performance?.evaluate_rig_at(time) : this.performance?.evaluate_at(time); }
   dispose() { this.cancel(); this.performance?.free(); this.performance = null; }
 }

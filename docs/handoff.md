@@ -4,7 +4,7 @@
 
 ## 현재 우선순위와 릴리스 경계
 
-PR #31의 CI를 확인하고 `28a50a2c19c2b5109c490384f0b03e554f4dea1e`로 병합했다. 사용자는 #28·#29 구현 후 #30·#17 리그 개선을 지시했다. 현재 `codex/studio-and-presets`에서 Lucide SVG, 연주자 시점, 결정적 선택형 타격 반응, Batoski/smoj 프리셋을 구현·검증 중이다. 이어 VRM 1.0 normalized humanoid와 손목/그립·실제 렌더 접촉 계측을 구현한다. #18은 체형별 검증을 추적한다. [VRM 모델 조사](research/vrm-models.md), [영문 안내](models.md), [한국어 안내](models.ko.md)를 추가했고 #17/#18/#30의 완료 조건을 갱신했다. 외부 VRM 파일은 `.local/vrm-test-models`에만 있으며 공개 저장소/배포물에 포함하지 않는다.
+PR #31의 CI를 확인하고 `28a50a2c19c2b5109c490384f0b03e554f4dea1e`로 병합했다. 사용자는 #28·#29 구현 후 #30·#17 리그 개선을 지시했다. Lucide SVG, 연주자 시점, 결정적 선택형 타격 반응, Batoski/smoj 프리셋은 PR #32의 CI 성공 후 `bd1568d4a3cc89913627b04e34f2fd2153a3ffac`로 병합했다. 현재 `codex/vrm-humanoid-grip`에서 VRM 1.0 normalized humanoid와 손목/그립·실제 렌더 접촉 계측, 로컬 파일·조건 표시를 구현했다. Rust 22개/웹 63개, 타입 검사와 세 실제 모델의 128프레임·탐색 검증이 통과했다. 실제 앱 업로드·재생·1인칭과 923프레임 오디오 포함 영상 인코딩을 확인했다. 자동화 브라우저의 blob 수신 제한으로 새 다운로드 파일의 별도 플레이어/ffprobe 검증은 남아 있다. [이번 검증 기록](verification/vrm-studio-unreleased.md)에 범위와 제한을 구분했다. #18은 체형별 검증을 추적한다. [VRM 모델 조사](research/vrm-models.md), [영문 안내](models.md), [한국어 안내](models.ko.md)를 추가했고 #17/#18/#30의 완료 조건을 갱신했다. 외부 VRM 파일은 `.local/vrm-test-models`에만 있으며 공개 저장소/배포물에 포함하지 않는다.
 
 **사용자 승인 전 새 태그·Release·Pages 배포 금지.** 이슈·PR·CI를 진행한 후 검토 가능한 변경 묶음으로 승인받아 한 번에 릴리스한다. 과거 MVP 승인과 아래 배포 기록은 향후 배포 권한이 아니다. [릴리스 정책](release-policy.md)을 따른다. README는 [영어](../README.md)와 [한국어](../README.ko.md)를 함께 유지한다.
 

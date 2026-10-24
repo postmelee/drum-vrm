@@ -123,3 +123,8 @@ The application's own MIT license does not replace any of these separate rights.
 Completed work: source inspection at the stated baseline; comparison with the existing architecture/research records; read-only checks of issues #17/#18/#20/#21/#23; and primary-source review of VRM, three-vrm, and the three papers. This is not a new browser test, naturalness study, VRM runtime test, or research reproduction. Existing application verification remains in its dated verification reports.
 
 Only this engineering document is produced by this audit task. No feature code, package, model, release tag, GitHub Release, or Pages deployment is part of it.
+
+
+## Implementation follow-up (unreleased)
+
+The historical audit above describes v0.2.0. [ADR 0004](../decisions/0004-vrm-humanoid-and-grip.md) records the implemented VRM 1.0 normalized/raw adapter, real semantic Bone default skeleton, measured segment/seat profile, wrist/tool orientation, fixed matched grip, and actual hand-local stick markers. [Model evidence](vrm-models.md) distinguishes preflight, headless bones, actual browser rendering/seek checks, and pending validation. three-vrm 3.5.5 is now adopted with its original MIT notice; separate avatar terms remain in force. No learned research model or external motion dataset is integrated.

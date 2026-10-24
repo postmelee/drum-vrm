@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { Hit, Instrument, KitPiece, PerformancePlan, Vec3 } from './types';
+import type { Hit, Instrument, KitPiece, PerformancePlan, RigProfile, Vec3 } from './types';
+import { NativeHumanoidRigAdapter, type HumanoidRigAdapter, type RigContactSample } from './rig-humanoid';
 import { canonicalPieceId, cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
 import { loadLocalGLB } from './model-import';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack, evaluateHitResponse, validateHitResponse, type HitResponseBinding, type HitResponseSettings, type HitResponseTrack } from './hit-response';
@@ -57,7 +58,7 @@ export function fitLibraryStandHardware(display: THREE.Group, contactY: number, 
 export interface RigCalibration {
   id: string;
   coordinateSystem: '+Y-up/+Z-forward';
-  poseFloats: 57;
+  poseFloats: 57 | 73;
   stickLength: number;
   targetPositions: Partial<Record<Instrument, Vec3>>;
 }
@@ -221,7 +222,7 @@ type ImportedModel = { root: THREE.Group; name: string; approximate: boolean };
 export class DrumScene {
   readonly canvas: HTMLCanvasElement;
   readonly renderer: THREE.WebGLRenderer;
-  readonly rig: RigAdapter;
+  rig: HumanoidRigAdapter;
   onPieceSelect: ((id: Instrument | null) => void) | null = null;
   private readonly scene = new THREE.Scene();
   private readonly displayRoot = createLegacyDisplayRoot();
@@ -247,6 +248,9 @@ export class DrumScene {
   private selectionBox: THREE.BoxHelper | null = null;
   private editorMode = false;
   private characterVisible = true;
+  private skeletonVisible = true;
+  private modelVisible = true;
+  private theme: 'light' | 'dark' = 'light';
   private exportMode = false;
   private cameraView: CameraView = 'stage';
   private readonly reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -269,7 +273,7 @@ export class DrumScene {
     gridMaterial.transparent = true; gridMaterial.opacity = .17;
     this.grid.position.set(0, -.02, .4); this.grid.visible = false; this.scene.add(this.grid);
     this.scene.add(this.displayRoot); this.displayRoot.add(this.kitGroup);
-    this.rig = new PrimitiveRigAdapter(); this.displayRoot.add(this.rig.root);
+    this.rig = new NativeHumanoidRigAdapter(); this.scene.add(this.rig.root);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = false;
     this.controls.minDistance = 2; this.controls.maxDistance = 8;
@@ -288,10 +292,26 @@ export class DrumScene {
   setPlan(plan: PerformancePlan): void {
     this.rig.calibrate(plan.kit); this.plan = plan; this.kit = plan.kit; this.rebuildKit();
   }
+  setRig(adapter: HumanoidRigAdapter): void {
+    if (adapter === this.rig) return;
+    this.rig.dispose(); this.rig = adapter;
+    // Native VRM bone hierarchies never inherit the legacy kit reflection.
+    this.scene.add(adapter.root); adapter.calibrate(this.kit);
+    adapter.root.visible = this.characterVisible && !this.editorMode;
+    adapter.setSkeletonVisible(this.skeletonVisible); adapter.setModelVisible(this.modelVisible);
+    adapter.setVisualOptions({ bodyColor: this.theme === 'light' ? '#5c626b' : '#c3c9d1' });
+    adapter.setFirstPerson?.(!this.editorMode && this.cameraView === 'player');
+    if (!this.editorMode && this.cameraView === 'player') this.setCamera('player');
+  }
+  getRigProfile(): RigProfile { return this.rig.getProfile(); }
+  getRigContactSamples(): RigContactSample[] { return this.rig.getContactSamples(); }
+  setSkeletonVisible(visible: boolean): void { this.skeletonVisible = visible; this.rig.setSkeletonVisible(visible); }
+  setModelVisible(visible: boolean): void { this.modelVisible = visible; this.rig.setModelVisible(visible); }
   setCharacterVisible(visible: boolean): void {
     this.characterVisible = visible; this.rig.root.visible = visible && !this.editorMode;
   }
   setTheme(theme: 'light' | 'dark'): void {
+    this.theme = theme;
     this.setBackground(theme === 'light' ? '#ffffff' : '#000000');
     this.rig.setVisualOptions({ bodyColor: theme === 'light' ? '#5c626b' : '#c3c9d1' });
     (this.grid.material as THREE.LineBasicMaterial).color.set(theme === 'light' ? 0x8b949e : 0x7d8691);
@@ -402,7 +422,9 @@ export class DrumScene {
   setCamera(preset: CameraView): void {
     if (this.editorMode) return;
     this.transition = null; this.savedCamera = null;
-    this.applyCameraState(cameraPresetState(preset)); this.rig.setFirstPerson?.(preset === 'player');
+    const state = cameraPresetState(preset);
+    if (preset === 'player') state.position.set(...this.rig.getPlayerPosition());
+    this.applyCameraState(state); this.rig.setFirstPerson?.(preset === 'player');
     this.controls.enabled = !this.exportMode; this.controls.update();
   }
   setBackground(color: string): void { this.scene.background = new THREE.Color(color); }
@@ -416,7 +438,7 @@ export class DrumScene {
     this.reducedMotion.removeEventListener('change', this.motionPreferenceChanged);
     this.canvas.removeEventListener('pointerdown', this.pointerDown); this.canvas.removeEventListener('pointermove', this.pointerMove);
     this.canvas.removeEventListener('pointerup', this.pointerUp); this.canvas.removeEventListener('pointercancel', this.pointerCancel);
-    this.clearSelection(); disposeModel(this.scene);
+    this.clearSelection(); this.rig.dispose(); disposeModel(this.scene);
     this.imported.forEach(model => disposeModelSource(model.root)); this.imported.clear();
     this.libraries.forEach(library => this.disposeLibrary(library)); this.libraries.clear();
     this.renderer.dispose();
@@ -430,6 +452,7 @@ export class DrumScene {
   private applyCameraState(state: CameraState): void {
     this.camera.position.copy(state.position); this.controls.target.copy(state.target); this.cameraView = state.view;
     this.camera.fov = state.fov; this.camera.near = state.near; this.camera.updateProjectionMatrix();
+    this.camera.layers.set(0); this.camera.layers.enable(state.view === 'player' ? 9 : 10);
     for (const key of ['minDistance', 'maxDistance', 'maxPolarAngle', 'enableRotate', 'enablePan', 'enableZoom'] as const) {
       (this.controls as unknown as Record<string, unknown>)[key] = state[key];
     }

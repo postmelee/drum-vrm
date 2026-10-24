@@ -2,7 +2,7 @@
 
 Reviewed: **2026-10-24 (Asia/Seoul)**. Repository baseline: `28a50a2c19c2b5109c490384f0b03e554f4dea1e` (documentation/release-policy PR #31). Public application baseline remains v0.2.0, `3e8be9333cedbc9845dbc3e4cebd73961af697b4`.
 
-Scope: official-source acquisition guidance and static inspection of locally downloaded GLB/VRM metadata and rest transforms for #17/#18/#30. **No application compatibility test, feature implementation, third-party model publication, or release was performed in this step.** Model files and full extracted metadata are confined to ignored `.local/vrm-test-models/`. Public automated fixtures must remain independently generated.
+Original acquisition-review scope: official-source acquisition guidance and static inspection of locally downloaded GLB/VRM metadata and rest transforms for #17/#18/#30. **That acquisition step did not perform application compatibility testing, feature implementation, third-party model publication or release.** The later implementation/preflight record below is separate and remains unreleased. Model files and full extracted metadata are confined to ignored `.local/vrm-test-models/`. Public automated fixtures must remain independently generated.
 
 User guidance: [English](../models.md) · [한국어](../models.ko.md). Architecture context: [rig/motion audit](rig-and-studio-audit.md).
 
@@ -99,4 +99,51 @@ For #17, display the detected VRM version, model name/version/author, required-b
 
 For #30/#18, acceptance evidence must come from the actual rendered stick and foot transforms after rest-basis conversion and calibration. It must include two proportions, exact original hit times, pause/seek order independence, and export consistency. Twist/Seed-san constraint behavior and secondary spring motion need separate treatment from the deterministic primary pose.
 
-This review supplies acquisition provenance and candidates only. It does not claim that constraint evaluation, materials, skinning, grip, retargeting, or export works with these files in Drum VRM. No automated tests using these third-party files were added or run.
+The original review supplied acquisition provenance and candidates only. Its results did not establish constraint evaluation, materials, skinning, grip, retargeting or export compatibility. Subsequent checks are recorded separately below.
+
+
+## Unreleased implementation and input review — 2026-10-24
+
+Branch: `codex/vrm-humanoid-grip`. This section records implementation, preflight and the later limited browser evidence below, not a deployment. Public v0.2.0 is unchanged. No third-party avatar files were added to Git, public assets, release attachments or automated public fixtures.
+
+`src/vrm-import.ts` inspects a local self-contained VRM 1.0 GLB before GLTFLoader runs. The application limits a file to 50 MiB, nodes to 10,000 and embedded PNG/JPEG images to 64, with each dimension at most 4096 and total decoded pixels at most 64,000,000. PNG/JPEG headers are inspected without image decoding. Buffer-view ranges, external URI references, GLB chunks, required/duplicate/out-of-range human-bone references, hierarchy cycles and nonfinite/malformed node transforms are rejected. The loading manager independently rejects external resource requests. Header inspection is a resource-budget check, not a complete image or glTF validator; actual decoding/loading may still fail.
+
+For context, the private original samples contain 29,687,936 PNG pixels in 33 images (ChatVRM AvatarSample_B), 22,347,776 in 19 images (Twist), and 10,813,440 in 15 images (Seed-san). Maximum sides are 2048, 2048 and 1024 respectively. All pass the new image budget without modifying the source. Compressed file size alone would not establish these decoded-memory bounds.
+
+The importer identifies VRM 0.x and rejects it with instructions to re-export VRM 1.0. The official [UniVRM migration documentation](https://vrm.dev/en/univrm1/migrate_vrm0/) describes an upgrade route; it does not make a model's permissions or appearance equivalent after conversion. No conversion was performed here.
+
+### Metadata behavior
+
+The panel uses text nodes for model-supplied strings. File metadata and references are retained; links are not automatically visited or used as texture sources. The application code's MIT and three-vrm license do not alter avatar terms. Model name, author, model version, references, copyright, third-party conditions and additional-license fields must remain distinguishable from technical compatibility status.
+
+The pinned [VRM 1.0 metadata specification](https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/specification/VRMC_vrm-1.0/meta.md) defines restrictive defaults for omitted usage settings: author-only avatar use, personal non-profit commercial scope, required credit, no redistribution or modification, and false content-permission flags. The inspector labels omission and its specification default separately; an explicitly supplied value is preserved. Missing name/author information or a nonstandard/missing license URL produces metadata warnings in the inspection result. These warnings do not bypass the downstream VRM loader's validation, nor certify model rights. Additional conditions such as AvatarSample_B's `otherLicenseUrl` remain relevant even beside permissive enum values.
+
+### Completed checks and open evidence
+
+- `npx vitest run tests/vrm-import.test.ts`: 11 tests passed, using independently generated JSON/GLB/image headers. They cover preserved metadata/defaults, malformed-rights warnings, VRM 0.x rejection, external URI rejection without fetch, file/header/transform/hierarchy/bone-reference failures, and image count/dimension/aggregate/range failures.
+- `npx vitest run .local/vrm-budget.test.ts`: one ignored local test passed for the three pinned private artifacts. All report VRM 1.0, 15 required bones, 15 finger bones per hand and no metadata warnings. This check calls `inspectVRM` only; it does not parse the renderable scene or claim animation/export compatibility.
+- `npm run typecheck`: passed after the importer changes. Later branch-wide changes require the normal integration checks.
+
+The working application adds model/skeleton visibility, a default semantic-bone rig with fingers, hand-local sticks, actual socket/contact error readout and restoration to the default rig. Limb lengths come from the imported normalized humanoid; the current seat/grip policy is application-defined. The VRM adapter resets spring state and updates with zero elapsed time per evaluated pose, avoiding accumulated secondary dynamics. This policy does not simulate physical hair/clothing motion. The browser harness results below cover actual model/material loading, assigned-contact retargeting and arbitrary-seek repeatability for the inspected files. Main-app UI interactions and encoded video output still require separate integration results. A controlled two-export VRoid body pair has still not been created.
+
+
+### Actual browser harness results — 2026-10-24
+
+The local harness `.local/vrm-review.html` used the application's `loadLocalVRM`, `VRMHumanoidRigAdapter` and Rust/WASM evaluator, with real model/material loading and a WebGL scene. Full numeric output is retained privately in `.local/vrm-browser-evidence.txt`; the input files match the SHA-256 identities above. No texture-stripped test copy was used for this browser run. This is a renderer/pose audit, not a video-encoding audit or a claim of complete performance coverage.
+
+Each file was evaluated at 128 fixed 30 fps frame timestamps, then those same timestamps were revisited in alternating low/high order. The audit compared the pose array and raw humanoid world matrices, including actual hand-local stick markers and foot sole sockets. All values were finite, transforms were positive, and the original 14 hit events/times remained unchanged.
+
+| Original file | Assigned hits | Maximum assigned-hit contact error, m | Maximum frame marker/pose error, m | Maximum seek matrix difference | Maximum frame pose difference |
+|---|---:|---:|---:|---:|---:|
+| Twist | 11 / 14 | 1.501937966314068e-7 | 1.5507947017802673e-7 | 0 | 0 |
+| ChatVRM AvatarSample_B | 11 / 14 | 1.3622455557686942e-7 | 1.515037591555418e-7 | 0 | 0 |
+| Seed-san | 11 / 14 | 3.89007133075741e-7 | 4.3199744038452377e-7 | 0 | 0 |
+
+Every kick hit was assigned. In each model, note 41 at 1.50 s (low floor tom), note 49 at 1.75 s (crash) and note 51 at 2.00 s (ride) remained explicitly unresolved/unreachable for the current kit/body layout. They were not silently shifted, removed or counted as performed. Consequently the harness pass means that assigned contacts and repeated poses met the audit's checks; it does not mean all 14 hits were successfully played. Changing kit placement or calibration requires a new reach/pose check.
+
+The run exercised Twist's 14 and Seed-san's 23 node constraints; AvatarSample_B has none. Spring joints were loaded (57, 19 and 58 respectively) under the adapter's reset/zero-delta policy, without accumulated dynamic simulation. Small socket errors establish the numerical tool-contact contract for these samples, not skin/finger surface contact, collision-free clothing, correct shoe-sole geometry or physical realism. Matrix equality was measured in this browser run and does not establish bitwise identity across browsers or machines.
+
+Main-app import/reset controls and an encoded video export with an imported avatar are still pending separate verification. The two differently proportioned Studio exports from one editable source have not been made; these three official examples do not replace that controlled experiment. The development branch remains unreleased and the public application remains v0.2.0.
+
+
+Actual app follow-up: the Twist sample loaded with metadata, played with the demo, supported model/skeleton visibility and player view, and completed the 923-frame audio/video encoding path. A newly downloaded blob was not independently inspected; see the exact [verification scope and limitation](../verification/vrm-studio-unreleased.md). No release or Pages deployment occurred.
