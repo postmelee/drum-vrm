@@ -31,3 +31,8 @@ Publish the report and open a PR against `codex/hyper-waterfall-adoption`. Keep 
 ## Location and continuity
 
 The [task plan](task_m3_36.md) owns the location judgment. The migration ledger owns old-to-new mappings; specs own maintained rules, not this execution plan. Each stage includes a short evidence record. Existing release restrictions remain binding.
+
+## Stage evidence
+
+- [Stage 1: baseline and authority](../working/task_m3_36_stage1.md).
+- [Stage 2: ownership and preservation](../working/task_m3_36_stage2.md).

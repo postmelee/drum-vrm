@@ -1,0 +1,978 @@
+{
+  "baseline": "66951cd69015e43cfe132a6ba61545b175a25412",
+  "records": [
+    {
+      "source": ".github/ISSUE_TEMPLATE/bug.md",
+      "source_sha256": "169c8012ba5af5c0e73326a2ee6328a8f3fefb9b6e4c2f7d64db47e0e23bb771",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/.github/ISSUE_TEMPLATE/bug.md",
+      "action": "translate-reader-input-form",
+      "destinations": [
+        ".github/ISSUE_TEMPLATE/bug.md"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": ".github/ISSUE_TEMPLATE/task.md",
+      "source_sha256": "49c85724d8c128b2ff3384cd8061546051872f1398a84d5ca51390cbfd0db62b",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/.github/ISSUE_TEMPLATE/task.md",
+      "action": "replaced-by-upstream-form",
+      "destinations": [
+        ".github/ISSUE_TEMPLATE/task.yml"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": ".github/pull_request_template.md",
+      "source_sha256": "96f12827b6d845de3b92af1d5520c257c973d2d3f879910b13869d5accaaa259",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/.github/pull_request_template.md",
+      "action": "framework-adoption",
+      "destinations": [
+        ".github/pull_request_template.md"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "AGENTS.md",
+      "source_sha256": "fe902e8ce6b71faebe5cdb135514ff9fce98e097ef9ca10be178985b06843818",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/AGENTS.md",
+      "action": "merge-project-rules-and-route",
+      "destinations": [
+        "AGENTS.md",
+        "specs/policies/documentation.md"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "LICENSE",
+      "source_sha256": "68d099ba578c90e5caf21ef1b35ebde3409f4e42d81dadc60159425029dc7e4b",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/LICENSE",
+      "action": "preserve-original-legal-text",
+      "destinations": [
+        "LICENSE"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "README.ko.md",
+      "source_sha256": "98567f48525ea104e3ecb626d7f244ed3c917588f1460bf475328fdc52c6d980",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/README.ko.md",
+      "action": "reader-entry-and-deep-design-links",
+      "destinations": [
+        "README.ko.md",
+        "docs/README.ko.md",
+        "specs/README.md"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "README.md",
+      "source_sha256": "e3b1b771b8bb8d37595f01df33b409c494fa767c0f96c0f5b9d2ca862e0e3f8c",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/README.md",
+      "action": "reader-entry-and-deep-design-links",
+      "destinations": [
+        "README.md",
+        "docs/README.md",
+        "specs/README.md"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "THIRD_PARTY_NOTICES.md",
+      "source_sha256": "52320803f87c60c6fa51c8f8f2311837a207d32654fd07b4d57d6b2d5609d9b0",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/THIRD_PARTY_NOTICES.md",
+      "action": "regenerated-full-legal-notices",
+      "destinations": [
+        "THIRD_PARTY_NOTICES.md"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "docs/approval.md",
+      "source_sha256": "3d2f3a4ab1892c649d3c134e8792b6ddd7eb72e4657ab34d6ac65b76090dcc6a",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/approval.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/history/approvals.md",
+      "destinations": [
+        "mydocs/report/history/approvals.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "0c0c2c71209722c5350faa61e384ba928e78542c0d0825b03f6cca6357fadb7c",
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/architecture.md",
+      "source_sha256": "fb0ec1c88aa37863bc6392882e96bc54a51dbacb15e80f6a23c38a294dc22eaf",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/architecture.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/history/baseline-66951cd/architecture.md",
+      "destinations": [
+        "mydocs/report/history/baseline-66951cd/architecture.md",
+        "specs/architecture/overview.md",
+        "specs/architecture/engine-contract.md",
+        "specs/architecture/rig-contract.md",
+        "specs/architecture/audio-export-contract.md",
+        "specs/architecture/calibration.md",
+        "specs/architecture/dependencies.md",
+        "specs/architecture/rig-compatibility.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "7b5ebc8399833974c8f4f2118dfca3edd54d05087ee98079d06bea2e22f7696c",
+      "compatibility_entry": {
+        "caller": "Published issue architecture entry links",
+        "target": "../specs/architecture/README.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      },
+      "preserved_external_urls": [
+        "https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits",
+        "https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages",
+        "https://mediabunny.dev/guide/supported-formats-and-codecs#querying-codec-encodability",
+        "https://midi.org/standard-midi-files",
+        "https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMHumanoid.html",
+        "https://postmelee.github.io/drum-vrm/`\uc774\uba70",
+        "https://www.w3.org/TR/webaudio/#dom-audiocontext-getoutputtimestamp"
+      ]
+    },
+    {
+      "source": "docs/calibration.ko.md",
+      "source_sha256": "85881cf8fe18b127e38e8d8bbc7072bad3fd0c3c49d7cbc7460a97a86155d99d",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/calibration.ko.md",
+      "action": "split-into-paired-reader-guides",
+      "destinations": [
+        "docs/how-to/fit-character.ko.md",
+        "docs/how-to/replace-drum-parts.ko.md",
+        "docs/reference/calibration.ko.md",
+        "specs/architecture/calibration.md"
+      ],
+      "owner": "reader-docs",
+      "preservation": "Original complete body remains available at baseline_permalink; paired reader migration preserves relevant facts and limitations."
+    },
+    {
+      "source": "docs/calibration.md",
+      "source_sha256": "ef55116079a2035e4abdd61ecbdc12abe29a1369adc25a52c90acf332a483781",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/calibration.md",
+      "action": "split-into-paired-reader-guides",
+      "destinations": [
+        "docs/how-to/fit-character.md",
+        "docs/how-to/replace-drum-parts.md",
+        "docs/reference/calibration.md",
+        "specs/architecture/calibration.md"
+      ],
+      "owner": "reader-docs",
+      "preservation": "Original complete body remains available at baseline_permalink; paired reader migration preserves relevant facts and limitations."
+    },
+    {
+      "source": "docs/context/source-conversation.md",
+      "source_sha256": "abf8b645d004c6fb839059e46879dd3eb94cc31b87990e8e44118f2966998733",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/context/source-conversation.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/history/requirements-origin.md",
+      "destinations": [
+        "mydocs/report/history/requirements-origin.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "f2ec944b078136d585fa9fdf2089071851d41760b4bc96f2a625d695098d0322",
+      "preserved_external_urls": [
+        "https://docs.rs/midly/latest/midly/",
+        "https://github.com/bitshifter/glam-rs",
+        "https://github.com/jamesa08/MIDIAnimator",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/Cargo.toml",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/src/utils/animation.rs",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/src/utils/fcurve.rs",
+        "https://github.com/jamesa08/MIDIAnimator/tree/059b1e2b80baf6171762f3d6a3c3f938d44ed46c",
+        "https://github.com/pixiv/three-vrm",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/HandMovementPathRenderer.cs",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/TransformPlayBacker.cs",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/TransformRecorder.cs",
+        "https://mediabunny.dev/guide/media-sources",
+        "https://ris.utwente.nl/ws/portalfiles/portal/83238062/Kragtwijk2001implementation.pdf",
+        "https://studios.disneyresearch.com/2026/08/18/generalized-audio-driven-synthesis-of-precise-drummer-motion/",
+        "https://wasm-bindgen.github.io/wasm-bindgen/",
+        "https://www.theodoroskyriakou.com/projects/drums/index.html"
+      ]
+    },
+    {
+      "source": "docs/decisions/0001-engine-and-rig-boundary.md",
+      "source_sha256": "38d37da9721c17b97d368425e6ce3780637010a1c262c7d31dc7fe63af6ce402",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0001-engine-and-rig-boundary.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "specs/decisions/0001-engine-and-rig-boundary.md",
+      "destinations": [
+        "specs/decisions/0001-engine-and-rig-boundary.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "283b24c4a5124ee1c465b583fc13cf9f496c76f184615d01e6989676c68f43af",
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/decisions/0002-mvp-scope-and-export.md",
+      "source_sha256": "43f6d2841a99b58055edcbf91734b2da4d3d427d990f3447205753ee68e66268",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0002-mvp-scope-and-export.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "specs/decisions/0002-mvp-scope-and-export.md",
+      "destinations": [
+        "specs/decisions/0002-mvp-scope-and-export.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "d3fce936101d572c83e695906e393051a4fa157926888c49deafc284aea79bc7",
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/decisions/0003-minimal-studio-and-models.md",
+      "source_sha256": "ac61fd85a375965378f15de2b7dc16c10fb3d46a96633baa0fc9e032aedd7095",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0003-minimal-studio-and-models.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "specs/decisions/0003-minimal-studio-and-models.md",
+      "destinations": [
+        "specs/decisions/0003-minimal-studio-and-models.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "8379236bf653ec7d9b347da11c70814dc26f0a570b2d451ae7129d2f32df4fa4",
+      "preserved_external_urls": [
+        "https://codex-usage-profile-stage5.meleeisdeveloping.chatgpt.site/"
+      ]
+    },
+    {
+      "source": "docs/decisions/0004-vrm-humanoid-and-grip.md",
+      "source_sha256": "8bf09d6574b3e3c2d8b0c2a671df91bf99eea67c6fdc0a87bab25f64831180d5",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0004-vrm-humanoid-and-grip.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "specs/decisions/0004-vrm-humanoid-and-grip.md",
+      "destinations": [
+        "specs/decisions/0004-vrm-humanoid-and-grip.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "3a71182fdd39fc4f7ed36ba91b9b52e5783af06603c7170a9994df869bc1ebda",
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/decisions/0005-calibration-pedals-hardware.md",
+      "source_sha256": "4d7ced92e63f81ec20ba817ba8e0461c8ea217ee543a95a794c20b114db62b70",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0005-calibration-pedals-hardware.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "specs/decisions/0005-calibration-pedals-hardware.md",
+      "destinations": [
+        "specs/decisions/0005-calibration-pedals-hardware.md",
+        "specs/architecture/calibration.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "3a135708764408f379d875d320482889401ab663b16a66e52fc3f9f2629bb0e7",
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm/issues/14",
+        "https://github.com/postmelee/drum-vrm/issues/18",
+        "https://github.com/postmelee/drum-vrm/issues/20"
+      ]
+    },
+    {
+      "source": "docs/decisions/0006-technique-and-expression-foundation.md",
+      "source_sha256": "d7e0fb845938c1aaa3cb2a4b5c9a68729bc64fc3c5a9c05c520b9a82ca6ded34",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0006-technique-and-expression-foundation.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "specs/decisions/0006-technique-and-expression-foundation.md",
+      "destinations": [
+        "specs/decisions/0006-technique-and-expression-foundation.md",
+        "specs/architecture/performance-expression.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "f143f139a94589256fe31f4e39705603750e269cde2ae156db0bd2428b7b64c3",
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/handoff.md",
+      "source_sha256": "a817f16e938400dac77f65b5f241f2154b120889956d78fa675f840106522192",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/handoff.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/history/baseline-66951cd/handoff.md",
+      "destinations": [
+        "mydocs/report/history/baseline-66951cd/handoff.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "aede8dc12aa9f9fb3e11380407ef8eda3a5a2e45b7be66c8f0c4a9085e8d14d0",
+      "compatibility_entry": {
+        "caller": "Existing task restart entry links",
+        "target": "../mydocs/README.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      },
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm",
+        "https://github.com/postmelee/drum-vrm/actions/runs/40063272293",
+        "https://github.com/postmelee/drum-vrm/actions/runs/40063363035",
+        "https://github.com/postmelee/drum-vrm/issues?q=is%3Aissue",
+        "https://github.com/postmelee/drum-vrm/milestones",
+        "https://github.com/postmelee/drum-vrm/pull/33",
+        "https://github.com/postmelee/drum-vrm/pull/34",
+        "https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0",
+        "https://postmelee.github.io/drum-vrm/](https://postmelee.github.io/drum-vrm/"
+      ]
+    },
+    {
+      "source": "docs/models.ko.md",
+      "source_sha256": "29af66bb9009052172050fe15d73b87daee4280a12cc7216be1f149ff69368b3",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/models.ko.md",
+      "action": "split-into-paired-reader-guides",
+      "destinations": [
+        "docs/how-to/import-character.ko.md",
+        "docs/how-to/obtain-model.ko.md",
+        "docs/reference/model-formats.ko.md",
+        "docs/reference/sources/models.ko.md"
+      ],
+      "owner": "reader-docs",
+      "preservation": "Original complete body remains available at baseline_permalink; paired reader migration preserves relevant facts and limitations.",
+      "compatibility_entry": {
+        "caller": "App Character inspector hardcoded help URL",
+        "target": "how-to/import-character.ko.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      }
+    },
+    {
+      "source": "docs/models.md",
+      "source_sha256": "68d6c55b9b2fbd2f908c79a32d76e75fad90cb621563bdbb888926c893db9093",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/models.md",
+      "action": "split-into-paired-reader-guides",
+      "destinations": [
+        "docs/how-to/import-character.md",
+        "docs/how-to/obtain-model.md",
+        "docs/reference/model-formats.md",
+        "docs/reference/sources/models.md"
+      ],
+      "owner": "reader-docs",
+      "preservation": "Original complete body remains available at baseline_permalink; paired reader migration preserves relevant facts and limitations.",
+      "compatibility_entry": {
+        "caller": "App/help and external model guidance",
+        "target": "how-to/import-character.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      }
+    },
+    {
+      "source": "docs/performance-foundations.ko.md",
+      "source_sha256": "53c84518084ebbb189d57524a8a3b20bc7a84afedbcd8ddef4e30fb0f5076895",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/performance-foundations.ko.md",
+      "action": "split-into-paired-reader-guides",
+      "destinations": [
+        "docs/explanation/performance-principles.ko.md",
+        "docs/reference/sources/performance-instruction.ko.md",
+        "specs/architecture/performance-expression.md"
+      ],
+      "owner": "reader-docs",
+      "preservation": "Original complete body remains available at baseline_permalink; paired reader migration preserves relevant facts and limitations."
+    },
+    {
+      "source": "docs/performance-foundations.md",
+      "source_sha256": "bac0e51300c0d4d010f3d70d44fd13856a1a486adfaf06f235dfd9637072aa47",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/performance-foundations.md",
+      "action": "split-into-paired-reader-guides",
+      "destinations": [
+        "docs/explanation/performance-principles.md",
+        "docs/reference/sources/performance-instruction.md",
+        "specs/architecture/performance-expression.md"
+      ],
+      "owner": "reader-docs",
+      "preservation": "Original complete body remains available at baseline_permalink; paired reader migration preserves relevant facts and limitations."
+    },
+    {
+      "source": "docs/plan.md",
+      "source_sha256": "3ede4e6b6a21e69ec896f47e6b615184107095310dc8b0a706149cac530b9556",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/plan.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/history/baseline-66951cd/plan.md",
+      "destinations": [
+        "mydocs/report/history/baseline-66951cd/plan.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "5b9cb6fa9a6b76eaee52a1878c232bad9b7d7efbbe0086a1b839d581d4e8839d",
+      "compatibility_entry": {
+        "caller": "Published issue plan entry links",
+        "target": "../mydocs/README.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      },
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm/actions/runs/40060762280",
+        "https://github.com/postmelee/drum-vrm/actions/runs/40063363035",
+        "https://github.com/postmelee/drum-vrm/issues",
+        "https://github.com/postmelee/drum-vrm/issues/1",
+        "https://github.com/postmelee/drum-vrm/issues/10",
+        "https://github.com/postmelee/drum-vrm/issues/11",
+        "https://github.com/postmelee/drum-vrm/issues/12",
+        "https://github.com/postmelee/drum-vrm/issues/13",
+        "https://github.com/postmelee/drum-vrm/issues/14",
+        "https://github.com/postmelee/drum-vrm/issues/15",
+        "https://github.com/postmelee/drum-vrm/issues/16",
+        "https://github.com/postmelee/drum-vrm/issues/17",
+        "https://github.com/postmelee/drum-vrm/issues/18",
+        "https://github.com/postmelee/drum-vrm/issues/19",
+        "https://github.com/postmelee/drum-vrm/issues/2",
+        "https://github.com/postmelee/drum-vrm/issues/20",
+        "https://github.com/postmelee/drum-vrm/issues/21",
+        "https://github.com/postmelee/drum-vrm/issues/22",
+        "https://github.com/postmelee/drum-vrm/issues/23",
+        "https://github.com/postmelee/drum-vrm/issues/25",
+        "https://github.com/postmelee/drum-vrm/issues/27",
+        "https://github.com/postmelee/drum-vrm/issues/28",
+        "https://github.com/postmelee/drum-vrm/issues/29",
+        "https://github.com/postmelee/drum-vrm/issues/3",
+        "https://github.com/postmelee/drum-vrm/issues/30",
+        "https://github.com/postmelee/drum-vrm/issues/4",
+        "https://github.com/postmelee/drum-vrm/issues/5",
+        "https://github.com/postmelee/drum-vrm/issues/6",
+        "https://github.com/postmelee/drum-vrm/issues/7",
+        "https://github.com/postmelee/drum-vrm/issues/8",
+        "https://github.com/postmelee/drum-vrm/issues/9",
+        "https://github.com/postmelee/drum-vrm/milestone/1",
+        "https://github.com/postmelee/drum-vrm/milestone/2",
+        "https://github.com/postmelee/drum-vrm/milestone/3",
+        "https://github.com/postmelee/drum-vrm/milestone/4",
+        "https://github.com/postmelee/drum-vrm/milestone/5",
+        "https://github.com/postmelee/drum-vrm/pull/26",
+        "https://github.com/postmelee/drum-vrm/pull/34",
+        "https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0",
+        "https://postmelee.github.io/drum-vrm/"
+      ]
+    },
+    {
+      "source": "docs/product-requirements.md",
+      "source_sha256": "a9cd2831a6625e11d0b969628d7a1d34589500a160fa5fa233c654d23a4d1d81",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/product-requirements.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/history/baseline-66951cd/product-requirements.md",
+      "destinations": [
+        "mydocs/report/history/baseline-66951cd/product-requirements.md",
+        "specs/product/requirements.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "a604073ff1c137200a352c932fee03dcc6fad4f3942e0155ddbee924a231c769",
+      "compatibility_entry": {
+        "caller": "Published issue product entry links",
+        "target": "../specs/product/requirements.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      },
+      "preserved_external_urls": [
+        "https://postmelee.github.io/drum-vrm/"
+      ]
+    },
+    {
+      "source": "docs/release-policy.md",
+      "source_sha256": "c43ab9b450e1c29832984eb8a499a20500249a7f4dea2d6f21c9c48541db2a35",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/release-policy.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/history/baseline-66951cd/release-policy.md",
+      "destinations": [
+        "mydocs/report/history/baseline-66951cd/release-policy.md",
+        "specs/policies/releases.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "99c82a029d2d687d3b896edeb7fe37d62c32531554d9d2e4e7ac854fe33ca88e",
+      "compatibility_entry": {
+        "caller": "Existing release-policy entry links",
+        "target": "../specs/policies/releases.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      },
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/research/dependencies.md",
+      "source_sha256": "110d206fc5604bd4bccf4fadb05bd3b3d2844dc2bbefe58db9a499ae2a481d03",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/dependencies.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/dependencies.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/dependencies.md",
+        "specs/architecture/dependencies.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "e3d9c7d08b919fcf66560b95da323239bebbc4b15480de060d9f53524ac193ba",
+      "preserved_external_urls": [
+        "https://developer.mozilla.org/en-US/docs/Web/API/Window/crossOriginIsolated",
+        "https://docs.github.com/en/pages/getting-started-with-github-pages/github-pages-limits",
+        "https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages",
+        "https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages",
+        "https://docs.rs/crate/midly/0.5.3/source/Cargo.toml.orig",
+        "https://docs.rs/midly/latest/midly/#about-features",
+        "https://docs.rs/midly/latest/midly/enum.Timing.html",
+        "https://ffmpeg.org/legal.html",
+        "https://ffmpegwasm.netlify.app/docs/faq/",
+        "https://github.com/Vanilagy/mediabunny#license",
+        "https://github.com/Vanilagy/mediabunny/blob/main/LICENSE",
+        "https://github.com/Vanilagy/mp4-muxer#readme",
+        "https://github.com/bitshifter/glam-rs",
+        "https://github.com/bitshifter/glam-rs#license",
+        "https://github.com/bitshifter/glam-rs/blob/main/ATTRIBUTION.md",
+        "https://github.com/microsoft/TypeScript/blob/main/LICENSE.txt",
+        "https://github.com/microsoft/onnxruntime/blob/main/LICENSE",
+        "https://github.com/mrdoob/three.js/blob/dev/LICENSE",
+        "https://github.com/negamartin/midly",
+        "https://github.com/pixiv/three-vrm/blob/dev/LICENSE",
+        "https://github.com/postmelee/drum-vrm/issues/17",
+        "https://github.com/postmelee/drum-vrm/issues/19",
+        "https://github.com/postmelee/drum-vrm/issues/21",
+        "https://github.com/postmelee/drum-vrm/issues/9",
+        "https://github.com/vitejs/vite/blob/main/LICENSE",
+        "https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm-1.0/schema/VRMC_vrm.meta.schema.json",
+        "https://github.com/wasm-bindgen/wasm-bindgen#license",
+        "https://mediabunny.dev/guide/media-sources#canvassource",
+        "https://mediabunny.dev/guide/supported-formats-and-codecs",
+        "https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMHumanoid.html",
+        "https://postmelee.github.io/drum-vrm/`\uc774\uba70",
+        "https://threejs.org/docs/pages/CCDIKSolver.html",
+        "https://threejs.org/docs/pages/GLTFExporter.html",
+        "https://vite.dev/guide/static-deploy.html",
+        "https://vite.dev/guide/static-deploy.html#github-pages",
+        "https://vrm.dev/en/vrma/",
+        "https://wasm-bindgen.github.io/wasm-bindgen/",
+        "https://wasm-bindgen.github.io/wasm-bindgen/examples/raytrace.html",
+        "https://www.mozilla.org/en-US/MPL/2.0/",
+        "https://www.mozilla.org/en-US/MPL/2.0/FAQ/",
+        "https://www.w3.org/TR/webaudio/#dom-audiocontext-getoutputtimestamp",
+        "https://www.w3.org/TR/webcodecs/"
+      ]
+    },
+    {
+      "source": "docs/research/dependency-lock.md",
+      "source_sha256": "31d1b5d2a3e3d1b0d15bb54ac9879ea84b5150635ded222d4d391d08d8dc03cf",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/dependency-lock.md",
+      "action": "regenerate-at-new-path",
+      "destinations": [
+        "docs/reference/dependencies/locked.md"
+      ],
+      "owner": "root-generator",
+      "preservation": "Generated inventory; authoritative lockfiles and generator remain responsible."
+    },
+    {
+      "source": "docs/research/drum-assets-followup.md",
+      "source_sha256": "1b769255c60c69c585bcc7ce1a27ceba3f62174839b8cf504423bcdc7f3e3df3",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/drum-assets-followup.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/drum-assets-followup.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/drum-assets-followup.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "74bd4553ff83c01429793f5a8e7682eb1620b517f65530dfbee10f71207b1084",
+      "preserved_external_urls": [
+        "https://1designtool.com/3d/license",
+        "https://1designtool.com/3d/models/drum-kit",
+        "https://creativecommons.org/licenses/by/3.0/",
+        "https://opengameart.org/content/drum-kit-with-optional-drummer",
+        "https://opengameart.org/content/oga-by-30-faq",
+        "https://opengameart.org/sites/default/files/drummer.blend",
+        "https://poly.pizza/m/1HvDgRF7fX",
+        "https://poly.pizza/m/4l5jRtpTec",
+        "https://poly.pizza/m/7FCPjy-3xmz",
+        "https://static.poly.pizza/144c6d27-9e58-4102-8790-83d0d21140e9.glb",
+        "https://static.poly.pizza/56bea38d-cb46-43e2-976b-2ed5d0827ffe.glb",
+        "https://static.poly.pizza/75833e82-6e6b-4ca1-9caa-82b3d9c6b73e.glb",
+        "https://www.blendkit.com/?query=author_id:272522",
+        "https://www.blendkit.com/asset-gallery-detail/ec73293c-30da-46e7-bda6-fc12a597ab6b/",
+        "https://www.blendkit.com/docs/licenses/",
+        "https://www.blendkit.com/get-blendkit/ec73293c-30da-46e7-bda6-fc12a597ab6b/",
+        "https://www.innerscene.com/tools/library/3d-parts/djembe-f083adc3"
+      ]
+    },
+    {
+      "source": "docs/research/drum-assets.md",
+      "source_sha256": "6aa157d1ed7bdbd77d1a9b9e58fd122e07ab7814be3ac72fc85b52fffc67a5b0",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/drum-assets.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/drum-assets.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/drum-assets.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "7b6f4206cd8c4e7dc69dd3380d44c105b3f5218780cc7fc967f3adef5573e978",
+      "compatibility_entry": {
+        "caller": "App Drum inspector hardcoded help URL",
+        "target": "../reference/presets.md",
+        "removal": "Review after app/help consumers and published issue entry links are migrated; remove only in an approved cleanup."
+      },
+      "preserved_external_urls": [
+        "https://creativecommons.org/publicdomain/zero/1.0/legalcode.txt",
+        "https://github.com/postmelee/drum-vrm/issues/25",
+        "https://github.com/postmelee/drum-vrm/issues/29",
+        "https://grab3d.com/dl/drum-kit/LICENSE.txt",
+        "https://grab3d.com/dl/drum-kit/manifest.json",
+        "https://grab3d.com/models/music/drum-kit/",
+        "https://kenney.nl/assets",
+        "https://poly.pizza/m/qWU9Q4flfQ",
+        "https://quaternius.com/",
+        "https://sketchfab.com/3d-models/drum-kit-99218427e7a2424ea8afc9b8c668a5c7",
+        "https://support.apple.com/en-us/101908",
+        "https://www.apple.com/legal/sla/docs/LogicPro.pdf",
+        "https://www.apple.com/uk/legal/sla/",
+        "https://www.innerscene.com/api/library/five-piece-drum-kit-daff10f4/download",
+        "https://www.innerscene.com/tools/library/3d-parts/five-piece-drum-kit-daff10f4",
+        "https://www.innerscene.com/tools/library/terms"
+      ]
+    },
+    {
+      "source": "docs/research/drum-kit-integration.md",
+      "source_sha256": "8d56ca4ff5caca74b4d99a516da8f2f6c3a6693afbde5239ef10c9884977898f",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/drum-kit-integration.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/drum-kit-integration.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/drum-kit-integration.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "947860ef3c126dd92b51818a50c605d77a139f74bd9307bf03fe3e0902ebbcf2",
+      "preserved_external_urls": [
+        "https://creativecommons.org/licenses/by/3.0/",
+        "https://creativecommons.org/publicdomain/zero/1.0/",
+        "https://poly.pizza/m/1HvDgRF7fX",
+        "https://poly.pizza/m/7FCPjy-3xmz",
+        "https://www.innerscene.com/tools/library/3d-parts/five-piece-drum-kit-daff10f4"
+      ]
+    },
+    {
+      "source": "docs/research/license-policy.md",
+      "source_sha256": "9ef73f40945d1012b4d8d64036c7aa52bbc413eb2500befb1c96e20df8488b1c",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/license-policy.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/license-policy.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/license-policy.md",
+        "specs/policies/third-party.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "7f2be8418283b988520eca9d674ce6f15aa06988430568a0f9861fd6ae28424f",
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/research/references.md",
+      "source_sha256": "016d2787d8538a5b7e10f1ae1b7a5cfabab64eb4edbc8e56b60a028537311d8d",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/references.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/references.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/references.md",
+        "docs/reference/sources/research.md",
+        "docs/reference/sources/research.ko.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "b906da4eb175e24fa8e089e1bddf53c8c28b237868d45997dac46f0481399376",
+      "preserved_external_urls": [
+        "https://arxiv.org/abs/2608.19055v1",
+        "https://arxiv.org/licenses/nonexclusive-distrib/1.0/license.html",
+        "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        "https://creativecommons.org/licenses/by/4.0/",
+        "https://doi.org/10.1007/978-3-7091-6240-8_2",
+        "https://doi.org/10.1111/cgf.70025",
+        "https://doi.org/10.1145/3769047.3769066",
+        "https://doi.org/10.48550/arXiv.2608.19055",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/LICENSE.txt",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/MIDIAnimator/__init__.py#L1-L12",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/Cargo.toml",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/src/utils/animation.rs#L514-L557",
+        "https://github.com/jamesa08/MIDIAnimator/blob/059b1e2b80baf6171762f3d6a3c3f938d44ed46c/rust-impl/motionkeys/src-tauri/src/utils/fcurve.rs#L1-L4",
+        "https://github.com/jamesa08/MIDIAnimator/tree/059b1e2b80baf6171762f3d6a3c3f938d44ed46c",
+        "https://github.com/wayne0419/ARDrum-VirtualHand",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/HandMovementPathRenderer.cs",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/TransformPlayBacker.cs",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/Assets/TransformRecorder.cs",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/blob/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4/LICENSE",
+        "https://github.com/wayne0419/ARDrum-VirtualHand/tree/dafb6b1a7ab0cc1ddc7301ac1d846b9c159cfac4",
+        "https://link.springer.com/chapter/10.1007/978-3-7091-6240-8_2",
+        "https://magenta.tensorflow.org/datasets/groove",
+        "https://mmip.cs.ucy.ac.cy/",
+        "https://mmip.cs.ucy.ac.cy/License.html",
+        "https://research.utwente.nl/en/publications/implementation-of-a-3d-virtual-drummer/",
+        "https://research.utwente.nl/files/83238062/Kragtwijk2001implementation.pdf",
+        "https://storage.googleapis.com/magentadata/datasets/groove/groove-v1.0.0-midionly.zip",
+        "https://studios.disneyresearch.com/2026/08/18/generalized-audio-driven-synthesis-of-precise-drummer-motion/",
+        "https://www.apache.org/licenses/LICENSE-2.0",
+        "https://www.theodoroskyriakou.com/projects/drums/Paper.pdf",
+        "https://www.theodoroskyriakou.com/projects/drums/index.html",
+        "https://zenodo.org/records/15830081"
+      ]
+    },
+    {
+      "source": "docs/research/rig-and-studio-audit.md",
+      "source_sha256": "b3d8f3e84107871f3110745a28e236f4c7029f75e366f33915a5412494f63dd2",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/rig-and-studio-audit.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/rig-and-studio-audit.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/rig-and-studio-audit.md",
+        "specs/architecture/rig-compatibility.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "81bdac3c3ae7d5ec5b33acff893d72157f6c42278a5b843d28db3b3532eba586",
+      "preserved_external_urls": [
+        "https://arxiv.org/abs/2608.19055v1",
+        "https://arxiv.org/html/2608.19055v1",
+        "https://github.com/pixiv/three-vrm/blob/dev/LICENSE",
+        "https://github.com/pixiv/three-vrm/blob/dev/packages/three-vrm-core/src/humanoid/VRMHumanoidRig.ts",
+        "https://github.com/postmelee/drum-vrm/blob/3e8be9333cedbc9845dbc3e4cebd73961af697b4/crates/drum-engine/src/motion.rs#L5",
+        "https://github.com/postmelee/drum-vrm/blob/3e8be9333cedbc9845dbc3e4cebd73961af697b4/src/scene.ts#L72",
+        "https://github.com/postmelee/drum-vrm/blob/3e8be9333cedbc9845dbc3e4cebd73961af697b4/src/types.ts",
+        "https://github.com/postmelee/drum-vrm/commit/3e8be9333cedbc9845dbc3e4cebd73961af697b4",
+        "https://github.com/postmelee/drum-vrm/commit/e1b90358f2b51b99444b959c1e56a161253ee917",
+        "https://github.com/postmelee/drum-vrm/issues/14",
+        "https://github.com/postmelee/drum-vrm/issues/17",
+        "https://github.com/postmelee/drum-vrm/issues/18",
+        "https://github.com/postmelee/drum-vrm/issues/20",
+        "https://github.com/postmelee/drum-vrm/issues/21",
+        "https://github.com/postmelee/drum-vrm/issues/30",
+        "https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm-1.0/humanoid.md",
+        "https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm-1.0/tpose.md",
+        "https://github.com/vrm-c/vrm-specification/blob/master/specification/VRMC_vrm_animation-1.0/how_to_transform_human_pose.md",
+        "https://hub.yamaha.com/music-educators/instruments/perc/a-guide-to-proper-stick-grips/",
+        "https://link.springer.com/chapter/10.1007/978-3-7091-6240-8_2",
+        "https://pixiv.github.io/three-vrm/docs/classes/three-vrm.VRMHumanoid.html",
+        "https://research.utwente.nl/files/83238062/Kragtwijk2001implementation.pdf",
+        "https://studios.disneyresearch.com/2026/08/18/generalized-audio-driven-synthesis-of-precise-drummer-motion/",
+        "https://threejs.org/docs/pages/Object3D.html",
+        "https://www.theodoroskyriakou.com/projects/drums/Paper.pdf",
+        "https://www.theodoroskyriakou.com/projects/drums/index.html"
+      ]
+    },
+    {
+      "source": "docs/research/snare-ready-and-kit-fit.md",
+      "source_sha256": "29c8cc7ab87c9a1f8ee68025d70067ca1d08f76b14e35b48a033c5f49cb573ed",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/snare-ready-and-kit-fit.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/snare-ready-and-kit-fit.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/snare-ready-and-kit-fit.md",
+        "mydocs/tech/proposals/body-kit-fit-ready-pose.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "874b1e9476ec6f88ba84dd272362af7aaa1971d1f85a89082845707b3584f0fd",
+      "preserved_external_urls": [
+        "https://hub.yamaha.com/music-educators/instruments/perc/snare-drum-basics-pedagogy/",
+        "https://usa.yamaha.com/files/download/other_assets/7/1224887/DTX_DrumScore_Instruction_eng.pdf"
+      ]
+    },
+    {
+      "source": "docs/research/vrm-models.md",
+      "source_sha256": "056baf3b7d5bf9b1d127f667a963ef6d7ba9e3e69d39e170427b556c46004c65",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/research/vrm-models.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/tech/research/2026-10-24/vrm-models.md",
+      "destinations": [
+        "mydocs/tech/research/2026-10-24/vrm-models.md",
+        "docs/reference/sources/models.md",
+        "docs/reference/sources/models.ko.md",
+        "specs/architecture/rig-contract.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "7f00247ef1fad3146d42812a6ade584f523889fb5738179a82d2d6ddd26ee3fe",
+      "preserved_external_urls": [
+        "https://booth.pm/",
+        "https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm",
+        "https://github.com/pixiv/three-vrm/blob/3caf7a21ee68f0d5dfa363ab3d577450bbf60136/packages/three-vrm/examples/models/VRM1_Constraint_Twist_Sample.vrm",
+        "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/Seed-san/README.md",
+        "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/README.md",
+        "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/vrm/VRM1_Constraint_Twist_Sample.vrm",
+        "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/specification/VRMC_vrm-1.0/humanoid.md",
+        "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/specification/VRMC_vrm-1.0/meta.md",
+        "https://github.com/vrm-c/vrm-specification/tree/94e82dd346fa6cf0337c4421728640e5252dd38e/samples",
+        "https://github.com/vrm-c/vrm-specification/tree/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/Seed-san",
+        "https://hub.vroid.com/en/",
+        "https://hub.vroid.com/en/characters/2843975675147313744/models/5644550979324015604",
+        "https://hub.vroid.com/en/characters/7939147878897061040/models/2292219474373673889",
+        "https://vrm.dev/en/univrm1/migrate_vrm0/",
+        "https://vrm.dev/licenses/1.0/",
+        "https://vroid.com/en/studio",
+        "https://vroid.pixiv.help/hc/en-us/articles/15760756822297-I-want-to-learn-more-about-the-VRM-export-feature",
+        "https://vroid.pixiv.help/hc/en-us/articles/39513464329881-What-is-VRM",
+        "https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z",
+        "https://vroid.pixiv.help/hc/en-us/articles/4402614652569-Do-VRoid-Studio-s-sample-models-come-with-conditions-of-use",
+        "https://vroid.pixiv.help/hc/en-us/articles/4405813333657-Can-I-use-the-models-created-with-VRoid-Studio-Stable-Ver-for-commercial-purposes",
+        "https://vroid.pixiv.help/hc/en-us/articles/900006050066-I-want-to-learn-more-about-keyboard-shortcuts-in-VRoid-Studio-for-Windows-and-macOS"
+      ]
+    },
+    {
+      "source": "docs/verification/calibration-unreleased.md",
+      "source_sha256": "c6405092e056e935a024bce82adf7fc5d881ab83b756edb36626a70b67a559cf",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/calibration-unreleased.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/verification/calibration-644fe185.md",
+      "destinations": [
+        "mydocs/report/verification/calibration-644fe185.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "546f73f5f062b87aff7d0743918bedc36b1612f3f03270964ecb18ce2ff94fce",
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm/pull/34"
+      ]
+    },
+    {
+      "source": "docs/verification/mvp-0.1.md",
+      "source_sha256": "8766e03b1fdf8c3d2d6ceeb1fb91eab1059629a5c69cbd9d0f4bc97d77edffe8",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/mvp-0.1.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/verification/mvp-0.1.md",
+      "destinations": [
+        "mydocs/report/verification/mvp-0.1.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "a37a7fde391665bcbc51c11e05ac9cf842af714c55d12b180b91d0667973947f",
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm/actions/runs/40060627630",
+        "https://github.com/postmelee/drum-vrm/actions/runs/40060762280",
+        "https://github.com/postmelee/drum-vrm/pull/24",
+        "https://github.com/postmelee/drum-vrm/releases/tag/v0.1.0",
+        "https://postmelee.github.io/drum-vrm/"
+      ]
+    },
+    {
+      "source": "docs/verification/palm-orientation-unreleased.md",
+      "source_sha256": "fad2099da559b802c9bb60c9788746a8081294a00e7e5f11383563090da8d813",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/palm-orientation-unreleased.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/verification/palm-orientation-2026-10-24.md",
+      "destinations": [
+        "mydocs/report/verification/palm-orientation-2026-10-24.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "3263545ba99a877d5601a98c5e08e6f5b55d31870bad3da7a8bb51d1a54b10a0",
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm/pull/34"
+      ]
+    },
+    {
+      "source": "docs/verification/rig-motion-baseline.md",
+      "source_sha256": "6663bf9ec9bd942a183a2a56e5ef7dff35c5d8bb85bc71b7951194bed9151525",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/rig-motion-baseline.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/verification/rig-motion-baseline.md",
+      "destinations": [
+        "mydocs/report/verification/rig-motion-baseline.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "0ec7674a3cce43573eb71065437ff3c8ac1853384dab1bfc923a50e51c2906f2",
+      "preserved_external_urls": []
+    },
+    {
+      "source": "docs/verification/studio-0.2.md",
+      "source_sha256": "3ad555039aba2bbfc29b05499600e28ace3ec2d147cc3821b753b575d8f8a979",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/studio-0.2.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/verification/studio-0.2.md",
+      "destinations": [
+        "mydocs/report/verification/studio-0.2.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "6a4b0a6ce0d63f6cb85e45193673b23ffc076a3ac1e38d9e1293fa8830311bc5",
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm/actions/runs/40063272293",
+        "https://github.com/postmelee/drum-vrm/actions/runs/40063363035",
+        "https://github.com/postmelee/drum-vrm/pull/26",
+        "https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0",
+        "https://postmelee.github.io/drum-vrm/"
+      ]
+    },
+    {
+      "source": "docs/verification/vrm-studio-unreleased.md",
+      "source_sha256": "a92c3e4066a75d66c08c89326acb59877d979fa4aafa98083497fef4b2b71ecd",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/verification/vrm-studio-unreleased.md",
+      "action": "preserve-historical-body-and-relocate-links",
+      "preserved_copy": "mydocs/report/verification/vrm-studio-pr33.md",
+      "destinations": [
+        "mydocs/report/verification/vrm-studio-pr33.md"
+      ],
+      "owner": "internal-specs",
+      "preserved_body_sha256": "5c3b59bf3e32a91ffd334dd97c69409835b11c13e4dbbf95c043c48b56f1373b",
+      "preserved_external_urls": [
+        "https://github.com/postmelee/drum-vrm/actions/runs/40068065398"
+      ]
+    },
+    {
+      "source": "public/licenses.txt",
+      "source_sha256": "d60c9eaf8e1dfaadcb9a7a269e24e59936a05d6b079236e20f10ed958ade9d17",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/public/licenses.txt",
+      "action": "regenerated-full-legal-notices",
+      "destinations": [
+        "public/licenses.txt"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "public/models/CC-BY-3.0.txt",
+      "source_sha256": "e6bc9e9c474700b708f568bac9e5a8a9bcb2b1dad53442f5ba449fcb848b8e76",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/public/models/CC-BY-3.0.txt",
+      "action": "preserve-original-legal-text",
+      "destinations": [
+        "public/models/CC-BY-3.0.txt"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "public/models/NOTICE.txt",
+      "source_sha256": "a2fe64f47bb2015b27be6b048981d768540ebad59fb5ac38c651c100fedf02e3",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/public/models/NOTICE.txt",
+      "action": "generated-from-provenance",
+      "destinations": [
+        "public/models/NOTICE.txt"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "public/models/README.md",
+      "source_sha256": "0a51f2b529cfda63464d193ffc132be7f7ae19f6a19741d4b9b3fce20a1a953e",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/public/models/README.md",
+      "action": "paired-asset-index",
+      "destinations": [
+        "public/models/README.md",
+        "public/models/README.ko.md"
+      ],
+      "owner": "project-docs"
+    },
+    {
+      "source": "public/models/innerscene-LICENSE.txt",
+      "source_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "baseline_commit": "66951cd69015e43cfe132a6ba61545b175a25412",
+      "baseline_permalink": "https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/public/models/innerscene-LICENSE.txt",
+      "action": "preserve-original-legal-text",
+      "destinations": [
+        "public/models/innerscene-LICENSE.txt"
+      ],
+      "owner": "project-docs"
+    }
+  ]
+}

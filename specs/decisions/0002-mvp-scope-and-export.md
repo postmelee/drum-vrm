@@ -1,0 +1,36 @@
+> Historical source record. Preserved from [the audited baseline `66951cd6`](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/decisions/0002-mvp-scope-and-export.md).
+> Original wording and recorded scope are retained; only relative link targets were relocated.
+> Statements such as “current”, “unreleased” and approval instructions below apply to that record, not to new work.
+> Use [adopted specifications](../README.md) for current contracts and policy.
+
+# 0002 기본 리그와 고정 프레임 출력으로 MVP 제한
+
+상태: 채택, 2026-10-24 사용자 승인 후 MVP에 적용. 통합·배포 인수 검증 진행 중.
+
+## 배경
+
+원문 대화는 WAV, VRM, 편집, 고해상도와 3D 출력까지 다뤘다. 최신 요청은 MIDI 업로드 후 사전 준비를 거쳐 확장 가능한 기본 리그가 연주하고 영상을 저장할 수 있으면 된다고 범위를 좁혔다.
+
+## 결정
+
+MVP는 직접 만든 리그와 키트, MIDI 파일, 합성 드럼 소리, 한 대의 조절 가능한 카메라, 720p30 영상 출력으로 끝까지 연결한다. WAV 정밀 동기화·VRM 업로드·사용자 손 배정 편집은 M3에 둔다. 원문 요구를 삭제하지 않고 후속 이슈와 연결한다.
+
+출력 파일의 시각은 `frameIndex / fps`, 포즈를 평가할 곡 시각은 `frameIndex / fps - preRoll`이다. 기본 준비 구간은 0.5초, 끝 반동 구간은 0.25초이며 합성 오디오에도 같은 시간 이동을 적용한다. 각 프레임의 인코더 완료를 기다린다. 실시간 화면 녹화만으로 고정 FPS 출력이 완료됐다고 간주하지 않는다. 실행 시 지원되는 코덱·컨테이너를 탐지하며 MP4 또는 WebM 중 가능한 형식을 제공한다. 지원되지 않는 환경에는 이유와 지원 브라우저 안내를 표시한다.
+
+Pages 배포는 정적 단일 스레드 WASM을 기준으로 한다. 사용자의 계획·MIT·구현/검증/배포 승인은 완료되었으며 최초 공개 배포는 M2 검증 뒤 수행한다.
+
+## 결과
+
+모델 권리·학습 데이터·리타게팅 난이도가 첫 MVP를 막지 않는다. 출력 품질과 타격 정확도를 먼저 측정할 수 있다. 더 복잡한 캐릭터와 제작 옵션은 동일한 계획과 어댑터 경계 위에 추가한다.
+
+## MVP 구현과 후속 경계
+
+Mediabunny의 WebCodecs 경로로 MP4 AVC/AAC, WebM VP9/Opus, WebM VP8/Opus를 순서대로 실제 구성과 짧은 파일 인코딩으로 확인한다. capability query·시험 인코딩·본 출력에 취소를 전달하고 사용자의 명시적 무음 선택 외에는 오디오 실패를 무음 파일로 대체하지 않는다.
+
+프레임 수는 `ceil((0.5 + D + 0.25) × 30)`이며30초 곡은923프레임이다. 프리뷰와 출력은 같은 합성 PCM 및 절대 시각 pose evaluator를 사용한다. 출력은 원시 프레임 배열을 누적하지 않지만 PCM과 압축 파일은 메모리에 보관한다. 5분 입력 상한, source 구현, codec API의 존재만으로 모든 기기에서 출력이 검증됐다고 판단하지 않는다. 공개 URL·SHA·파일 검증은 #11/#12에 별도로 남긴다.
+
+## 2026-10-24 codec 왕복 검사 보강
+
+실제 macOS26.5.2 / Chrome155.0.8059.86에서 초기 MP4의923프레임 비디오는 정상이어도 AAC 첫 onset이0.542958초로 기대0.5초보다42.958ms 늦었고, 컨테이너도 기대30.766667초보다 긴30.848초였다. 해당 조합을 인수에서 제외했다. 이는 그 환경의 측정값이며 모든 AAC encoder에 같은 지연이 있다는 뜻이 아니다.
+
+이후 runtime probe는 실제6프레임·0.2초 시험 A/V를 다시 demux/decode한다. audio 길이와 알려진0.1초 tone onset이 기대값 대비1프레임 이내인 조합만 통과시킨다. 완성 출력에서도 audio 길이를 재검사한다. 원본 MIDI나 전체 오디오를 임의로 이동하는 보정은 넣지 않았다. 해당 환경에서 통과한 VP9/Opus WebM은923프레임, 컨테이너30.780000초, 첫 onset0.506146초로 측정되었다. 자세한 증거·재현·미완료 항목은 [검증 기록](../../mydocs/report/verification/mvp-0.1.md)에 있다.

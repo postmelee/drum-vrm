@@ -15,7 +15,8 @@
     "build:web": "npm run typecheck && vite build",
     "build": "npm run build:wasm && npm run build:web",
     "preview": "vite preview --host 127.0.0.1",
-    "licenses": "node scripts/licenses.mjs"
+    "licenses": "node scripts/licenses.mjs",
+    "docs:check": "node scripts/check-docs.mjs"
   },
   "dependencies": {
     "@pixiv/three-vrm": "3.5.5",

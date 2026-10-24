@@ -32,8 +32,8 @@
       "updatePolicy": "merge",
       "sourceGitBlob": "89907b75e5b71af8528a48b2b46b41f6d425916c",
       "sourceSha256": "0bfd964ad9fffe740cc4bccfaf558b2589318b8be89ee6b42fb44aa2a0fa9566",
-      "installedSha256": "62064cf6f64a470371c3df71dabb81512f10deeb2510defaf9c68aa281ccc2d9",
-      "bytes": 9323,
+      "installedSha256": "3d6b78434433e3c01e20e8a4ea65c2c5387cf72c1b3ef693544329cd3df5145c",
+      "bytes": 8162,
       "placeholders": [
         "{BASE_BRANCH}",
         "{PROJECT_OVERVIEW}",
@@ -41,7 +41,8 @@
         "{PROJECT_SPECIFIC_REQUIRED_DOCUMENTS}"
       ],
       "preexistingSha256": "fe902e8ce6b71faebe5cdb135514ff9fce98e097ef9ca10be178985b06843818",
-      "action": "replace-approved"
+      "action": "replace-approved",
+      "priorInstalledSha256": "62064cf6f64a470371c3df71dabb81512f10deeb2510defaf9c68aa281ccc2d9"
     },
     {
       "target": "CLAUDE.md",
@@ -436,14 +437,15 @@
       "updatePolicy": "overwrite",
       "sourceGitBlob": "8f83ab6f7d957c51530e43279d29e6dfc891c1c0",
       "sourceSha256": "1cba25ded3c2ced3e7e008971be5e48b03b6a081f75b5695678576e715cc2324",
-      "installedSha256": "b6ac96b705ab5db2d556f1ff412fd60aa701540af6b79d12d19780c401f9897b",
+      "installedSha256": "481b10079ab2c56ec64ef7266f0178bc73eee2edccb7b86c2d4dcefb2c6dfd45",
       "bytes": 3823,
       "placeholders": [
         "{BASE_BRANCH}",
         "{PROJECT_VALIDATION_GUIDE}"
       ],
       "preexistingSha256": null,
-      "action": "create"
+      "action": "create",
+      "priorInstalledSha256": "b6ac96b705ab5db2d556f1ff412fd60aa701540af6b79d12d19780c401f9897b"
     },
     {
       "target": "mydocs/skills/pr-merge-cleanup/SKILL.md",
@@ -754,6 +756,16 @@
       "kind": "symlink",
       "linkTarget": "../mydocs/skills",
       "updatePolicy": "symlink"
+    }
+  ],
+  "projectCustomizations": [
+    {
+      "issue": 36,
+      "reason": "Approved documentation location migration; only project placeholder values changed",
+      "paths": [
+        "AGENTS.md",
+        "mydocs/skills/external-pr-review/SKILL.md"
+      ]
     }
   ]
 }

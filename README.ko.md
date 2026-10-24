@@ -2,110 +2,35 @@
 
 [English](README.md) · **한국어**
 
-DAW에서 만든 드럼 MIDI를 3D 드러머의 연주 영상으로 바꾸는 브라우저 도구입니다. Rust/WASM이 MIDI와 연주 동작을 계산하고 Three.js가 확장 가능한 기본 리그를 렌더링합니다.
+드럼 MIDI를 3D 드러머의 연주 영상으로 바꾸는 브라우저 도구입니다. Rust/WASM이 연주를 계산하고 Three.js가 리그·드럼·카메라 화면을 렌더링합니다.
 
-**v0.2.0 배포 완료 · [지금 테스트하기](https://postmelee.github.io/drum-vrm/) · [v0.2.0 릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)**
+[공개 데모 실행](https://postmelee.github.io/drum-vrm/) · [첫 영상 만들기](docs/tutorials/first-video.ko.md) · [기능 제공 범위](docs/reference/availability.ko.md)
 
-Chrome 155/macOS에서 실제 파일 업로드부터 오디오 포함 영상 다운로드까지 확인했습니다. [검증 기록](docs/verification/studio-0.2.md)에 환경·측정값·미검증 범위를 기록합니다.
+MIDI를 불러와 준비 결과를 확인하고, 재생하거나 원하는 시점을 탐색한 뒤 합성 드럼 소리가 포함된 영상을 출력합니다. 선택한 MIDI와 모델은 브라우저 안에서 처리합니다. 원본 DAW의 음색을 재현하지는 않습니다.
 
-## 미배포 변경
+## 필요한 안내 찾기
 
-VRM 1.0 단일 `.vrm`(최대 50 MiB) 로더, 필수 본 15개·손가락 본·이용 조건 표시를 구현했다. 기본 리그도 실제 표준 Bone 계층과 손가락을 사용하는 공통 어댑터로 변경했다. 모델/뼈대 표시, 기본 리그 복원, 실제 스틱 끝·발 기준점 계측을 제공한다. VRM 0.x는 변환이 필요하고 `.vroid`는 편집 원본이다. 일반 휴머노이드 GLB 매핑과 정밀 피부/신발·좌석 보정은 #17/#18에 남아 있다. 머리카락·옷 물리는 탐색·출력 일치를 위해 정지한다. 아래 v0.2 설명은 공개 배포본의 기록이며 새 기능의 공개 배포를 뜻하지 않는다.
-
-작업 브랜치에 Lucide SVG 컨트롤, 연주자 시점, velocity 기반 선택형 타격 반응, Batoski·smoj CC BY 3.0 키트를 추가했다. 드럼 설정에서 반응과 강도를 조절하며 동작 줄이기 설정에서는 움직임을 억제한다. 연주자 시점은 카메라 조작을 고정하고 드럼 편집 종료 후 복원된다. 아직 Pages에 배포하지 않았다.
-
-[모델 확보·업로드 안내](docs/models.ko.md)와 [VRM 모델 조사](docs/research/vrm-models.md)를 함께 유지한다. 조사용 다운로드는 공개 번들에 포함하지 않는다. VRM 1.0 후보 3개의 제한된 접촉·탐색 검증 결과는 안내 문서에 기록했다.
-
-PR #33의 VRM 기반 구현은 main에 병합했으며 미배포 상태입니다. 다음 미출시 묶음에서는 공통 좌석·타점 보정, 페달에 발을 둔 상태의 발목 동작, 손바닥 기준 그립, 공통 받침대·페달을 유지하는 드럼 몸체 교체를 구현했습니다. 컨트롤·세션 내 설정·한계는 [좌석·드럼 보정 안내](docs/calibration.ko.md)를 참고하세요. [로컬 검증 기록](docs/verification/calibration-unreleased.md)에 검사 결과와 제한을 남겼으며, 명시적인 교차/오픈핸드 주법과 충돌 회피는 후속 작업입니다.
-
-## 첫 MVP
-
-`MIDI 업로드 → 사전 분석·연주 계획 → 기본 리그 표시 → 재생 → 영상 다운로드`
-
-- 관절·뼈대·스틱을 표시하는 스켈레톤, 자체 드럼 3종과 Innerscene CC0 어쿠스틱 키트
-- 흰색/검정 작업 화면, 네 설정 메뉴, 마디·박자·음표를 보여주는 피아노 롤
-- 드럼 정면 편집, 부품 선택, 색상·크기·회전 및 로컬 GLB 외형 교체
-- 킥·스네어·하이햇·탐·크래시·라이드, 오른손 주도 기본 계획
-- 템포 변경을 보존한 타격, 양손·양발 배정, 준비·접촉·반동과 불가능한 타격 진단
-- 재생·일시정지·처음으로·탐색, 자체 합성 드럼 소리, 카메라와 배경 조절
-- 1280×720, 30fps 고정 프레임 영상과 합성 오디오; 실행 환경에서 가능한 MP4 또는 WebM
-- 사용자가 고른 MIDI는 브라우저 안에서 처리하며 자동 전송하거나 저장소에 업로드하지 않음
-
-WAV 동기화, 일반 휴머노이드 GLB 매핑, 정밀 체형 보정, 편집, 프로젝트 저장, 고해상도·3D 출력은 M3·M4 후속 범위입니다. VRM 1.0 캐릭터 교체는 상단의 미배포 변경에 구현되었습니다.
-
-## 사용 흐름
-
-1. **업로드 · 연주정보** 메뉴에서 **30초 데모** 또는 `.mid`/`.midi` 파일을 선택합니다.
-2. 준비가 끝나면 트랙·채널과 분석 알림을 확인합니다. 선택을 바꾼 경우 **선택한 트랙으로 다시 준비**를 누릅니다.
-3. **재생**을 눌러 연주를 시작합니다. 타임라인으로 이동하고 드래그·스크롤 또는 시점 버튼으로 카메라를 조절합니다.
-4. **내보내기** 메뉴에서 **영상 추출**을 누르고 완료 후 다운로드 링크로 파일을 저장합니다. 기본 출력은 합성 드럼 오디오를 포함합니다.
-
-원본 DAW의 음색을 재현하지는 않습니다. 출력에는 시작 준비 0.5초와 끝 여운 0.25초가 포함됩니다. 정확히 30초인 곡은 923프레임, 약 30.7667초로 출력됩니다.
-
-입력은 SMF format 0/1·PPQ 시간축, 최대 10 MiB·선택 트랙 길이 300초·512트랙·전체 200,000이벤트·선택한 지원 타격 50,000개입니다. SMF 2·SMPTE·손상된 파일은 이유를 표시하고 거부합니다. 미매핑 음표는 알림으로, 리그로 표현하지 못한 지원 타격은 원래 시각의 소리와 타점 강조로 남깁니다.
-
-## 모델 파일 지원
-
-드럼 부품은 텍스처가 포함된 정적 단일 `.glb`(GLB2.0, 최대25MiB)를 지원합니다. 외부 URL/별도 파일 참조와 스킨/뼈대가 있는 모델은 거부합니다. 임의 파일은 자동 크기 맞춤으로 표시하므로 타점과 실제 표면의 정확한 일치는 별도 보정이 필요합니다. 색상·모델을 바꿔도 합성 음향은 동일합니다. GLTF·FBX·OBJ·BLEND는 GLB로 변환해야 합니다.
-
-공개 v0.2.0은 스켈레톤 표시/숨기기만 지원합니다. 미배포 구현에서는 VRM 1.0 캐릭터 업로드를 지원하며 자세한 입력 제한·권리·검증 범위는 [모델 안내](docs/models.ko.md)를 참고하세요. 일반 휴머노이드 GLB와 정밀 신발/피부 보정은 #17/#18에 남아 있습니다. 드럼 외형 설정은 현재 세션에만 유지되며 프로젝트 저장은 #15입니다.
-
-## 로컬 개발과 검사
-
-Node.js 24 이상, [rust-toolchain.toml](rust-toolchain.toml)의 Rust 1.94.1 및 `wasm32-unknown-unknown` target, wasm-pack 0.15.0을 사용합니다. npm과 Rust 의존성은 `package-lock.json`과 `Cargo.lock`으로 고정합니다.
-
-```sh
-npm ci
-cargo install wasm-pack --version 0.15.0 --locked
-npm run build:wasm
-npm run dev
+```mermaid
+flowchart LR
+  Start["시작"] --> Learn["첫 영상"]
+  Start --> Do["작업별 사용법"]
+  Start --> Look["형식과 컨트롤"]
+  Start --> Why["동작 원리"]
 ```
 
-개발 서버가 출력하는 로컬 주소의 `/drum-vrm/` 경로를 엽니다. `src/wasm/`은 생성물이므로 커밋하지 않습니다. Rust 코드를 변경하면 `npm run build:wasm`으로 다시 생성합니다.
+- **배우기:** [첫 영상 만들기](docs/tutorials/first-video.ko.md).
+- **작업하기:** [캐릭터 불러오기](docs/how-to/import-character.ko.md), [좌석·드럼 맞추기](docs/how-to/fit-character.ko.md), [드럼 부품 교체](docs/how-to/replace-drum-parts.ko.md), [영상 출력](docs/how-to/export-video.ko.md).
+- **조회하기:** [지원 모델 파일](docs/reference/model-formats.ko.md), [MIDI·출력 제한](docs/reference/midi-and-export.ko.md), [드럼 프리셋](docs/reference/presets.ko.md).
+- **이해하기:** [구조](docs/explanation/architecture.ko.md)와 [연주 표현의 원칙](docs/explanation/performance-principles.ko.md).
+- **기술 설계 살펴보기:** [체형·키트 보정](specs/architecture/calibration.md), [리그 호환성](specs/architecture/rig-compatibility.md), [연주·표현](specs/architecture/performance-expression.md), [의존성 선택](specs/architecture/dependencies.md).
+- **기여하기:** [로컬 실행](docs/how-to/local-development.ko.md), [설계 명세](specs/README.md), [이슈](https://github.com/postmelee/drum-vrm/issues).
 
-```sh
-cargo fmt --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-npm run typecheck
-npm test
-npm run licenses
-npm run build
-npm run preview
-```
+[문서 전체 탐색](docs/README.ko.md)
 
-위 명령은 재현 절차이며 검사를 통과했다는 기록은 아닙니다. `npm run licenses`는 설치된 npm 패키지, Cargo 잠금 그래프와 원본 라이선스를 대조하므로 먼저 잠긴 Rust 의존성을 빌드하거나 가져와야 합니다. production 출력은 `dist/`, Vite base는 `/drum-vrm/`입니다.
+## 연주 표현 연구
 
-## 실행 환경과 제한
+**Keiichi Nagata의 Yamaha DTX402 Series — Drum Score / Instruction**과 그립 교육·애니메이션 연구를 함께 참고합니다. 프로젝트의 동작 규칙은 독립적으로 설계하고 검증합니다. [출처 대장](docs/reference/sources/README.ko.md)에서 저자를 밝히고 원자료의 설명, 프로젝트의 해석, 구현 근거를 구분합니다. 출처 표기는 공식 보증을 의미하지 않습니다.
 
-첫 검증 대상은 WebGL·WASM·Web Audio·WebCodecs를 제공하는 데스크톱 Chromium입니다. 영상 출력은 HTTPS 또는 localhost의 secure context가 필요하며, 운영체제와 브라우저가 실제 제공하는 코덱에 따라 달라집니다. MP4(H.264/AAC), WebM(VP9/Opus), WebM(VP8/Opus)를 실제 설정과 짧은 시험 출력의 길이·decoded onset까지 확인합니다. 검증 환경에서 AAC 지연이 기준을 넘으면 VP9/Opus WebM을 선택합니다. 오디오 실패를 무음 성공으로 바꾸지 않습니다.
+## 라이선스와 출처
 
-공개 v0.2.0 리그는 고정된 기본 체형과 규칙 기반 동작입니다. 미배포 어댑터는 실제 팔·다리 길이와 좌석 높이를 반영하고 탐색·출력 일치를 위해 머리카락·옷 물리를 정지합니다. 밀집 타격·빠른 이동·도달 불가능한 타점은 진단하며, 모든 MIDI를 사람처럼 연주한다고 보장하지 않습니다. PCM과 압축된 출력 파일을 메모리에 보관하므로 긴 곡의 메모리 사용량은 늘어납니다. 5분 입력 상한은 모든 기기에서의 성능 보장이 아니며 Safari·Firefox·모바일 전체 호환성과 최대 길이 성능은 별도 검증 대상입니다.
-
-## 연주 표현 연구와 출처
-
-**Keiichi Nagata의 [Yamaha DTX402 Series — Drum Score / Instruction](https://data.yamaha.com/files/download/other_assets/7/1224887/DTX_DrumScore_Instruction_eng.pdf)**(© 2018 Yamaha Corporation)을 비롯한 그립 교육 자료와 애니메이션 연구를 바탕으로 연주 표현을 연구합니다. 참고 내용을 프로젝트의 검증 가능한 동작 규칙으로 독립 설계합니다. 주법 프로필과 0–100 시각적 표현량 조절은 현재 기능이 아닌 계획 단계입니다.
-
-[연주 표현의 원칙과 자료 대장](docs/performance-foundations.ko.md)에 저자·원문 위치·연구 범위·권리·구현 상태를 기록합니다. 프로젝트 코드의 MIT 라이선스는 참고자료에 적용되지 않으며, 인용이 저자나 Yamaha의 공식 보증을 의미하지 않습니다.
-
-## 문서와 작업 현황
-
-사용자용 안내는 영어와 한국어를 같은 PR에서 함께 갱신합니다. 기존 한국어 문서는 보존하며 개발·연구 내부 문서는 영어로만 작성할 수 있습니다. 새 기능의 제안과 공개 배포된 기능을 구분합니다.
-
-| 목적 | 문서 |
-| --- | --- |
-| 새 작업을 시작하기 | [인수인계와 현재 상태](docs/handoff.md), [작업 지침](AGENTS.md) |
-| 범위와 완료 조건 | [요구사항](docs/product-requirements.md), [개발 계획](docs/plan.md) |
-| 좌석·타점·드럼 부품 | [보정 안내](docs/calibration.ko.md), [설계 계약](docs/decisions/0005-calibration-pedals-hardware.md) |
-| 승인과 릴리스 | [승인 기록](docs/approval.md), [릴리스 정책](docs/release-policy.md) |
-| 엔진과 리그 연결 | [아키텍처](docs/architecture.md), [설계 결정](docs/decisions/0001-engine-and-rig-boundary.md) |
-| 원 대화의 맥락 | [요구사항 출처와 주제별 기록](docs/context/source-conversation.md) |
-| 연구와 재사용 조건 | [연구·데이터](docs/research/references.md), [기술 조사](docs/research/dependencies.md), [라이선스 정책](docs/research/license-policy.md) |
-| 연주 원칙과 교육 자료 | [출처와 표현 설계](docs/performance-foundations.ko.md), [주법·표현량 설계 계약](docs/decisions/0006-technique-and-expression-foundation.md) |
-| 실행 작업 | [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), [Milestones](https://github.com/postmelee/drum-vrm/milestones) |
-
-## 배포와 라이선스
-
-2026-10-24 [Pages](https://postmelee.github.io/drum-vrm/) 배포 및 공개 주소 핵심 경로 검증을 완료했습니다. 배포 commit은 `3e8be9333cedbc9845dbc3e4cebd73961af697b4`, [배포 run](https://github.com/postmelee/drum-vrm/actions/runs/40063363035)은 성공했습니다. [릴리스](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0)에 실제 정적 artifact와 SHA-256을 보존합니다. 후속 작업은 이슈와 PR로 진행합니다. **사용자가 검토할 변경 묶음을 명시적으로 승인하기 전에는 릴리스 태그·GitHub Release·Pages 배포를 실행하지 않습니다.** PR 병합이나 CI 통과는 배포 승인이 아닙니다. 승인 이후 main의 검증된 commit으로 한 번에 배포하며, [릴리스 절차](docs/release-policy.md)를 따릅니다.
-
-자체 소스는 [MIT](LICENSE)입니다. 제3자 라이선스는 각각 유지하며 [배포 고지](public/licenses.txt)에 정확한 버전·소스·원문을 제공합니다. Mediabunny는 MPL-2.0이며 대응 소스의 고정 버전 URL을 고지에 포함합니다. Innerscene CC0 키트와 Batoski/smoj CC BY 3.0 키트의 저작자·원본 URL·변경 사항·원문·SHA-256을 `public/models`에 보존합니다. 외부 캐릭터·음원 샘플·모션 데이터·ML 가중치는 포함하지 않습니다. [무료 드럼 모델 조사와 지원 형식](docs/research/drum-assets.md)을 참고하세요. 참고 연구의 라이선스를 관련 데이터나 가중치의 사용 허가로 확대하지 않습니다.
+자체 코드는 [MIT](LICENSE)입니다. 의존성과 외부 드럼 모델에는 각각의 조건이 적용되며 [제3자 고지](THIRD_PARTY_NOTICES.md)와 [에셋 출처](public/models/README.ko.md)에서 확인할 수 있습니다. 외부 캐릭터·음원 샘플·모션 데이터셋·학습 가중치는 포함하지 않습니다. 불러온 에셋에는 제작자의 이용 조건이 계속 적용됩니다.

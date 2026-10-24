@@ -39,38 +39,32 @@ This project uses the **Hyper-Waterfall** methodology. Read these rules carefull
 
 ## Mandatory Rules Before Changes
 
-The explicit owner-approved Drum VRM rules below override conflicting defaults in the framework manuals, templates, and Skills, including the stage gates, branch names, and selected-locale rule above.
+The owner-approved project rules below take precedence over conflicting framework defaults, including stage approvals, branch names, language and document naming.
 
-### Authorization, branches, and release
+### Authorization and workflow
 
-- Continue implementation, verification, documentation, issue, and PR work already authorized by the owner without repeatedly asking for stage approval. Record evidence at stage boundaries. Ask when scope or an action needs new authorization; passing a stage never authorizes a release.
-- Use `codex/` work branches and publish the same branch name for PRs to `main`; do not create `local/taskN` or `publish/taskN` branches. Preserve other workers' changes and worktrees.
-- Both the integration and release reference are `main`. Do not create a `main`-to-`main` promotion PR. Release only a specifically approved batch and tested commit.
-- Do not create release tags, publish GitHub Releases, or dispatch GitHub Pages deployment without an explicit owner instruction approving that batch. A previous MVP approval, passing CI, merging a PR, or finishing a milestone is not approval. Before requesting release approval, prepare a concrete change summary, tested commit, known limitations, and release scope. Keep the existing `docs/release-policy.md` in force until its approved migration.
+- Continue work within the owner's approved scope without repeated stage permission. Record evidence; ask for new authorization when scope or an action requires it.
+- Use `codex/` branches. Stacked PRs may target their prerequisite branch, then retarget to `main` after reviewed integration. Do not create `local/taskN` or `publish/taskN`, rename existing milestones, or open `main`-to-`main` promotion PRs.
+- Do not create release tags, publish Releases, or dispatch Pages without explicit approval of a reviewed batch and tested commit. Passing CI, a merge, or historical MVP approval is insufficient. See [release procedure](specs/policies/releases.md).
+- Keep scope, acceptance and review state on GitHub; record verification and limitations against the tested commit. Preserve other workers' changes.
 
-### Language and document ownership
+### Documents and continuity
 
-- Communicate with the owner in Korean. Write issues, PR descriptions, new internal engineering notes, research audits, and ADRs in English.
-- `README.md` is English and `README.ko.md` is Korean. Maintain user-facing instructions, supported formats, and release guidance in separate English and Korean files in the same PR, with reciprocal links and equivalent facts. Preserve existing Korean material during migration.
-- Distinguish proposed, implemented/unreleased, and publicly deployed behavior. A merged PR does not imply the public site changed.
-- This bootstrap installs operating files only. Keep the current README and product documents unchanged; their migration belongs to the separately approved documentation PR.
-- For that approved documentation redesign, adopted product requirements, architecture, decisions, and project policies belong in `specs/{product,architecture,decisions,policies}`. Reader guidance belongs in `docs/`; draft research and task evidence belong in `mydocs/`. Do not put project-owned policy files inside framework-managed `mydocs/manual/`.
-- Keep framework-managed files unchanged apart from approved placeholders. On updates, enumerate files and compare the pinned source and installed hashes; preserve project-owned files and review conflicts before replacing anything. Never replace an entire populated directory blindly.
+- Communicate with the owner in Korean. New issues, PRs, specifications and internal records use English. Reader guidance uses equivalent separate English/Korean files with reciprocal links; preserve existing Korean historical material.
+- Resume from [work records](mydocs/README.md), then the relevant issue/plan and [specifications](specs/README.md). Read [document ownership](specs/policies/documentation.md) before creating or moving documents.
+- `docs/` owns concise reader guidance; `specs/` owns adopted requirements, architecture, ADRs and policies; `mydocs/` owns task evidence, research and proposals. Keep rich generalized technical explanations in specs and link reader guidance to them.
+- Milestone/issue filename conventions apply to task artifacts, not stable specifications or reader guides. Preserve existing ADR/source IDs. Never append new current status to old evidence.
+- Follow scoped AGENTS. Update affected contracts and both reader languages with a change; link the relevant issue to actual verification and limits. Keep the work index short.
+- Framework manuals/templates/skills retain their pinned text except approved placeholders. Compare source and installed hashes before updates; preserve project-owned files and never replace a populated directory blindly.
 
-### Engineering and source boundaries
+### Engineering and provenance
 
-- Use Rust for MIDI interpretation and performance planning, WASM for the browser boundary, and Three.js for visualization.
-- Never move original MIDI hit times to hide motion problems; return diagnostics for impossible hits.
-- Preserve the `PerformancePlan` and `RigAdapter` boundary. Do not hardcode basic-rig object names into the engine. `evaluate_at(t)` must return the same primary pose regardless of playback or seek order.
-- Run meaningful checks appropriate to the change and record actual results. Never claim an unrun check passed.
-- Pin adopted dependencies by version or commit and license. Distinguish papers, software, data, model weights, and assets, and retain their own terms and source evidence.
-- Never commit uploaded MIDI, WAV, or VRM files, raw conversations, secrets, or private external downloads. Generate demo and test fixtures locally. `.local/` remains private working material.
-
-### Continuity and completion
-
-- Until the documentation migration lands, resume from `docs/handoff.md`, then read `docs/product-requirements.md`, `docs/plan.md`, `docs/architecture.md`, applicable `docs/decisions/`, and relevant `docs/research/` adoption conditions. Check the current GitHub issue and milestone; issues own execution state and documents own design.
-- Update affected design documents and ADRs with changed facts. Record commits or PRs, executed verification, and remaining limits on the issue. Update `docs/handoff.md` until its replacement is established by the documentation PR.
-- When licenses or bundled assets change, update the provenance records and generated distribution notices. On an approved actual deployment, record the URL and deployed commit SHA.
+- Rust owns MIDI interpretation and planning; WASM is the browser boundary; Three.js owns visualization. Preserve `PerformancePlan`/`RigAdapter` boundaries without engine-specific scene object names.
+- Never move original MIDI hit times to hide motion problems. Diagnose impossible hits. `evaluate_at(t)` must give the same primary pose regardless of playback or seek order.
+- Use common semantic-body measurements; do not introduce avatar-name branches. Distinguish actual tool contact from skin/collision realism.
+- Run meaningful checks before claiming success. Pin dependencies/sources and keep code, papers, data, weights and assets under their own terms. Preserve original legal notices and provenance.
+- Uploaded MIDI/WAV/VRM, raw conversations, secrets and private downloads must not be committed. Generate original demo/test fixtures; `.local/` remains private.
+- Proposed, implemented and publicly deployed are different states. An actual approved deployment record must identify URL and commit.
 
 ## Required References
 
@@ -80,7 +74,7 @@ The explicit owner-approved Drum VRM rules below override conflicting defaults i
 - [`mydocs/manual/git_workflow_guide.md`](mydocs/manual/git_workflow_guide.md) - branch policy, Git diagrams, maintainer/contributor workflow
 - [`mydocs/manual/pr_process_guide.md`](mydocs/manual/pr_process_guide.md) - external contributor PR review
 - [`mydocs/manual/agent_code_hyperfall_rule_conflict.md`](mydocs/manual/agent_code_hyperfall_rule_conflict.md) - conflicts between Hyper-Waterfall and default agent behavior
-- `docs/handoff.md`, `docs/product-requirements.md`, `docs/plan.md`, `docs/architecture.md`, `docs/release-policy.md`, `docs/decisions/`, and `docs/research/` remain the project references until the separately approved documentation migration updates these pointers.
+- [Specifications](specs/README.md), [documentation policy](specs/policies/documentation.md), [work records](mydocs/README.md), and the relevant issue-specific plan provide project authority and continuity.
 
 ## Agent Skills
 

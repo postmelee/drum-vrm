@@ -44,7 +44,7 @@ description: |
    - Use this only when this repository needs additional verification work.
    - Request approval after writing it.
 5. Run verification only when applicable.
-   - Apply `the approved task implementation plan and relevant existing records under docs/verification/` based on change type.
+   - Apply `the approved task implementation plan and relevant records under mydocs/report/verification/` based on change type.
 6. Write final report: `mydocs/pr/pr_{N}_report.md`.
    - Use central template `mydocs/_templates/external_pr_report.md`.
    - Include review result, verification result, final recommendation, and GitHub PR comment body or link.

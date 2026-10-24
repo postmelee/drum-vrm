@@ -1,23 +1,22 @@
 ---
-name: 오류 제보
-about: MIDI 해석, 동작, 출력 또는 브라우저 오류
+name: Bug report
+about: Report a reproducible problem
 title: "[Bug] "
 labels: bug
 ---
 
-## 재현 방법
+## Expected and actual behavior
 
-1. 재현 단계를 적습니다.
+Describe what you expected and what happened.
 
-## 기대 결과와 실제 결과
+## Steps to reproduce
 
-## 환경
+1.
 
-- 앱 버전 또는 commit:
-- 브라우저·운영체제:
-- MIDI 형식·길이·트랙·채널:
-- 출력 설정·포맷:
+## Environment
 
-## 재현 자료
+Browser/version, operating system, app version or commit:
 
-공개 가능한 직접 만든 최소 MIDI만 첨부합니다. 권리가 없는 곡·음원·캐릭터 파일은 올리지 않습니다.
+## Evidence and scope
+
+Attach a minimal original or redistribution-permitted example if needed. Do not include private MIDI/audio/models. State whether the problem affects playback, seek, or export.
