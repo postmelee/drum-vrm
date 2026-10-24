@@ -80,6 +80,12 @@ The initial verification target is desktop Chromium with WebGL, WASM, Web Audio,
 
 Public v0.2.0 has a fixed reference body and rule-based motion. The unreleased VRM adapter measures limb lengths and seat height; it still uses rule-based motion and resets secondary hair/clothing physics for deterministic seek/export. Dense hits, fast transitions, and unreachable targets are diagnosed; humanlike performance of every MIDI is not guaranteed. PCM and encoded output are kept in memory, so longer songs consume more memory. The five-minute input limit is not a performance guarantee on every device. Safari, Firefox, mobile compatibility, and maximum-length performance need separate verification.
 
+## Performance research and attribution
+
+We study performance expression using **Keiichi Nagata's [Yamaha DTX402 Series — Drum Score / Instruction](https://data.yamaha.com/files/download/other_assets/7/1224887/DTX_DrumScore_Instruction_eng.pdf)** (© 2018 Yamaha Corporation), alongside other grip instruction and animation research. We turn these references into independently designed, testable motion rules. Technique profiles and a 0–100 visual expression control are planned, not current features.
+
+The [performance foundations and source register](docs/performance-foundations.md) records authors, source locations, research scope, rights and implementation status. Our code's MIT license does not cover the reference materials, and citation does not imply author or Yamaha endorsement.
+
 ## Documentation and work tracking
 
 User-facing guidance is maintained in English and Korean in the same PR. Existing Korean documents are preserved; internal engineering/research documents may be English only. Proposed features are distinguished from publicly deployed behavior.
@@ -93,6 +99,7 @@ User-facing guidance is maintained in English and Korean in the same PR. Existin
 | Engine/rig boundary | [Architecture](docs/architecture.md), [design decision](docs/decisions/0001-engine-and-rig-boundary.md) |
 | Original requirements | [Context and topic record](docs/context/source-conversation.md) |
 | Research and reuse | [Research/data](docs/research/references.md), [dependencies](docs/research/dependencies.md), [license policy](docs/research/license-policy.md) |
+| Performance principles and instruction | [Sources and planned expression](docs/performance-foundations.md), [technique/expression contract](docs/decisions/0006-technique-and-expression-foundation.md) |
 | Execution | [Issues](https://github.com/postmelee/drum-vrm/issues), [milestones](https://github.com/postmelee/drum-vrm/milestones) |
 
 ## Releases and licenses

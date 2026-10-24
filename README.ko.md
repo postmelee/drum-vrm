@@ -82,6 +82,12 @@ npm run preview
 
 공개 v0.2.0 리그는 고정된 기본 체형과 규칙 기반 동작입니다. 미배포 어댑터는 실제 팔·다리 길이와 좌석 높이를 반영하고 탐색·출력 일치를 위해 머리카락·옷 물리를 정지합니다. 밀집 타격·빠른 이동·도달 불가능한 타점은 진단하며, 모든 MIDI를 사람처럼 연주한다고 보장하지 않습니다. PCM과 압축된 출력 파일을 메모리에 보관하므로 긴 곡의 메모리 사용량은 늘어납니다. 5분 입력 상한은 모든 기기에서의 성능 보장이 아니며 Safari·Firefox·모바일 전체 호환성과 최대 길이 성능은 별도 검증 대상입니다.
 
+## 연주 표현 연구와 출처
+
+**Keiichi Nagata의 [Yamaha DTX402 Series — Drum Score / Instruction](https://data.yamaha.com/files/download/other_assets/7/1224887/DTX_DrumScore_Instruction_eng.pdf)**(© 2018 Yamaha Corporation)을 비롯한 그립 교육 자료와 애니메이션 연구를 바탕으로 연주 표현을 연구합니다. 참고 내용을 프로젝트의 검증 가능한 동작 규칙으로 독립 설계합니다. 주법 프로필과 0–100 시각적 표현량 조절은 현재 기능이 아닌 계획 단계입니다.
+
+[연주 표현의 원칙과 자료 대장](docs/performance-foundations.ko.md)에 저자·원문 위치·연구 범위·권리·구현 상태를 기록합니다. 프로젝트 코드의 MIT 라이선스는 참고자료에 적용되지 않으며, 인용이 저자나 Yamaha의 공식 보증을 의미하지 않습니다.
+
 ## 문서와 작업 현황
 
 사용자용 안내는 영어와 한국어를 같은 PR에서 함께 갱신합니다. 기존 한국어 문서는 보존하며 개발·연구 내부 문서는 영어로만 작성할 수 있습니다. 새 기능의 제안과 공개 배포된 기능을 구분합니다.
@@ -95,6 +101,7 @@ npm run preview
 | 엔진과 리그 연결 | [아키텍처](docs/architecture.md), [설계 결정](docs/decisions/0001-engine-and-rig-boundary.md) |
 | 원 대화의 맥락 | [요구사항 출처와 주제별 기록](docs/context/source-conversation.md) |
 | 연구와 재사용 조건 | [연구·데이터](docs/research/references.md), [기술 조사](docs/research/dependencies.md), [라이선스 정책](docs/research/license-policy.md) |
+| 연주 원칙과 교육 자료 | [출처와 표현 설계](docs/performance-foundations.ko.md), [주법·표현량 설계 계약](docs/decisions/0006-technique-and-expression-foundation.md) |
 | 실행 작업 | [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), [Milestones](https://github.com/postmelee/drum-vrm/milestones) |
 
 ## 배포와 라이선스
