@@ -2,6 +2,10 @@ import './style.css';
 import { DrumTimeline } from './timeline';
 import { DrumScene } from './scene';
 import { setButtonIcon } from './icons';
+import { NativeHumanoidRigAdapter } from './rig-humanoid';
+import { VRMHumanoidRigAdapter } from './rig-vrm';
+import { loadLocalVRM, type VRMInspection } from './vrm-import';
+import { VRMUtils } from '@pixiv/three-vrm';
 import type { KitPresetId } from './model-procedural';
 import { EngineClient } from './engine';
 import { DrumAudio } from './audio';
@@ -36,10 +40,16 @@ app.innerHTML = `  <header class="toolbar">
     <aside id="inspector" class="inspector" hidden>
       <div class="inspector-heading"><h2 id="panel-title"></h2><button id="close-panel" aria-label="설정 닫기" title="닫기 (Esc)"></button></div>
       <section id="panel-character" class="panel" hidden>
-        <label class="check"><input id="character-visible" type="checkbox" checked/> 스켈레톤 표시</label>
-        <p class="hint">관절과 뼈대, 스틱으로 연주를 표시합니다.</p>
-        <h3>캐릭터 에셋</h3><p>캐릭터 파일 불러오기는 아직 지원하지 않습니다.</p><p class="hint">VRM 1.0과 휴머노이드 GLB 연결은 후속 작업입니다. 드럼용 GLB를 캐릭터에 적용할 수는 없습니다.</p>
-        <a href="https://github.com/postmelee/drum-vrm/issues/17" target="_blank" rel="noreferrer">캐릭터 지원 계획</a>
+        <label class="check"><input id="character-visible" type="checkbox" checked/> 캐릭터 표시</label>
+        <label class="check"><input id="skeleton-visible" type="checkbox" checked/> 뼈대 표시</label>
+        <label class="check"><input id="model-visible" type="checkbox" checked/> 모델 표시</label>
+        <div class="button-row"><button id="character-import">VRM 불러오기…</button><button id="character-reset">기본 리그</button></div><input id="character-file" type="file" accept=".vrm" hidden/>
+        <p id="character-message" class="hint" role="status">VRM 1.0 표준 본 · 기본 스켈레톤</p>
+        <p class="hint">단일 .vrm · VRM 1.0 · 최대 50 MiB<br>.vroid는 편집 파일입니다. VRM 1.0으로 내보내세요.</p>
+        <div id="character-info"></div>
+        <details><summary>접촉 계측</summary><p id="contact-info" class="hint">실제 손에 부착한 스틱 끝과 발의 기준점을 계획과 비교합니다.</p><p class="hint">발 기준점은 신발 표면의 충돌 검사가 아닙니다. 도달하지 못한 타격은 연주 정보에 표시됩니다.</p></details>
+        <p class="hint">파일은 브라우저에서만 처리합니다. 영상 공개와 모델 재배포의 이용 조건은 별개입니다. 머리카락·옷 물리는 재생과 탐색의 일치를 위해 정지합니다.</p>
+        <a href="https://github.com/postmelee/drum-vrm/blob/main/docs/models.ko.md" target="_blank" rel="noreferrer">모델 확보 · 업로드 안내 / English</a>
       </section>
       <section id="panel-drums" class="panel" hidden>
         <label class="field">드럼 세트<select id="kit-preset"><option value="studio">기본 · Studio</option><option value="vintage">기본 · Vintage</option><option value="electronic">기본 · Electronic</option><option value="library">어쿠스틱 · Innerscene</option><option value="batoski">어쿠스틱 · Batoski</option><option value="smoj">로우 폴리 · smoj</option></select></label>
@@ -86,6 +96,7 @@ const engine = new EngineClient();
 const synthesis = new SynthesisClient();
 let scene: DrumScene;
 try { scene = new DrumScene(stage); } catch { get('message').textContent = '3D 화면을 시작할 수 없습니다. WebGL을 지원하는 최신 브라우저를 사용해 주세요.'; throw new Error('WebGL unavailable'); }
+engine.setProfile(scene.getRigProfile());
 let plan: PerformancePlan | null = null;
 let bytes: Uint8Array | null = null;
 let audio: DrumAudio | null = null;
@@ -103,7 +114,7 @@ let committedPreset = 'studio';
 let theme: 'light' | 'dark' = 'light';
 try { theme = localStorage.getItem('drum-theme') === 'dark' ? 'dark' : 'light'; } catch { /* Storage is optional. */ }
 const timeline = new DrumTimeline(get('timeline'), { onSeek: time => {
-  if (!plan || busy || exporting) return;
+  if (!plan || busy || exporting || modelBusy) return;
   audio?.seek(time); updateFrame(time);
 }});
 const panelTitles: Record<Panel, string> = {character:'캐릭터 설정',drums:'드럼 설정',source:'업로드 · 연주정보',export:'내보내기'};
@@ -141,6 +152,51 @@ get('theme').onclick=()=>setTheme(theme==='light'?'dark':'light');
 get('start-upload').onclick=()=>{openPanel('source');get<HTMLInputElement>('file').click();};
 get('start-demo').onclick=()=>{openPanel('source');void loadFile(makeDemo(),'Studio Groove.mid');};
 get<HTMLInputElement>('character-visible').onchange=e=>scene.setCharacterVisible((e.target as HTMLInputElement).checked);
+get<HTMLInputElement>('skeleton-visible').onchange=e=>scene.setSkeletonVisible((e.target as HTMLInputElement).checked);
+get<HTMLInputElement>('model-visible').onchange=e=>scene.setModelVisible((e.target as HTMLInputElement).checked);
+function showModelInfo(info: VRMInspection | null) {
+  const host = get('character-info'); host.replaceChildren(); if (!info) return;
+  const heading = document.createElement('h3'); heading.textContent = info.name; host.append(heading);
+  for (const text of [`VRM ${info.version} · 모델 ${info.modelVersion} · 필수 본 ${info.required}/15`, `손가락 본 L ${info.fingers.left}/15 · R ${info.fingers.right}/15`, `제작자: ${info.authors.join(', ') || '미기재'}`]) {
+    const p = document.createElement('p'); p.className='hint'; p.textContent=text; host.append(p);
+  }
+  if(info.fingers.left<15 || info.fingers.right<15) { const p=document.createElement('p'); p.className='hint'; p.textContent='일부 손가락 본이 없어 그립 표현이 제한됩니다. 스틱 부착과 연주는 유지됩니다.'; host.append(p); }
+  for (const warning of info.metadataWarnings) { const p=document.createElement('p'); p.className='hint'; p.textContent=warning; host.append(p); }
+  const details = document.createElement('details'), summary = document.createElement('summary'); summary.textContent='모델 이용 조건'; details.append(summary);
+  for (const [label, value] of info.terms) { const p=document.createElement('p'); p.className='hint'; p.textContent=`${label}: ${value}`; details.append(p); }
+  for(const reference of info.references) { const p=document.createElement('p'); p.className='hint'; p.textContent=`참고: ${reference}`; details.append(p); }
+  host.append(details);
+}
+function adoptRig(adapter: NativeHumanoidRigAdapter | VRMHumanoidRigAdapter) {
+  const next = engine.setProfile(adapter.getProfile());
+  scene.setRig(adapter);
+  scene.setSkeletonVisible(get<HTMLInputElement>('skeleton-visible').checked);
+  scene.setModelVisible(get<HTMLInputElement>('model-visible').checked);
+  if (next && plan) { plan = next; scene.setPlan(plan); timeline.setPlan(plan); renderDiagnostics(); updateFrame(audio?.currentTime ?? 0); }
+  if(downloadUrl)URL.revokeObjectURL(downloadUrl); downloadUrl=null; get('download').hidden=true;
+}
+get('character-import').onclick=()=>get<HTMLInputElement>('character-file').click();
+get<HTMLInputElement>('character-file').onchange=async e=>{
+  const input=e.target as HTMLInputElement, file=input.files?.[0]; input.value=''; if(!file||busy||exporting||modelBusy)return;
+  audio?.pause(); modelBusy=true;controls();get('character-message').textContent='VRM을 검사하고 있습니다…';
+  let candidate: Awaited<ReturnType<typeof loadLocalVRM>> | null = null;
+  let adapter: VRMHumanoidRigAdapter | null = null;
+  try {
+    candidate=await loadLocalVRM(file);
+    const hash=await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
+    const id='vrm1:'+Array.from(new Uint8Array(hash)).map(v=>v.toString(16).padStart(2,'0')).join('');
+    adapter=new VRMHumanoidRigAdapter(candidate.vrm,id); adoptRig(adapter);
+    showModelInfo(candidate.info); candidate=null; adapter=null;
+    get('character-message').textContent=`${file.name} · 불러오기 완료 · 타격/그립은 연주하며 확인하세요.`;
+  } catch(error) { if(adapter)adapter.dispose();else if(candidate)VRMUtils.deepDispose(candidate.vrm.scene); get('character-message').textContent=error instanceof Error?error.message:String(error); }
+  finally{modelBusy=false;controls();}
+};
+get('character-reset').onclick=()=>{
+  if(busy||exporting||modelBusy)return; audio?.pause();
+  const adapter=new NativeHumanoidRigAdapter();
+  try{adoptRig(adapter);showModelInfo(null);get('character-message').textContent='VRM 1.0 표준 본 · 기본 스켈레톤';}
+  catch(error){adapter.dispose();get('character-message').textContent=String(error);}
+};
 get<HTMLSelectElement>('kit-preset').onchange=async e=>{
   const input=e.target as HTMLSelectElement;
   modelBusy=true;controls();get('model-message').textContent='드럼 모델을 준비하고 있습니다…';
@@ -183,13 +239,14 @@ const clockText = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60).
 function status(text: string, kind = '') { get('status').className = `status ${kind}`; get('status').textContent = text; }
 function message(text: string, error = false) { const node = get('message'); node.textContent = text; node.classList.toggle('error', error); }
 function controls() {
-  for (const id of ['play','reset','seek','export']) (get(id) as HTMLButtonElement).disabled = !plan || busy || exporting;
-  for (const id of ['upload','demo','replan','channel','mute-export','background']) (get(id) as HTMLInputElement).disabled = busy || exporting;
+  for (const id of ['play','reset','seek','export']) (get(id) as HTMLButtonElement).disabled = !plan || busy || exporting || modelBusy;
+  for (const id of ['upload','demo','replan','channel','mute-export','background']) (get(id) as HTMLInputElement).disabled = busy || exporting || modelBusy;
   for (const el of document.querySelectorAll<HTMLInputElement>('#tracks input')) el.disabled = busy || exporting;
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-camera]')) el.disabled = exporting || activePanel==='drums';
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-panel], #close-panel, #theme, #character-visible')) el.disabled=exporting || modelBusy;
   for (const el of document.querySelectorAll<HTMLInputElement>('#panel-drums input, #panel-drums select, #panel-drums button')) el.disabled=exporting || modelBusy;
   for (const id of ['start-upload','start-demo']) get<HTMLButtonElement>(id).disabled=busy || exporting;
+  for (const el of document.querySelectorAll<HTMLInputElement>('#panel-character input, #panel-character button')) el.disabled=busy || exporting || modelBusy;
   get<HTMLInputElement>('hit-strength').disabled = exporting || modelBusy || !get<HTMLInputElement>('hit-response').checked;
   get<HTMLButtonElement>('export').disabled = !plan || busy || exporting || modelBusy;
   get('cancel-analysis').hidden = !busy;
@@ -199,6 +256,10 @@ function updateFrame(time: number) {
   if (!plan) return;
   const pose = engine.evaluate(time - PRE_ROLL);
   if (pose) scene.applyPose(pose, time - PRE_ROLL);
+  if (activePanel==='character') {
+    const samples=scene.getRigContactSamples();
+    get('contact-info').textContent=samples.map(s=>`${['L 스틱','R 스틱','L 발','R 발'][s.limb]} ${(s.errorMeters*1000).toFixed(2)} mm`).join(' · ');
+  }
 }
 function fillSelection(info: MidiInfo) {
   const list = get('tracks'); list.replaceChildren();
@@ -234,6 +295,10 @@ async function prepare(generation: number) {
   get('duration').textContent = clockText(total); timeline.setPlan(plan);
   get('metric-duration').textContent = clockText(plan.duration); get('metric-hits').textContent = plan.hits.length.toLocaleString(); get('metric-tempos').textContent = String(plan.tempoCount);
   get('plan-label').textContent = 'READY'; get('stage-empty').hidden = true;
+  renderDiagnostics();
+}
+function renderDiagnostics() {
+  if(!plan)return;
   const diagnosticList = get('diagnostic-list'); diagnosticList.replaceChildren();
   const unresolved = plan.hits.filter(h=>h.limb === null).length;
   get('diagnostics').hidden = !plan.diagnostics.length;
@@ -254,7 +319,7 @@ function clearPerformance() {
   timeline.resize();
 }
 async function loadFile(data: Uint8Array, name: string) {
-  if (exporting) return;
+  if (exporting || modelBusy) return;
   const generation = ++loadGeneration;
   clearPerformance(); engine.cancel(); synthesis.cancel();
   bytes = data; fileName=name; get('file-name').textContent=name;
@@ -277,7 +342,7 @@ get('demo').onclick=()=>void loadFile(makeDemo(),'Studio Groove.mid');
 const dropzone=get('dropzone');
 dropzone.ondragover=e=>{e.preventDefault();if(!busy&&!exporting)dropzone.classList.add('dragging');};
 dropzone.ondragleave=()=>dropzone.classList.remove('dragging');
-dropzone.ondrop=async(e)=>{e.preventDefault();dropzone.classList.remove('dragging');if(busy||exporting)return;const file=e.dataTransfer?.files[0];if(file){if(file.size>MAX_FILE_BYTES){message('10 MiB 이하의 MIDI 파일을 선택해 주세요.',true);return;}await loadFile(new Uint8Array(await file.arrayBuffer()),file.name);}};
+dropzone.ondrop=async(e)=>{e.preventDefault();dropzone.classList.remove('dragging');if(busy||exporting||modelBusy)return;const file=e.dataTransfer?.files[0];if(file){if(file.size>MAX_FILE_BYTES){message('10 MiB 이하의 MIDI 파일을 선택해 주세요.',true);return;}await loadFile(new Uint8Array(await file.arrayBuffer()),file.name);}};
 get('cancel-analysis').onclick=()=>{++loadGeneration;engine.cancel();synthesis.cancel();busy=false;message('분석을 취소했습니다. 파일을 다시 선택할 수 있습니다.');status('대기');controls();};
 get('replan').onclick=async()=>{if(!bytes)return;const generation=++loadGeneration;clearPerformance();busy=true;controls();status('준비 중','working');try{await prepare(generation);}catch(e){if(generation===loadGeneration){message(String(e),true);status('확인 필요','error');}}finally{if(generation===loadGeneration){busy=false;controls();}}};
 get('play').onclick=async()=>{

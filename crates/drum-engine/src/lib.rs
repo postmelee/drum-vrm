@@ -4,9 +4,11 @@
 mod midi;
 pub mod model;
 pub mod motion;
+pub mod rig;
 
 use model::{MidiInfo, PerformancePlan, Selection};
 use motion::Motion;
+use rig::RigProfile;
 use wasm_bindgen::prelude::*;
 
 pub fn inspect(bytes: &[u8]) -> Result<MidiInfo, String> {
@@ -18,6 +20,19 @@ pub fn build_plan(bytes: &[u8], selection: &Selection) -> Result<PerformancePlan
     let mut plan = parsed.plan(bytes, selection)?;
     motion::assign(&mut plan);
     Ok(plan)
+}
+
+/// Pure Rust boundary shared by native regression tests and the WASM exports.
+pub fn load_motion(plan_json: &str, profile_json: Option<&str>) -> Result<Motion, String> {
+    if plan_json.len() > 32 * 1024 * 1024 {
+        return Err("연주 계획 크기가 한계를 초과합니다.".into());
+    }
+    let plan: PerformancePlan =
+        serde_json::from_str(plan_json).map_err(|e| format!("연주 계획 형식 오류: {e}"))?;
+    match profile_json {
+        Some(json) => Motion::with_profile(plan, RigProfile::from_json(json)?),
+        None => Motion::new(plan),
+    }
 }
 
 #[wasm_bindgen]
@@ -47,15 +62,16 @@ impl Performance {
     }
 
     pub fn from_json(plan_json: &str) -> Result<Performance, JsValue> {
-        let result = (|| {
-            if plan_json.len() > 32 * 1024 * 1024 {
-                return Err("연주 계획 크기가 한계를 초과합니다.".into());
-            }
-            let plan: PerformancePlan =
-                serde_json::from_str(plan_json).map_err(|e| format!("연주 계획 형식 오류: {e}"))?;
-            Motion::new(plan)
-        })();
-        result
+        load_motion(plan_json, None)
+            .map(|motion| Self { motion })
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    pub fn from_json_with_profile(
+        plan_json: &str,
+        profile_json: &str,
+    ) -> Result<Performance, JsValue> {
+        load_motion(plan_json, Some(profile_json))
             .map(|motion| Self { motion })
             .map_err(|e| JsValue::from_str(&e))
     }
@@ -67,6 +83,10 @@ impl Performance {
 
     pub fn evaluate_at(&self, song_time: f64) -> Vec<f32> {
         self.motion.evaluate(song_time)
+    }
+
+    pub fn evaluate_rig_at(&self, song_time: f64) -> Vec<f32> {
+        self.motion.evaluate_rig(song_time)
     }
 }
 

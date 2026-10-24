@@ -454,3 +454,243 @@ fn huge_simultaneous_group_is_bounded_and_preserved() {
         998
     );
 }
+
+// Authored numeric fixtures, not measurements copied from external avatar files.
+fn calibrated_profile(tall: bool) -> rig::RigProfile {
+    let mut profile = rig::RigProfile::primitive();
+    profile.id = if tall { "test-tall" } else { "test-short" }.into();
+    let shoulder_y = if tall { 1.22 } else { 1.10 };
+    let hip_y = if tall { 0.71 } else { 0.66 };
+    profile.roots = [
+        [-0.18, shoulder_y, 0.05],
+        [0.18, shoulder_y, 0.05],
+        [-0.14, hip_y, 0.0],
+        [0.14, hip_y, 0.0],
+    ];
+    profile.lengths = if tall {
+        [[0.28, 0.24], [0.28, 0.24], [0.38, 0.42], [0.38, 0.42]]
+    } else {
+        [[0.24, 0.21], [0.24, 0.21], [0.35, 0.38], [0.35, 0.38]]
+    };
+    profile.grip_offsets = [
+        [0.0, -0.025, 0.035],
+        [0.0, -0.025, 0.035],
+        [0.0, -0.04, 0.16],
+        [0.0, -0.04, 0.16],
+    ];
+    profile.tip_offsets = [[0.0, 0.0, 0.31], [0.0, 0.0, 0.31], [0.0; 3], [0.0; 3]];
+    profile.contact_rotations[0] = rig::pitch_rotation([0.0, 0.0, 0.0, 1.0], 0.20);
+    profile.contact_rotations[1] = profile.contact_rotations[0];
+    profile.rest_tips = std::array::from_fn(|limb| {
+        motion::add(
+            motion::add(
+                profile.roots[limb],
+                if limb < 2 {
+                    [0.0, -0.20, 0.15]
+                } else {
+                    [0.0, -0.45, 0.12]
+                },
+            ),
+            profile.offset(limb, profile.contact_rotations[limb]),
+        )
+    });
+    profile.pelvis = [0.0, hip_y, 0.0];
+    profile.chest = [0.0, shoulder_y - 0.10, 0.05];
+    profile.head = [0.0, shoulder_y + 0.23, 0.05];
+    profile
+}
+
+fn pose_point(pose: &[f32], limb: usize, point: usize) -> Vec3 {
+    let at = limb * 12 + point * 3;
+    std::array::from_fn(|i| pose[at + i] as f64)
+}
+
+#[test]
+fn two_proportions_preserve_midi_and_make_actual_grip_and_pedal_contacts() {
+    let source = plan_for(vec![
+        (0, note(38, 110, 9)),
+        (0, note(36, 110, 9)),
+        (240, note(42, 100, 9)),
+        (240, note(44, 100, 9)),
+        (240, note(38, 70, 9)),
+        (240, end()),
+    ]);
+    for tall in [false, true] {
+        let profile = calibrated_profile(tall);
+        let json = serde_json::to_string(&profile).unwrap();
+        let motion = load_motion(&serde_json::to_string(&source).unwrap(), Some(&json)).unwrap();
+        assert!(
+            motion.plan.hits.iter().all(|h| h.limb.is_some()),
+            "{:?}",
+            motion.plan.diagnostics
+        );
+        assert_eq!(motion.plan.calibration_id, profile.id);
+        for (before, hit) in source.hits.iter().zip(&motion.plan.hits) {
+            let mut expected = before.clone();
+            expected.limb = hit.limb;
+            assert_eq!(
+                serde_json::to_value(expected).unwrap(),
+                serde_json::to_value(hit).unwrap()
+            );
+            let pose = motion.evaluate_rig(hit.time);
+            assert_eq!(pose.len(), 73);
+            let limb = hit.limb.unwrap();
+            let q = std::array::from_fn(|i| pose[57 + limb * 4 + i] as f64);
+            let grip = motion::add(
+                pose_point(&pose, limb, 2),
+                rig::rotate(q, profile.grip_offsets[limb]),
+            );
+            let rendered_tip = motion::add(grip, rig::rotate(q, profile.tip_offsets[limb]));
+            assert!(distance(rendered_tip, hit.target) < 0.000_001);
+            assert!(distance(rendered_tip, pose_point(&pose, limb, 3)) < 0.000_001);
+        }
+        // JSON + profile reconstructs exactly the same arbitrary-access evaluator.
+        let restored =
+            load_motion(&serde_json::to_string(&motion.plan).unwrap(), Some(&json)).unwrap();
+        let times = [-0.5, -0.11, 0.0, 0.08, 0.25, 0.51, 0.75, 1.25];
+        let forward: Vec<_> = times.iter().map(|t| motion.evaluate_rig(*t)).collect();
+        for i in [7, 2, 6, 0, 4, 1, 5, 3] {
+            assert_eq!(forward[i], restored.evaluate_rig(times[i]));
+            assert_eq!(forward[i][..57], restored.evaluate(times[i]));
+            assert!(forward[i].iter().all(|v| v.is_finite()));
+            for limb in 0..4 {
+                assert!(
+                    (distance(
+                        pose_point(&forward[i], limb, 0),
+                        pose_point(&forward[i], limb, 1)
+                    ) - profile.lengths[limb][0])
+                        .abs()
+                        < 1e-6
+                );
+                assert!(
+                    (distance(
+                        pose_point(&forward[i], limb, 1),
+                        pose_point(&forward[i], limb, 2)
+                    ) - profile.lengths[limb][1])
+                        .abs()
+                        < 1e-6
+                );
+                let norm: f64 = forward[i][57 + limb * 4..61 + limb * 4]
+                    .iter()
+                    .map(|v| (*v as f64).powi(2))
+                    .sum();
+                assert!((norm - 1.0).abs() < 1e-6);
+                let q = std::array::from_fn(|j| forward[i][57 + limb * 4 + j] as f64);
+                let rendered =
+                    motion::add(pose_point(&forward[i], limb, 2), profile.offset(limb, q));
+                assert!(distance(rendered, pose_point(&forward[i], limb, 3)) < 1e-6);
+            }
+        }
+        let limb = motion.plan.hits[0].limb.unwrap();
+        assert_ne!(
+            forward[1][57 + limb * 4..61 + limb * 4],
+            forward[2][57 + limb * 4..61 + limb * 4]
+        );
+    }
+}
+
+#[test]
+fn profile_replanning_diagnoses_outer_and_inner_reach_without_losing_audio() {
+    let mut source = plan_for(vec![
+        (0, note(49, 110, 9)),
+        (240, note(38, 100, 9)),
+        (240, end()),
+    ]);
+    source
+        .diagnostics
+        .push(Diagnostic::new("SOURCE_NOTICE", "keep this".into()));
+    let profile = calibrated_profile(false);
+    let motion = Motion::with_profile(source.clone(), profile.clone()).unwrap();
+    assert!(motion.plan.hits[0].limb.is_none()); // Far crash beyond the measured short arms.
+    assert_eq!(motion.plan.hits.len(), source.hits.len());
+    assert!(motion
+        .plan
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "RIG_UNREACHABLE_HIT" && d.hit_id == Some(0)));
+    let repeated = Motion::with_profile(motion.plan.clone(), profile.clone()).unwrap();
+    assert_eq!(
+        serde_json::to_value(&repeated.plan).unwrap(),
+        serde_json::to_value(&motion.plan).unwrap()
+    );
+    assert!(repeated
+        .plan
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "SOURCE_NOTICE"));
+    let tiny = 0.01;
+    let inner_tip = motion::add(
+        motion::add(profile.roots[0], [0.0, 0.0, tiny]),
+        profile.offset(0, profile.contact_rotations[0]),
+    );
+    assert!(!profile.reachable(0, inner_tip)); // |.24-.21| = .03m inner radius.
+    source.hits[0].target = [9.0, 9.0, 9.0];
+    let unreachable = Motion::with_profile(source, profile).unwrap();
+    let pose = unreachable.evaluate_rig(0.0);
+    assert!(distance(pose_point(&pose, 0, 3), [9.0, 9.0, 9.0]) > 1.0);
+}
+
+#[test]
+fn rig_profile_boundary_rejects_bad_versions_nonfinite_lengths_and_wrong_shapes() {
+    let good = calibrated_profile(false);
+    for field in [
+        "schemaVersion",
+        "coordinateSystem",
+        "lengths",
+        "contactRotations",
+        "restTips",
+        "unknownField",
+    ] {
+        let mut value = serde_json::to_value(&good).unwrap();
+        match field {
+            "schemaVersion" => value[field] = 2.into(),
+            "coordinateSystem" => value[field] = "vrm-native".into(),
+            "lengths" => value[field][0] = serde_json::json!([0.0, 0.24]),
+            "contactRotations" => value[field][0] = serde_json::json!([0.0, 0.0, 0.0, 0.0]),
+            "restTips" => value[field] = serde_json::json!([[0.0, 0.0, 0.0]]),
+            _ => value[field] = true.into(),
+        }
+        assert!(
+            rig::RigProfile::from_json(&value.to_string()).is_err(),
+            "{field}"
+        );
+    }
+    for bad in [f64::NAN, f64::INFINITY, -0.1, 2.1] {
+        let mut profile = good.clone();
+        profile.lengths[0][0] = bad;
+        assert!(profile.validate().is_err());
+    }
+    assert!(rig::RigProfile::from_json(&" ".repeat(rig::MAX_PROFILE_BYTES + 1)).is_err());
+    let mut invalid_rest = good.clone();
+    invalid_rest.rest_tips[0] = [9.0, 9.0, 9.0];
+    assert!(invalid_rest.validate().is_err());
+    let mut invalid_plan = plan_for(vec![(0, note(38, 100, 9)), (480, end())]);
+    invalid_plan.hits[0].limb = Some(usize::MAX);
+    assert!(Motion::with_profile(invalid_plan, good).is_err());
+}
+
+#[test]
+fn parallel_bend_pole_keeps_unequal_bone_lengths_at_rest_and_contact() {
+    let mut profile = calibrated_profile(false);
+    profile.roots[3] = [0.0; 3];
+    profile.lengths[3] = [0.60, 0.20];
+    profile.rest_tips[3] = [0.0, 0.0, 0.70];
+    profile.grip_offsets[3] = [0.0; 3];
+    profile.bend_poles[3] = [0.0, 0.0, 1.0];
+    let mut plan = plan_for(vec![(0, note(36, 100, 9)), (480, end())]);
+    plan.hits[0].target = [0.0, 0.0, 0.60];
+    let motion = Motion::with_profile(plan, profile.clone()).unwrap();
+    assert_eq!(motion.plan.hits[0].limb, Some(3));
+    for time in [-0.5, -0.11, 0.0, 0.09, 0.3] {
+        let pose = motion.evaluate_rig(time);
+        assert!(pose.iter().all(|x| x.is_finite()));
+        assert!((distance(pose_point(&pose, 3, 0), pose_point(&pose, 3, 1)) - 0.60).abs() < 1e-6);
+        assert!((distance(pose_point(&pose, 3, 1), pose_point(&pose, 3, 2)) - 0.20).abs() < 1e-6);
+    }
+    assert!(
+        distance(
+            pose_point(&motion.evaluate_rig(0.0), 3, 3),
+            [0.0, 0.0, 0.60]
+        ) < 1e-6
+    );
+}

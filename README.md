@@ -10,9 +10,9 @@ File upload through video download with audio has been verified in Chrome 155 on
 
 ## Unreleased work
 
-The working branch adds Lucide SVG controls, a player viewpoint, optional velocity-scaled hit response, and Batoski/smoj CC BY 3.0 kits. Drum settings expose the response switch and strength; reduced-motion preferences suppress movement. The player view locks navigation and restores after drum editing. These changes are not on Pages yet.
+The unreleased main/PR batch adds Lucide SVG controls, a player viewpoint, optional velocity-scaled hit response, and Batoski/smoj CC BY 3.0 kits. Drum settings expose the response switch and strength; reduced-motion preferences suppress movement. The player view locks navigation and restores after drum editing. These changes are not on Pages yet.
 
-See the bilingual [model acquisition/upload guide](docs/models.md) and [VRM model research](docs/research/vrm-models.md). Research downloads are private test candidates, not bundled avatars or proof of runtime compatibility.
+See the bilingual [model acquisition/upload guide](docs/models.md) and [VRM model research](docs/research/vrm-models.md). Research downloads remain private and are not bundled avatars. Three VRM 1.0 candidates have passed the limited contact/seek checks documented in that guide.
 
 ## MVP
 
@@ -27,7 +27,7 @@ See the bilingual [model acquisition/upload guide](docs/models.md) and [VRM mode
 - Fixed-frame 1280×720, 30 fps video with synthesized audio; MP4 or WebM depending on the available codecs.
 - Selected MIDI is processed in the browser without automatic transmission or repository upload.
 
-WAV synchronization, VRM/humanoid character replacement, editing, project persistence, higher resolutions, and 3D motion export remain M3/M4 backlog items.
+WAV synchronization, generic humanoid GLB mapping, precise per-body calibration, editing, project persistence, higher resolutions, and 3D motion export remain M3/M4 backlog items. VRM 1.0 character replacement is implemented in the unreleased batch described below.
 
 ## Usage
 
@@ -44,7 +44,7 @@ Input supports SMF formats 0/1 with PPQ timing: up to 10 MiB, 300 seconds across
 
 Drum parts accept a self-contained static `.glb` file (GLB 2.0, up to 25 MiB) with embedded textures. External URLs/separate resource references and skinned models are rejected. Arbitrary models are fitted approximately; exact contact between the target and visible surface requires calibration. Changing appearance does not change the synthesized sound. Convert GLTF, FBX, OBJ, or BLEND assets to GLB first.
 
-Character upload is not implemented. The current character control shows/hides a reference skeleton; VRM 1.0 and humanoid GLB adapters are tracked in [#17](https://github.com/postmelee/drum-vrm/issues/17)/[#18](https://github.com/postmelee/drum-vrm/issues/18). Drum appearance settings last for the current session; project persistence is [#15](https://github.com/postmelee/drum-vrm/issues/15).
+The unreleased implementation accepts self-contained **VRM 1.0 `.vrm`** characters up to 50 MiB, checks the 15 required bones, reports optional fingers and embedded terms, and uses the same normalized humanoid solver as the built-in Bone skeleton. Character settings include independent model/skeleton visibility, reset, and actual stick/foot-socket measurements. The public v0.2.0 site does not have this importer yet. VRM 0.x needs conversion; `.vroid` is an editing source. Generic humanoid GLB mapping and precise skin/sole calibration remain [#17](https://github.com/postmelee/drum-vrm/issues/17)/[#18](https://github.com/postmelee/drum-vrm/issues/18). See the [English guide](docs/models.md) for limits, permissions, and measured compatibility. Drum appearance settings last for the current session; project persistence is [#15](https://github.com/postmelee/drum-vrm/issues/15).
 
 ## Local development and checks
 
@@ -76,7 +76,7 @@ These commands describe reproduction steps, not evidence of a successful test ru
 
 The initial verification target is desktop Chromium with WebGL, WASM, Web Audio, and WebCodecs. Export requires HTTPS or localhost and depends on the codecs the browser/OS actually provides. MP4 (H.264/AAC), WebM (VP9/Opus), and WebM (VP8/Opus) are probed with the real configuration and a short export, including duration and decoded audio onset. If AAC delay exceeds the threshold, the verified environment selects VP9/Opus WebM. Audio failure is not silently treated as successful silent output.
 
-The MVP has a fixed reference body and rule-based motion. Dense hits, fast transitions, and unreachable targets are diagnosed; humanlike performance of every MIDI is not guaranteed. PCM and encoded output are kept in memory, so longer songs consume more memory. The five-minute input limit is not a performance guarantee on every device. Safari, Firefox, mobile compatibility, and maximum-length performance need separate verification.
+Public v0.2.0 has a fixed reference body and rule-based motion. The unreleased VRM adapter measures limb lengths and seat height; it still uses rule-based motion and resets secondary hair/clothing physics for deterministic seek/export. Dense hits, fast transitions, and unreachable targets are diagnosed; humanlike performance of every MIDI is not guaranteed. PCM and encoded output are kept in memory, so longer songs consume more memory. The five-minute input limit is not a performance guarantee on every device. Safari, Firefox, mobile compatibility, and maximum-length performance need separate verification.
 
 ## Documentation and work tracking
 

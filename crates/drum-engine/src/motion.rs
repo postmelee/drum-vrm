@@ -1,4 +1,5 @@
 use crate::model::*;
+use crate::rig::{pitch_rotation, RigProfile, RIG_POSE_FLOATS};
 use std::f64::consts::PI;
 
 // Rig calibration is independent of any Three.js object/bone names.
@@ -82,8 +83,16 @@ struct Candidate {
     cost: f64,
 }
 
-fn assignment_cost(limb: usize, hit: &Hit, state: LimbState) -> Option<f64> {
-    if !reachable(limb, hit.target) {
+fn assignment_cost(
+    limb: usize,
+    hit: &Hit,
+    state: LimbState,
+    profile: Option<&RigProfile>,
+) -> Option<f64> {
+    if !profile.map_or_else(
+        || reachable(limb, hit.target),
+        |p| p.reachable(limb, hit.target),
+    ) {
         return None;
     }
     let dt = hit.time - state.time;
@@ -103,9 +112,13 @@ fn assignment_cost(limb: usize, hit: &Hit, state: LimbState) -> Option<f64> {
 /// Beam width 8 within a simultaneous group. Two future hand hits contribute a
 /// bounded reach/travel heuristic; fixed MIDI timestamps are never modified.
 pub fn assign(plan: &mut PerformancePlan) {
+    assign_for_profile(plan, None);
+}
+
+fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) {
     let mut states = std::array::from_fn(|limb| LimbState {
         time: -PRE_ROLL,
-        target: rest_tip(limb),
+        target: profile.map_or_else(|| rest_tip(limb), |p| p.rest_tips[limb]),
     });
     let mut start = 0;
     while start < plan.hits.len() {
@@ -130,7 +143,8 @@ pub fn assign(plan: &mut PerformancePlan) {
             let mut expanded = Vec::new();
             for candidate in beam {
                 for &limb in allowed {
-                    if let Some(cost) = assignment_cost(limb, hit, candidate.states[limb]) {
+                    if let Some(cost) = assignment_cost(limb, hit, candidate.states[limb], profile)
+                    {
                         let mut next = candidate.clone();
                         next.cost += cost;
                         next.states[limb] = LimbState {
@@ -161,7 +175,9 @@ pub fn assign(plan: &mut PerformancePlan) {
                 .take(2)
             {
                 let forecast = (0..2)
-                    .filter_map(|limb| assignment_cost(limb, future, candidate.states[limb]))
+                    .filter_map(|limb| {
+                        assignment_cost(limb, future, candidate.states[limb], profile)
+                    })
                     .fold(2.0, f64::min);
                 candidate.cost += forecast * 0.2;
             }
@@ -176,7 +192,25 @@ pub fn assign(plan: &mut PerformancePlan) {
         for (offset, hit) in plan.hits[start..end].iter_mut().enumerate() {
             hit.limb = best.choices.get(offset).copied().flatten();
             if hit.limb.is_none() {
-                plan.diagnostics.push(Diagnostic::for_hit("UNRESOLVED_HIT", format!("{:.3}초 MIDI 음표 {}: 동시 타격·이동 속도·도달 한계로 손발을 배정하지 못했습니다. 원래 시각의 소리와 타점 강조는 유지합니다.", hit.time, hit.note), hit));
+                let allowed: &[usize] = match hit.instrument {
+                    Instrument::Kick => &[3],
+                    Instrument::PedalHat => &[2],
+                    _ => &[0, 1],
+                };
+                let unreachable = profile
+                    .is_some_and(|p| allowed.iter().all(|limb| !p.reachable(*limb, hit.target)));
+                let (code, reason) = if unreachable {
+                    (
+                        "RIG_UNREACHABLE_HIT",
+                        "현재 체형·좌석·그립에서 타점에 도달하지 못했습니다",
+                    )
+                } else {
+                    (
+                        "UNRESOLVED_HIT",
+                        "동시 타격·이동 속도·도달 한계로 손발을 배정하지 못했습니다",
+                    )
+                };
+                plan.diagnostics.push(Diagnostic::for_hit(code, format!("{:.3}초 MIDI 음표 {}: {reason}. 원래 시각의 소리와 타점 강조는 유지합니다.", hit.time, hit.note), hit));
             }
         }
         start = end;
@@ -206,6 +240,93 @@ fn two_bone(root: Vec3, target: Vec3, pole: Vec3) -> (Vec3, Vec3) {
     )
 }
 
+/// Unequal segment lengths use the law of cosines, including the inner reach
+/// limit. No endpoint is overwritten with an unreachable desired contact.
+fn two_bone_lengths(root: Vec3, target: Vec3, pole: Vec3, lengths: [f64; 2]) -> (Vec3, Vec3) {
+    let delta = sub(target, root);
+    let direction = normalized(delta);
+    let [a, b] = lengths;
+    let length = distance(root, target).clamp((a - b).abs() + 1e-6, a + b - 1e-6);
+    let endpoint = add(root, mul(direction, length));
+    let mut bend = sub(pole, mul(direction, dot(pole, direction)));
+    if dot(bend, bend) < 1e-10 {
+        // Choose the least parallel world axis, including vertical/zero targets.
+        let axis = (0..3)
+            .min_by(|a, b| direction[*a].abs().total_cmp(&direction[*b].abs()))
+            .unwrap();
+        let mut fallback = [0.0; 3];
+        fallback[axis] = 1.0;
+        bend = sub(fallback, mul(direction, direction[axis]));
+    }
+    let along = (a * a - b * b + length * length) / (2.0 * length);
+    let height = (a * a - along * along).max(0.0).sqrt();
+    (
+        add(
+            add(root, mul(direction, along)),
+            mul(normalized(bend), height),
+        ),
+        endpoint,
+    )
+}
+
+fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
+    let point = |v: &Vec3| v.iter().all(|x| x.is_finite() && x.abs() <= 10.0);
+    if plan.schema_version != 1
+        || !plan.duration.is_finite()
+        || !(0.0..=MAX_DURATION).contains(&plan.duration)
+        || plan.hits.len() > MAX_HITS
+        || plan.kit.len() > 128
+        || plan.diagnostics.len() > MAX_EVENTS
+        || plan.tempo_map.len() > MAX_EVENTS
+        || plan.time_signatures.len() > MAX_EVENTS
+    {
+        return Err("연주 계획이 입력 한계를 벗어납니다.".into());
+    }
+    if plan.pre_roll != PRE_ROLL || plan.tail != TAIL {
+        return Err("지원하지 않는 준비/여운 시간입니다.".into());
+    }
+    if plan.kit.iter().any(|k| {
+        !point(&k.position)
+            || !k.radius.is_finite()
+            || !(0.0..=10.0).contains(&k.radius)
+            || k.radius == 0.0
+    }) || plan
+        .diagnostics
+        .iter()
+        .any(|d| d.time.is_some_and(|t| !t.is_finite()))
+        || plan
+            .tempo_map
+            .iter()
+            .any(|t| !t.time.is_finite() || t.time < 0.0 || t.microseconds_per_quarter == 0)
+    {
+        return Err("연주 계획의 키트·진단·템포 수치가 유효하지 않습니다.".into());
+    }
+    let mut previous = -1.0;
+    for (index, hit) in plan.hits.iter().enumerate() {
+        if hit.id != index
+            || !hit.time.is_finite()
+            || hit.time < previous
+            || hit.time < 0.0
+            || hit.time > plan.duration
+            || !point(&hit.target)
+            || hit.time_us > 300_000_000
+            || (hit.time - hit.time_us as f64 / 1_000_000.0).abs() > 1e-9
+            || hit.limb.is_some_and(|limb| limb >= 4)
+            || hit.channel > 15
+            || hit.velocity == 0
+            || hit.velocity > 127
+            || map_note(hit.note) != Some(hit.instrument)
+            || hit.track >= 512
+            || hit.event_index >= MAX_EVENTS
+            || hit.tick > 9_007_199_254_740_991
+        {
+            return Err("연주 계획의 타격 시각·ID·좌표·MIDI 값이 유효하지 않습니다.".into());
+        }
+        previous = hit.time;
+    }
+    Ok(())
+}
+
 fn arc(a: Vec3, b: Vec3, phase: f64, height: f64) -> Vec3 {
     let phase = phase.clamp(0.0, 1.0);
     let mut point = lerp(a, b, smooth(phase));
@@ -216,36 +337,38 @@ fn arc(a: Vec3, b: Vec3, phase: f64, height: f64) -> Vec3 {
 pub struct Motion {
     pub plan: PerformancePlan,
     limbs: [Vec<usize>; 4],
+    profile: Option<RigProfile>,
 }
 
 impl Motion {
     pub fn new(plan: PerformancePlan) -> Result<Self, String> {
-        if plan.schema_version != 1 || plan.calibration_id != "primitive-v1" {
-            return Err("지원하지 않는 연주 계획 버전입니다.".into());
+        if plan.calibration_id != "primitive-v1" {
+            return Err("이 연주 계획에는 해당 리그 프로필이 필요합니다.".into());
         }
-        if !plan.duration.is_finite()
-            || !(0.0..=MAX_DURATION).contains(&plan.duration)
-            || plan.hits.len() > MAX_HITS
-        {
-            return Err("연주 계획이 입력 한계를 벗어납니다.".into());
-        }
-        if plan.pre_roll != PRE_ROLL || plan.tail != TAIL {
-            return Err("지원하지 않는 준비/여운 시간입니다.".into());
-        }
+        Self::assemble(plan, None)
+    }
+
+    pub fn with_profile(mut plan: PerformancePlan, profile: RigProfile) -> Result<Self, String> {
+        profile.validate()?;
+        validate_plan(&plan)?;
+        // Replace only planner-owned diagnostics. Parsing/mapping evidence survives
+        // repeated calibration, while stale reach failures cannot accumulate.
+        plan.diagnostics
+            .retain(|d| !matches!(d.code.as_str(), "UNRESOLVED_HIT" | "RIG_UNREACHABLE_HIT"));
+        assign_for_profile(&mut plan, Some(&profile));
+        plan.calibration_id.clone_from(&profile.id);
+        Self::assemble(plan, Some(profile))
+    }
+
+    fn assemble(plan: PerformancePlan, profile: Option<RigProfile>) -> Result<Self, String> {
+        validate_plan(&plan)?;
         let mut limbs: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
-        let mut previous = -1.0;
         for (index, hit) in plan.hits.iter().enumerate() {
-            if hit.id != index
-                || !hit.time.is_finite()
-                || hit.time < previous
-                || hit.time < 0.0
-                || hit.time > plan.duration
-                || hit.target.iter().any(|x| !x.is_finite() || x.abs() > 10.0)
-            {
-                return Err("연주 계획의 타격 시각·ID·좌표가 유효하지 않습니다.".into());
-            }
             if let Some(limb) = hit.limb {
-                if limb >= 4 || !reachable(limb, hit.target) {
+                if !profile.as_ref().map_or_else(
+                    || reachable(limb, hit.target),
+                    |p| p.reachable(limb, hit.target),
+                ) {
                     return Err("연주 계획의 손발 배정이 유효하지 않습니다.".into());
                 }
                 if limbs[limb]
@@ -256,54 +379,95 @@ impl Motion {
                 }
                 limbs[limb].push(index);
             }
-            previous = hit.time;
         }
-        Ok(Self { plan, limbs })
+        Ok(Self {
+            plan,
+            limbs,
+            profile,
+        })
     }
 
-    fn tip_at(&self, limb: usize, time: f64) -> Vec3 {
+    fn stroke_at(&self, limb: usize, time: f64) -> (Vec3, f64) {
         let hits = &self.limbs[limb];
         let at = hits.partition_point(|id| self.plan.hits[*id].time <= time);
         let previous = at.checked_sub(1).map(|i| &self.plan.hits[hits[i]]);
         let next = hits.get(at).map(|id| &self.plan.hits[*id]);
-        let rest = rest_tip(limb);
+        let rest = self
+            .profile
+            .as_ref()
+            .map_or_else(|| rest_tip(limb), |p| p.rest_tips[limb]);
         let foot = limb >= 2;
         let max_height = if foot { 0.045 } else { 0.24 };
         match (previous, next) {
-            (Some(prev), _) if (time - prev.time).abs() < 1e-9 => prev.target,
+            (Some(prev), _) if (time - prev.time).abs() < 1e-9 => (prev.target, 0.0),
             (Some(prev), Some(next)) if next.time - prev.time <= 0.42 => {
                 let phase = (time - prev.time) / (next.time - prev.time);
                 let height = max_height
                     * (0.35 + 0.65 * next.velocity as f64 / 127.0)
                     * ((next.time - prev.time) / 0.15).min(1.0);
-                arc(prev.target, next.target, phase, height)
+                (
+                    arc(prev.target, next.target, phase, height),
+                    (PI * phase).sin(),
+                )
             }
             (_, Some(next)) if next.time - time <= 0.22 => {
                 let phase = 1.0 - (next.time - time) / 0.22;
-                arc(
-                    rest,
-                    next.target,
-                    phase,
-                    max_height * (0.35 + 0.65 * next.velocity as f64 / 127.0),
+                (
+                    arc(
+                        rest,
+                        next.target,
+                        phase,
+                        max_height * (0.35 + 0.65 * next.velocity as f64 / 127.0),
+                    ),
+                    (PI * phase).sin(),
                 )
             }
             (Some(prev), _) if time - prev.time < 0.18 => {
                 let phase = (time - prev.time) / 0.18;
-                arc(prev.target, rest, phase, max_height * 0.22)
+                (
+                    arc(prev.target, rest, phase, max_height * 0.22),
+                    (PI * phase).sin() * 0.35,
+                )
             }
-            _ => rest,
+            _ => (rest, 0.0),
         }
     }
 
     pub fn evaluate(&self, song_time: f64) -> Vec<f32> {
+        let mut pose = self.evaluate_rig(song_time);
+        pose.truncate(POSE_FLOATS);
+        pose
+    }
+
+    /// v2: the v1 position block followed by LH/RH/LF/RF world xyzw quaternions.
+    pub fn evaluate_rig(&self, song_time: f64) -> Vec<f32> {
         let time = if song_time.is_finite() {
             song_time.clamp(-PRE_ROLL, MAX_DURATION + 10.0)
         } else {
             -PRE_ROLL
         };
-        let mut pose = Vec::with_capacity(POSE_FLOATS);
-        for limb in 0..4 {
-            let tip = self.tip_at(limb, time);
+        let mut pose = Vec::with_capacity(RIG_POSE_FLOATS);
+        let mut rotations = [[0.0, 0.0, 0.0, 1.0]; 4];
+        for (limb, rotation) in rotations.iter_mut().enumerate() {
+            let (tip, pitch) = self.stroke_at(limb, time);
+            if let Some(profile) = &self.profile {
+                *rotation = pitch_rotation(
+                    profile.contact_rotations[limb],
+                    -pitch * if limb < 2 { 0.70 } else { 0.18 },
+                );
+                let offset = profile.offset(limb, *rotation);
+                let root = profile.roots[limb];
+                let (middle, end) = two_bone_lengths(
+                    root,
+                    sub(tip, offset),
+                    profile.bend_poles[limb],
+                    profile.lengths[limb],
+                );
+                for point in [root, middle, end, add(end, offset)] {
+                    pose.extend(point.map(|x| x as f32));
+                }
+                continue;
+            }
             let (root, offset, pole) = if limb < 2 {
                 (
                     ARM_ROOTS[limb],
@@ -326,12 +490,17 @@ impl Motion {
         } else {
             0.0
         };
-        for point in [
-            [0.0, 0.71, -0.15],
-            [0.0, 1.24, -0.10],
-            [0.0, 1.62 - nod, -0.10 + nod],
-        ] {
+        let (pelvis, chest, mut head) = self.profile.as_ref().map_or(
+            ([0.0, 0.71, -0.15], [0.0, 1.24, -0.10], [0.0, 1.62, -0.10]),
+            |p| (p.pelvis, p.chest, p.head),
+        );
+        head[1] -= nod;
+        head[2] += nod;
+        for point in [pelvis, chest, head] {
             pose.extend(point.map(|x| x as f32));
+        }
+        for rotation in rotations {
+            pose.extend(rotation.map(|x| x as f32));
         }
         pose
     }

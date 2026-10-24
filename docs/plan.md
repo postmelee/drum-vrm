@@ -4,14 +4,14 @@
 
 ## Current execution order — 2026-10-24
 
-The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. PR #31 passed CI and was merged at 28a50a2c19c2b5109c490384f0b03e554f4dea1e. The owner then authorized #28/#29 implementation followed by #30/#17. #28/#29 are implemented on the working branch and undergoing integration checks; VRM model acquisition findings have been added to #17/#18/#30. Public v0.2.0 stays unchanged.
+The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. PR #31 passed CI and was merged at 28a50a2c19c2b5109c490384f0b03e554f4dea1e. The owner then authorized #28/#29 implementation followed by #30/#17. #28/#29 passed CI and merged in PR #32 at bd1568d4a3cc89913627b04e34f2fd2153a3ffac. #30/#17 VRM 1.0/profile/grip implementation is on codex/vrm-humanoid-grip with limited real-model contact/seek evidence; generic GLB mapping and controlled Studio two-body calibration remain open. VRM model acquisition findings have been added to #17/#18/#30. Public v0.2.0 stays unchanged.
 
 | Priority | Work | Issue / milestone | Boundary |
 | --- | --- | --- | --- |
-| Now | Preserve Korean README, add English, record batch-release policy and audit | [#27](https://github.com/postmelee/drum-vrm/issues/27) / M3 | Documentation/review PR; no release |
-| Next, small PRs | Lucide SVG controls; player camera; optional hit response | [#28](https://github.com/postmelee/drum-vrm/issues/28) / M3 | Icons can start independently; player camera requires a left/right fixture; response must preserve contact and seek/export determinism |
-| Parallel | Batoski then smoj preset adaptation; investigate electronic kit | [#29](https://github.com/postmelee/drum-vrm/issues/29) / M3 | Only verified model rights/files enter implementation; electronic file remains unverified |
-| Foundation before naturalness | Rendered contact baseline, wrist/grip orientation, versioned rig profile | [#30](https://github.com/postmelee/drum-vrm/issues/30) + #17 / M3 | Pull minimal measurement out of #23 and basic grip out of #20; preserve their broader backlog |
+| Complete (#31) | Preserve Korean README, add English, record batch-release policy and audit | [#27](https://github.com/postmelee/drum-vrm/issues/27) / M3 | Documentation/review PR; no release |
+| Complete (#32) | Lucide SVG controls; player camera; optional hit response | [#28](https://github.com/postmelee/drum-vrm/issues/28) / M3 | Icons can start independently; player camera requires a left/right fixture; response must preserve contact and seek/export determinism |
+| Complete (#32) | Batoski then smoj preset adaptation; investigate electronic kit | [#29](https://github.com/postmelee/drum-vrm/issues/29) / M3 | Only verified model rights/files enter implementation; electronic file remains unverified |
+| Implemented (#33), unreleased | Rendered contact baseline, wrist/grip orientation, versioned rig profile | [#30](https://github.com/postmelee/drum-vrm/issues/30) + #17 / M3 | Pull minimal measurement out of #23 and basic grip out of #20; preserve their broader backlog |
 | After the foundation | Two-body seat/grip/target/pedal calibration | #18 / M3 | Preserve source-event timing, recompute body-dependent reach/assignment as needed |
 | Next production phase | WAV sync, mapping/hand editing, persistence, higher-resolution output | #13–#16 / M3 | Keep open; stabilize model/rig settings before project persistence; validate current output before raising resolution |
 | Later | Advanced expression, motion baking, learned models, platform expansion, full inspection tools | #19–#23 / M4 | Literature review can happen now; model adoption follows a measured baseline and verified code/data/weight terms |
