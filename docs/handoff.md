@@ -2,6 +2,12 @@
 
 갱신일: 2026-10-24 (Asia/Seoul). 상태: **M0·M1·M2 완료, v0.2.0 UI/드럼 모델 개선 공개 배포·검증 완료**.
 
+## 현재 우선순위와 릴리스 경계
+
+최신 요청은 아이콘·연주자 시점·선택 가능한 타격 반응, 무료 모델 다양화, 자연스러운 그립과 VRM 리그 적합성 조사다. 구현 감사와 이슈 우선순위를 정리했으며 기능 구현은 아직 하지 않았다. #27은 문서·릴리스 정책, #28은 SVG/연주자 시점/타격 반응, #29는 추가 모델, #30은 기본 그립·접촉 계측이다. #17과 #30의 리그 계약을 먼저 맞추고 #18 체형 보정, #20 고급 표현으로 이어간다. [후속 조사와 실행 순서](research/rig-and-studio-audit.md)를 기준으로 이어간다.
+
+**사용자 승인 전 새 태그·Release·Pages 배포 금지.** 이슈·PR·CI를 진행한 후 검토 가능한 변경 묶음으로 승인받아 한 번에 릴리스한다. 과거 MVP 승인과 아래 배포 기록은 향후 배포 권한이 아니다. [릴리스 정책](release-policy.md)을 따른다. README는 [영어](../README.md)와 [한국어](../README.ko.md)를 함께 유지한다.
+
 ## v0.2 사용자 피드백 반영 상태
 
 사용자는 최소 Logic Pro형 작업 화면, 흰색/검정 테마, 지정 사이트 시스템 글꼴, 캐릭터·드럼·업로드/연주정보·내보내기 네 메뉴, 스켈레톤, 드럼 모델 교체를 요청했다. **#25 / M3**로 구현했다. [ADR0003](decisions/0003-minimal-studio-and-models.md), [모델·라이선스 조사](research/drum-assets.md), [v0.2 검증](verification/studio-0.2.md)을 우선 읽는다.
@@ -17,7 +23,7 @@
 
 - 공개 저장소: [postmelee/drum-vrm](https://github.com/postmelee/drum-vrm)
 - [개발 계획](plan.md) · [5개 마일스톤](https://github.com/postmelee/drum-vrm/milestones) · [전체 이슈](https://github.com/postmelee/drum-vrm/issues?q=is%3Aissue)
-- 사용자는 2026-10-24 계획·MIT 라이선스·MVP 구현·검증·GitHub Pages 배포와 이슈·문서 갱신을 승인했다. 근거는 [승인 기록](approval.md)과 #3이다. 같은 범위를 다시 승인받을 필요가 없다.
+- 사용자는 2026-10-24 계획·MIT 라이선스·MVP 구현·검증·GitHub Pages 배포와 이슈·문서 갱신을 승인했다. 근거는 [승인 기록](approval.md)과 #3이다. 기존 기능 개발 승인과 별개로, 최신 요청에 따라 새 릴리스·배포는 배치별 명시적 승인이 필요하다.
 - M0–M2 / #1–#12를 완료했다. 다음 입력은 사용자의 실제 DAW MIDI 피드백이며 M3(#13–#18)·M4(#19–#23)는 열린 후속 백로그다.
 - 테스트 URL: [https://postmelee.github.io/drum-vrm/](https://postmelee.github.io/drum-vrm/) · 배포 SHA: `3e8be9333cedbc9845dbc3e4cebd73961af697b4` · [성공 run](https://github.com/postmelee/drum-vrm/actions/runs/40063363035) · [릴리스/정적 artifact](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0).
 
@@ -40,10 +46,10 @@
 1. [현재 검증 기록](verification/studio-0.2.md)과 [최초 MVP 검증](verification/mvp-0.1.md)과 사용자 피드백을 읽고 재현할 MIDI 사례/관련 이슈를 정한다. M3·M4를 자동으로 모두 착수하지 않는다.
 2. `npm ci`, `npm run build:wasm` 후 `npm run dev`의 `/drum-vrm/`을 연다. Rust 1.94.1, wasm-pack 0.15.0, Node 24를 사용한다.
 3. 변경에 맞는 Rust/JS 검사를 실행하고, 엔진 변경은 WASM을 다시 생성한다. 새 codec/타임라인 변경은 실제 출력 파일의 프레임·오디오 onset까지 확인한다.
-4. PR CI 후 main에 반영하고 `gh workflow run pages.yml --ref main`으로 배포한다. 공개 URL에서 실제 업로드·출력 경로를 확인한다.
-5. 새 릴리스의 배포 SHA·artifact·checksum과 검증 결과, 관련 이슈 및 이 문서를 갱신한다.
+4. PR과 CI를 완료하고 변경 묶음·검증 commit·미해결 제한을 정리한다. main 반영과 공개 배포를 구분하고, 승인되지 않은 배포는 실행하지 않는다.
+5. 해당 배치의 사용자 릴리스 승인을 받은 경우에만 태그·Release·Pages를 진행한다. 승인 근거와 배포 SHA·artifact·checksum, 공개 URL 검증 결과를 기록한다.
 
-자세한 설치는 [README](../README.md)를 따른다. 첫 배포 이전 artifact는 없으며 v0.1.0의 실제 Pages artifact를 릴리스 자산으로 보존했다. 이후 회귀 시 해당 artifact를 재배포하거나 해당 태그의 앱 소스로 main을 복구한 뒤 검증·배포한다. 빌드 Actions artifact 보존 기간은 1일이므로 릴리스 자산을 장기 기준으로 쓴다.
+자세한 설치는 [README](../README.md)를 따른다. 첫 배포 이전 artifact는 없으며 v0.1.0의 실제 Pages artifact를 릴리스 자산으로 보존했다. 이후 회귀 시 해당 artifact 또는 태그로 복구안을 준비하고 검증한다. 공개 재배포도 명시적 사용자 지시를 따른다. 빌드 Actions artifact 보존 기간은 1일이므로 릴리스 자산을 장기 기준으로 쓴다.
 
 ## 유지할 계약과 현재 제한
 
@@ -63,7 +69,7 @@
 
 자체 코드는 MIT이고 원본 의존성 라이선스는 별개다. 실제 배포 고지는 `npm run licenses`가 생성한다. 외부 모션·샘플·ML 가중치는 편입하지 않았다. v0.2에서 사용자 요청으로 Innerscene CC0 드럼 모델과 포함 텍스처를 추가했다. MMIP 조건, DRUMS/Disney 공개 코드·가중치, ARDrum 활용은 연구 대장의 미확인/후속 항목을 유지한다. MIDIAnimator GPL/Blender 유래 코드를 포팅하지 않았다.
 
-Rust 16개·웹 14개 테스트와 PR/배포 CI가 통과했다. 공개 사이트에서 채널2/두 템포의 30초 MIDI 업로드·재생·seek·923프레임 WebM 다운로드를 확인했다. 첫 오디오 onset 오차는 약6.5ms, 실제 파일은30.78초였다. 자세한 명령·한계는 검증 기록에 유지한다.
+최초 v0.1.0 배포 당시 Rust 16개·웹 14개 테스트와 PR/배포 CI가 통과했다. 공개 사이트에서 채널2/두 템포의 30초 MIDI 업로드·재생·seek·923프레임 WebM 다운로드를 확인했다. 첫 오디오 onset 오차는 약6.5ms, 실제 파일은30.78초였다. 자세한 명령·한계는 검증 기록에 유지한다.
 
 ## 작업 환경 메모
 

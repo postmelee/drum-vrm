@@ -1,8 +1,26 @@
 # 개발 계획과 GitHub 작업 지도
 
-기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.1.0 배포 후 사용자 테스트**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
+기준일: 2026-10-24 (Asia/Seoul). 현재 단계는 **M0·M1·M2 완료, v0.2.0 공개 유지, 후속 조사·이슈·PR 준비**이다. 실행할 이슈는 [GitHub Issues](https://github.com/postmelee/drum-vrm/issues), 범위·종료 기준은 아래 문서와 마일스톤으로 관리한다.
 
-## 승인된 범위
+## Current execution order — 2026-10-24
+
+The owner requested a research-first assessment of studio controls, additional free kits, hand/grip quality, and VRM compatibility. Application features below remain unimplemented; this update prepares issues and review documentation. Public v0.2.0 stays unchanged.
+
+| Priority | Work | Issue / milestone | Boundary |
+| --- | --- | --- | --- |
+| Now | Preserve Korean README, add English, record batch-release policy and audit | [#27](https://github.com/postmelee/drum-vrm/issues/27) / M3 | Documentation/review PR; no release |
+| Next, small PRs | Lucide SVG controls; player camera; optional hit response | [#28](https://github.com/postmelee/drum-vrm/issues/28) / M3 | Icons can start independently; player camera requires a left/right fixture; response must preserve contact and seek/export determinism |
+| Parallel | Batoski then smoj preset adaptation; investigate electronic kit | [#29](https://github.com/postmelee/drum-vrm/issues/29) / M3 | Only verified model rights/files enter implementation; electronic file remains unverified |
+| Foundation before naturalness | Rendered contact baseline, wrist/grip orientation, versioned rig profile | [#30](https://github.com/postmelee/drum-vrm/issues/30) + #17 / M3 | Pull minimal measurement out of #23 and basic grip out of #20; preserve their broader backlog |
+| After the foundation | Two-body seat/grip/target/pedal calibration | #18 / M3 | Preserve source-event timing, recompute body-dependent reach/assignment as needed |
+| Next production phase | WAV sync, mapping/hand editing, persistence, higher-resolution output | #13–#16 / M3 | Keep open; stabilize model/rig settings before project persistence; validate current output before raising resolution |
+| Later | Advanced expression, motion baking, learned models, platform expansion, full inspection tools | #19–#23 / M4 | Literature review can happen now; model adoption follows a measured baseline and verified code/data/weight terms |
+
+M3/M4 are scope groupings, **not automatic release triggers**. Keep the existing milestone identities; the latest priorities refine execution order rather than discard earlier user requirements. No issue is closed merely because its analysis is complete.
+
+Research: [rig/motion audit](research/rig-and-studio-audit.md), [additional models](research/drum-assets-followup.md). Each feature PR should update user-facing English/Korean guidance and record relevant validation. After integration, prepare one reviewable batch with exact commit and evidence. Explicit owner approval is required before release tags, GitHub Releases, or Pages deployment; see [release policy](release-policy.md).
+
+## 승인된 최초 MVP 범위 (기록)
 
 M1·M2를 구현하여 MIDI를 올리고 기본 리그의 연주를 재생한 뒤 영상 파일을 저장하는 MVP를 GitHub Pages에 공개한다. Rust/WASM과 Three.js를 사용한다. 자체 리그·키트와 합성 드럼 소리를 사용하고 자체 소스에 MIT를 채택했다. 브라우저 인코딩과 Mediabunny는 실제 채택 버전의 라이선스·대응 소스 고지를 포함한다.
 
@@ -22,7 +40,7 @@ M1·M2를 구현하여 MIDI를 올리고 기본 리그의 연주를 재생한 �
 
 M3·M4는 장기 방향을 보존한 백로그다. 첫 MVP 승인이나 완료를 해당 전체 범위의 실행 지시로 확대하지 않는다. 사용자 승인은 2026-10-24에 완료되었다. #6 계획기와 #9 인코딩의 실제 검증 결과에 따라 후속 품질·지원 환경을 정하며, MVP 승인으로 전체 장기 백로그를 자동 착수하지 않는다.
 
-## 실행 순서와 병렬 작업
+## 최초 MVP 실행 순서와 병렬 작업 (완료 기록)
 
 1. #1·#2의 준비 결과와 #3에 기록된 2026-10-24 승인을 유지한다. 같은 범위를 재승인 요청하지 않는다.
 2. #4에서 재현 가능한 Rust/WASM·웹 빌드와 최소 CI를 구성한다.
@@ -44,7 +62,7 @@ MVP의 긴 의존 경로는 #3 → #4 → #5 → #6 → #7 → #8/#10 → #11 �
 | #11–#12 | 검증 기록·CI·정적 배포 | 공개 Pages 업로드→재생→영상 다운로드 및 라이선스 고지 확인 |
 
 
-이 표는 구현 경로의 존재를 기록하며 GitHub 이슈의 완료 상태를 대체하지 않는다. 문서 갱신 시점에는 공개 배포 성공을 선언하지 않았다. 입력 상한은 10MiB·300초·512트랙·200,000이벤트·지원 타격50,000개로 구현했다. 최대 길이 성능과 모든 브라우저 지원을 뜻하지 않는다.
+이 표는 최초 MVP 구현과 검증 기록이며 현재 상태는 상단과 GitHub 이슈를 기준으로 한다. v0.1.0과 v0.2.0 배포 검증은 각각의 검증 문서에 보존했다. 입력 상한은 10MiB·300초·512트랙·200,000이벤트·지원 타격50,000개로 구현했다. 최대 길이 성능과 모든 브라우저 지원을 뜻하지 않는다.
 
 ## 전체 이슈
 
@@ -91,7 +109,7 @@ MVP의 긴 의존 경로는 #3 → #4 → #5 → #6 → #7 → #8/#10 → #11 �
 
 MVP는 PRD의 수용 기준을 실제로 실행한 뒤 완료한다. 단위 검사는 템포맵·이벤트 보존·손발 충돌·임의 시점 자세를 검증하고, 브라우저 검사는 파일 입력·오디오 제스처·탐색·취소를 검증한다. 출력 파일은 프레임 수·타임스탬프·길이·소리 정렬 및 일반 플레이어 재생을 검사한다. 테스트한 OS·브라우저 버전·commit SHA와 제한을 남긴다.
 
-Rust MIDI/계획·WASM 연결, 기본 리그/키트, 합성 오디오, UI, codec probe와 고정 FPS export의 코드와 자동 검사가 마련되었다. 현재 통합 인수와 배포 검증을 진행하며, 검사 코드가 있다는 사실이나 개별 단위 검사 성공을 MVP 전체 통과로 표시하지 않는다. 배포 시에는 자동 검사, 실제 브라우저 A/V 파일 검사와 공개 Pages 실사용 확인을 각각 기록한다.
+Rust MIDI/계획·WASM 연결, 기본 리그/키트, 합성 오디오, UI, codec probe와 고정 FPS export의 코드와 자동 검사가 마련되었다. 최초 MVP와 v0.2.0의 통합 인수·배포 검증은 완료했다. 후속 변경도 검사 코드가 있다는 사실이나 개별 단위 검사 성공만으로 전체 통과를 표시하지 않는다. 배포 시에는 자동 검사, 실제 브라우저 A/V 파일 검사와 공개 Pages 실사용 확인을 각각 기록한다.
 
 ## 장기 맥락을 유지하는 규칙
 
@@ -99,7 +117,7 @@ Rust MIDI/계획·WASM 연결, 기본 리그/키트, 합성 오디오, UI, codec
 - 결정 변경: 원 요구를 삭제하지 않고 이유·영향·대체 범위를 ADR와 해당 이슈에 기록한다.
 - 출처 추가: 정확한 버전/commit과 LICENSE/NOTICE, 실제 포함 파일 및 변경 내용을 대장에 추가한다.
 - 작업 종료: 이슈의 검증 결과, 다음 작업, 문서 변경, 현재 한계를 남기고 handoff를 갱신한다.
-- 승인: [승인 기록](approval.md)과 #3에 2026-10-24 실제 사용자 승인을 기록했다. M1·M2 구현·검증·Pages 배포와 MIT 채택 범위에서 진행하며, 새 기능의 범위 변경은 별도로 추적한다.
+- 승인: [승인 기록](approval.md)과 #3에 2026-10-24 실제 사용자 승인을 기록했다. 이는 최초 M1·M2와 MIT 채택의 과거 승인이다. 새 기능은 이슈·PR로 추적하며, 후속 릴리스·Pages 배포는 최신 배치별 명시적 승인 정책을 따른다.
 
 완료 근거: [v0.1.0 검증](verification/mvp-0.1.md), [배포](https://github.com/postmelee/drum-vrm/actions/runs/40060762280), [테스트 사이트](https://postmelee.github.io/drum-vrm/). M3·M4는 열린 상태로 유지한다.
 

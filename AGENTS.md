@@ -7,9 +7,19 @@
 3. GitHub의 해당 이슈와 마일스톤 상태를 확인한다. 이슈가 실행 작업의 기준이고 문서는 설계의 기준이다.
 4. `docs/decisions/`의 결정과 `docs/research/`의 채택 조건을 확인한다.
 
-## 현재 승인 경계
+## Current authorization and release policy
 
-사용자는 계획·저장소·이슈·마일스톤·참고자료 준비를 먼저 요청했고, 그 다음 승인을 받은 뒤 MVP 구현과 GitHub Pages 배포를 요청했다. 2026-10-24 실제 사용자 승인을 받아 M1·M2 구현·검증·배포를 완료했다. 승인 범위와 날짜는 `docs/approval.md`, 배포 SHA와 결과는 `docs/handoff.md` 및 `docs/verification/mvp-0.1.md`에 기록했다. 이 문서만으로 새 승인이 생기지는 않는다. 같은 승인 범위에 대해 반복 확인하지 않는다.
+The owner approved the original MVP implementation and deployment on 2026-10-24. That historical approval is recorded in `docs/approval.md` and does not authorize future releases.
+
+The owner's latest instruction supersedes earlier release guidance: work through issues and PRs, then release an approved batch once. Do not create release tags, publish GitHub Releases, or dispatch Pages deployment without an explicit owner instruction approving that batch. Passing CI, merging a PR, finishing a milestone, or a previous deployment is not release approval. Continue authorized implementation, verification, documentation, and PR work without asking again for each reversible step. Prepare a concrete change summary, tested commit, known limitations, and release scope before requesting release approval. See `docs/release-policy.md`.
+
+## Documentation languages
+
+- Communicate with the owner in Korean.
+- `README.md` is English; `README.ko.md` is Korean. Preserve existing Korean documentation.
+- Maintain user-facing instructions, supported-format information, and release guidance in English and Korean in the same PR, with reciprocal links or paired sections. Keep both versions factually equivalent.
+- Internal engineering notes, research audits, ADRs, issues, and PR descriptions may be English only. Existing Korean engineering documents need not be destructively replaced.
+- Distinguish proposed, implemented/unreleased, and publicly deployed behavior. A merged PR does not mean the public site has changed.
 
 ## 개발 원칙
 

@@ -50,3 +50,8 @@ Apple이 Logic Pro UI 소스 코드나 드럼 모델 파일을 자유롭게 재�
 [Apple 공식 royalty-free 콘텐츠 안내(2025-03-03)](https://support.apple.com/en-us/101908)는 포함된 오디오 등의 원작 soundtrack 이용과 개별 콘텐츠의 독립 배포·재포장 배포를 구분한다. 이를 “Logic Pro 화면·모델을 웹 앱에 추출해서 재배포할 수 있다”는 허가로 읽지 않는다. 본 프로젝트에는 Apple UI 코드·아이콘·드럼 모델·샘플을 추출하거나 편입하지 않는다.
 
 참고하는 것은 독립 구현 가능한 화면 구성 방향이다. 어두운 중립색, compact transport, 중앙 3D 뷰, 가벼운 inspector, 접을 수 있는 패널, 시간 눈금과 명확한 재생 상태를 자체 HTML/CSS/Three.js로 구현한다. 특정 제품과 동일한 자산을 사용한다고 표시하지 않으며, 실제 포함한 외부 자산은 위 CC0 모델로 명시한다.
+
+
+## Additional candidate audit — 2026-10-24
+
+[Additional preset candidates](drum-assets-followup.md) records Batoski/smoj GLB inspection and the unverified electronic-kit acquisition path. These are candidates for [#29](https://github.com/postmelee/drum-vrm/issues/29), not shipped presets. Public v0.2.0 assets are unchanged.

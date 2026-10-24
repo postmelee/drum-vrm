@@ -1,7 +1,8 @@
 name: Deploy GitHub Pages
 
 # A successful push/PR check never deploys on its own. The release operator
-# dispatches this workflow on main after the local browser acceptance checks.
+# dispatches this workflow on main only after explicit owner approval of the
+# reviewed release batch and successful local browser acceptance checks.
 on:
   workflow_dispatch:
 
