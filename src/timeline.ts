@@ -134,7 +134,7 @@ export class DrumTimeline {
   constructor(container: HTMLElement, options: TimelineOptions) {
     this.options = options;
     this.root.className = 'midi-roll';
-    Object.assign(this.root.style, { position: 'relative', width: '100%', height: '100%', minHeight: '120px', overflow: 'hidden' });
+    Object.assign(this.root.style, { position: 'relative', width: '100%', height: '100%', minWidth: '0', contain: 'inline-size', minHeight: '120px', overflow: 'hidden' });
     this.scroll.className = 'midi-roll-scroll';
     Object.assign(this.scroll.style, { width: '100%', height: '100%', overflow: 'auto', position: 'relative', scrollbarWidth: 'thin' });
     this.scroll.tabIndex = 0;

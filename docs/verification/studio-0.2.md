@@ -21,7 +21,7 @@ Production preview `/drum-vrm/`에서 확인했다.
 - 검정테마 전환, 캐릭터스켈레톤 숨김/표시, 재생·일시정지. 테마는 새로고침 후 유지.
 - 직접 생성한 정적GLB부품(qa-static-piece.glb)을Snare에 가져오기, 안내상태확인, 프리셋복원.
 - `two-tempos-channel2-30s.mid` 실제filechooser업로드:135타격,2템포,30초. 선택한CC0모델 유지.
-- 확대4배의 피아노롤 및 위치slider. 피아노롤은 편집 기능을 표방하지 않는다.
+- 확대1/4/16배의 피아노롤 및 위치slider. ArrowRight로0.1초, End로30.7667초 이동을 브라우저에서 확인했다. 피아노롤은 편집 기능을 표방하지 않는다.
 - CC0모델+스켈레톤+검정배경으로오디오포함720p30출력·다운로드.
 - 해당브라우저경로 console error/warn없음.
 
@@ -50,3 +50,7 @@ Production preview `/drum-vrm/`에서 확인했다.
 ## 배포
 
 PR CI와공개Pages검증결과는실행완료후아래에기록한다.
+
+## 확대 회귀 수정
+
+최종 QA에서 피아노롤의 긴 spacer가 CSS Grid의 암시적 최소 너비를 늘리고 ResizeObserver를 반복 실행하는 문제를 발견했다. 명시적 `minmax(0,1fr)` 열과 `min-width:0`, component `contain:inline-size`로 외부 레이아웃과 스크롤 콘텐츠의 크기를 분리했다. 수정 후1/4/16배 모두 앱1512px·캔버스bitmap3024px를 유지하고, scrollWidth만1512/5634/22122px로 변했다. 키보드 탐색과3D렌더·상단메뉴가 정상 유지됨을 확인했다.
