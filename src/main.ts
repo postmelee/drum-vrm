@@ -249,7 +249,7 @@ function clearPerformance() {
   for (const id of ['duration','current-time']) get(id).textContent='00:00';
   get('stage-empty').hidden=false; get('diagnostics').hidden=true;
   get<HTMLInputElement>('seek').value='0'; timeline.setPlan(null);
-  get('play').textContent='▶'; get('play').setAttribute('aria-label','재생');
+  setButtonIcon(get('play'), 'play'); get('play').setAttribute('aria-label','재생');
   if(downloadUrl)URL.revokeObjectURL(downloadUrl); downloadUrl=null; get('download').hidden=true;
   timeline.resize();
 }
