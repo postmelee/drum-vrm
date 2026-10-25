@@ -5,7 +5,8 @@
 ## 구성 요소의 경계
 
 Rust 엔진은 Three.js 객체나 원본 모델의 메시 이름에 의존하지 않습니다.
-버전이 있는 연주 계획으로 음악적 의도와 진단을 표현합니다.
+버전이 있는 연주 계획은 [MIDI 해석 계약](midi-interpretation.ko.md)에 따라
+원본 근거·매핑·의도·제어를 분리합니다.
 브라우저 어댑터는 신체의 의미 기반 관절을 측정하여 수치 프로필을 제공하고,
 계산된 포즈를 자신의 장면 그래프에 적용합니다.
 
@@ -20,10 +21,11 @@ flowchart TB
   B --> A
   A --> S[Three.js 장면]
   P --> Y[합성 워커]
-  Y --> C[PCM과 오디오 시계]
+  Y --> C[선택한 PCM과 오디오 시계]
+  WAV[로컬 WAV와 시작 위치] --> C
   C --> S
   S --> X[고정 프레임 출력]
-  Y --> X
+  C --> X
 ```
 
 | 영역 | 구현 진입점 | 책임 |
@@ -33,7 +35,7 @@ flowchart TB
 | 휴머노이드 | [rig-humanoid.ts](../../src/rig-humanoid.ts), [rig-vrm.ts](../../src/rig-vrm.ts) | 공통 의미 기반 본, 정규화·원본 본 변환, 부착된 도구 측정 |
 | 배치·외형 | [kit-calibration.ts](../../src/kit-calibration.ts), [하드웨어](../../src/kit-hardware.ts), [라이브러리](../../src/model-library.ts) | 접촉 배치와 교체 가능한 드럼 본체 분리 |
 | 렌더링·UI | [scene.ts](../../src/scene.ts), [main.ts](../../src/main.ts), [timeline.ts](../../src/timeline.ts) | 장면, 조작부, 템포·박자 기반 미리보기 |
-| 소리·재생 | [synthesis.ts](../../src/synthesis.ts), [audio.ts](../../src/audio.ts) | 결정적 PCM과 재생 시계 |
+| 소리·재생 | [synthesis.ts](../../src/synthesis.ts), [wav.ts](../../src/wav.ts), [audio.ts](../../src/audio.ts) | 합성 또는 시간 맞춘 WAV PCM, 공통 재생·출력 시계 |
 | 인코딩 | [export.ts](../../src/export.ts) | 실제 코덱 검사, 고정 프레임 시각, 다중화, 취소·정리 |
 
 ## 상태 변경

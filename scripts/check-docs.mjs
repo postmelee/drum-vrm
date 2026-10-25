@@ -89,7 +89,7 @@ for (const [path, body] of texts) {
 
 // These are published guides. Historical research, ADRs and test evidence keep
 // their original language; folder names do not impose a documentation taxonomy.
-const paired = new Set(['README.md', 'public/models/README.md', ...['README', 'models', 'calibration', 'performance-foundations'].map(base => `docs/${base}.md`)]);
+const paired = new Set(['README.md', 'public/models/README.md', ...['README', 'models', 'calibration', 'performance-foundations', 'export'].map(base => `docs/${base}.md`)]);
 for (const path of files) {
   const rel = name(path);
   if (rel.startsWith('specs/') && !rel.endsWith('/AGENTS.md')) paired.add(rel.replace(/\.ko\.md$/, '.md'));

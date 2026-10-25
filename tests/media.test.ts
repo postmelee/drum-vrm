@@ -57,6 +57,56 @@ describe('shared audio/video timeline', () => {
   });
 });
 
+describe('interpreted drum preview audio', () => {
+  const energy = (samples: Float32Array) => samples.reduce((sum, value) => sum + value * value, 0);
+
+  it('closes an open hat at the original control sample without shifting or restarting its onset', () => {
+    const open = hit({ time: .000019, timeUs: 19, instrument: 'openHat', pieceId: 'openHat', note: 46, limb: 1 });
+    const input = { ...plan([open]), controls: [{ kind: 'hihatClose' as const, sourceEventId: '1:1',
+      openSourceEventId: '1:0', releaseStartTimeUs: -99981, openTimeUs: 19, timeUs: 25007, openness: .2 }] };
+    const before = JSON.stringify(input);
+    for (const rate of [8000, 44100, 48000]) {
+      const literal = synthesizePcm(plan([open]), rate);
+      const controlled = synthesizePcm(input, rate);
+      const onset = Math.round((.5 + .000019) * rate), close = Math.round((.5 + .025007) * rate);
+      for (let channel = 0; channel < 2; channel++) {
+        expect(controlled.channels[channel].findIndex(value => value !== 0)).toBe(onset);
+        expect(controlled.channels[channel].slice(onset, close - Math.ceil(.008 * rate)))
+          .toEqual(literal.channels[channel].slice(onset, close - Math.ceil(.008 * rate)));
+        expect(controlled.channels[channel].slice(close).every(value => value === 0)).toBe(true);
+        expect(energy(literal.channels[channel].slice(close, close + rate / 10))).toBeGreaterThan(0);
+      }
+    }
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  it('does not replay a paired foot-close voice and does not let an earlier close silence the next open', () => {
+    const opening = hit({ instrument: 'openHat', pieceId: 'openHat', note: 46, time: .01 });
+    const next = hit({ id: 1, instrument: 'openHat', pieceId: 'openHat', note: 46, time: .2 });
+    const controlled = synthesizePcm({ ...plan([opening, next]), controls: [{ kind: 'hihatClose',
+      sourceEventId: '1:1', openSourceEventId: '1:0', releaseStartTimeUs: -90000, openTimeUs: 10000, timeUs: 50000, openness: .2 }] }, 8000);
+    const from = Math.round(.55 * 8000), until = Math.round(.7 * 8000);
+    expect(controlled.channels.every(channel => channel.slice(from, until).every(sample => sample === 0))).toBe(true);
+    expect(controlled.channels[0].slice(until)).toEqual(synthesizePcm(plan([next]), 8000).channels[0].slice(until));
+    const literal = synthesizePcm(plan([opening, hit({ id: 2, time: .05, note: 44, instrument: 'pedalHat' })]), 8000);
+    expect(energy(literal.channels[0].slice(from, until))).toBeGreaterThan(0);
+  });
+
+  it('keeps both physical crashes audible with opposite stereo positions, even without a visual limb', () => {
+    const left = hit({ instrument: 'crash', pieceId: 'crash', note: 49, time: .123456, velocity: 80, limb: null });
+    const right = hit({ ...left, id: 1, pieceId: 'crashRight', note: 57 });
+    const l = synthesizePcm(plan([left]), 8000), r = synthesizePcm(plan([right]), 8000);
+    const combined = synthesizePcm(plan([left, right]), 8000);
+    expect(energy(l.channels[0])).toBeGreaterThan(energy(l.channels[1]) * 4);
+    expect(energy(r.channels[1])).toBeGreaterThan(energy(r.channels[0]) * 4);
+    for (let channel = 0; channel < 2; channel++) {
+      expect(combined.channels[channel].findIndex(value => value !== 0)).toBe(Math.round(.623456 * 8000));
+      expect(combined.channels[channel]).not.toEqual(l.channels[channel]);
+      expect(combined.channels[channel]).not.toEqual(r.channels[channel]);
+    }
+  });
+});
+
 describe('Web Audio transport', () => {
   afterEach(() => vi.unstubAllGlobals());
 

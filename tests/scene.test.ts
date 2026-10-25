@@ -5,7 +5,8 @@ import { cloneModel, createPieceModel, disposeModel, disposeModelSource, resolve
 import { validateSelfContainedGLB } from '../src/model-import';
 import { NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack } from '../src/hit-response';
-import type { KitPiece } from '../src/types';
+import { pieceInstrument, type KitPiece, type Hit } from '../src/types';
+import { KitHardwareLayer } from '../src/kit-hardware';
 
 const pose = () => new Float32Array([
   -.22, 1.35, -.10, -.43, 1.10, .08, -.28, 1.15, .10, -.28, 1.06, .40,
@@ -119,6 +120,7 @@ describe('editable procedural models preserve playing contacts', () => {
     { id: 'pedalHat', label: 'Pedal', position: [-.22, .08, .55], radius: .12 },
     { id: 'tomHigh', label: 'High tom', position: [-.26, 1, .72], radius: .18 },
     { id: 'ride', label: 'Ride', position: [.66, 1.15, .67], radius: .28 },
+    { id: 'crashRight', instrument: 'crash', label: 'Crash Right', position: [.62, 1.2, .5], radius: .3 },
   ];
   it('keeps the real surface at every canonical target across all procedural presets and width limits', () => {
     for (const preset of ['studio', 'vintage', 'electronic'] as KitPresetId[]) {
@@ -214,7 +216,7 @@ describe('scene performance lifecycle', () => {
     const model = createPieceModel(piece, resolvePieceVisual('studio', piece.id), 'studio', [piece], false);
     const response = bindHitResponse(model.root, piece.position); applyHitResponse(response, { scale: 1.02, tiltX: .02, tiltZ: .01 });
     model.ring.visible = true; model.ring.material.opacity = .5;
-    const visual = { ...model, id: piece.id, hits: [], response, responseTrack: createHitResponseTrack([], piece.id) };
+    const visual = { ...model, id: piece.id, instrument: pieceInstrument(piece), hits: [], response, responseTrack: createHitResponseTrack([], pieceInstrument(piece)) };
     // Exercise the production lifecycle method without constructing a WebGL renderer.
     const scene = Object.create(DrumScene.prototype) as DrumScene;
     Object.assign(scene, { rig, plan: { hits: [] }, songTime: 1, visuals: [visual], imported: new Map(), editorMode: false, exportMode: false, reducedMotion: { matches: false }, hitResponse: { enabled: true, strength: 1 } });
@@ -225,5 +227,44 @@ describe('scene performance lifecycle', () => {
     expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
     expect(rig.getProfile().pelvis[1]).toBeCloseTo(.60);
     rig.dispose(); disposeModel(model.root);
+  });
+});
+
+
+describe('independent physical crashes', () => {
+  it('shares a library voice without coupling contacts, feedback, selection or body overrides', () => {
+    const kit: KitPiece[] = [
+      { id: 'crash', instrument: 'crash', label: 'Crash Left', position: [-.6, 1.15, .5], radius: .25 },
+      { id: 'crashRight', instrument: 'crash', label: 'Crash Right', position: [.6, 1.1, .5], radius: .28 },
+    ];
+    const hit = (pieceId: 'crash'|'crashRight', id: number, time: number): Hit => ({
+      id, time, tick: id * 96, track: 0, channel: 9, note: id ? 57 : 49,
+      velocity: 100, instrument: 'crash', pieceId, limb: id, target: [...kit[id].position],
+    });
+    // A library with one authored cymbal supplies two separately cloned bodies.
+    const source = createPieceModel(kit[0], resolvePieceVisual('studio', 'crash'), 'studio', kit).root;
+    const hardware = new KitHardwareLayer(), kitGroup = new Group(), stage = new Group();
+    stage.add(hardware.root, kitGroup);
+    const scene = Object.create(DrumScene.prototype) as DrumScene;
+    Object.assign(scene, {
+      kit, plan: { hits: [hit('crash', 0, 1), hit('crashRight', 1, 2)] }, hardware, kitGroup, scene: stage,
+      libraries: new Map([['library', { crash: source }]]), preset: 'library', overrides: new Map(), imported: new Map(),
+      proceduralOverrides: new Set(), pieceLoadVersions: new Map(), selected: null, selectionBox: null,
+      songTime: 1.045, editorMode: false, exportMode: false, reducedMotion: { matches: false },
+      hitResponse: { enabled: true, strength: 1 },
+    });
+    Reflect.get(scene, 'rebuildKit').call(scene);
+    const visuals = Reflect.get(scene, 'visuals') as { id: string; hits: Hit[]; responseTrack: ReturnType<typeof createHitResponseTrack>; root: Group }[];
+    expect(visuals.map(v => [v.id, v.hits.map(h => h.note)])).toEqual([['crash', [49]], ['crashRight', [57]]]);
+    expect(visuals.every(v => v.responseTrack.cymbal)).toBe(true);
+    expect(visuals[0].root).not.toBe(visuals[1].root);
+    const fixed = hardware.root.children[0];
+    scene.setPieceVisual('crashRight', { finish: '#ff0000', scale: .8 });
+    expect(scene.getPieceVisual('crashRight').finish).toBe('#ff0000');
+    expect(scene.getPieceVisual('crash').finish).not.toBe('#ff0000');
+    expect(hardware.root.children[0]).toBe(fixed);
+    scene.selectPiece('crashRight'); expect(Reflect.get(scene, 'selected')).toBe('crashRight');
+    scene.resetPieceVisual('crashRight'); expect(scene.getPieceVisual('crashRight').finish).toBe(scene.getPieceVisual('crash').finish);
+    hardware.dispose(); disposeModel(kitGroup); disposeModel(source);
   });
 });

@@ -52,7 +52,10 @@ use, independent of the application's MIT license.
 [rig-humanoid.ts](../../src/rig-humanoid.ts) measures and translates the seated body.
 
 - Seat height: 0.30–1.20 m. Forward/back adjustment: −0.50–0.50 m.
-- Automatic fitting gives a pedal-aware starting position, not collision-free fitting.
+- Automatic seat fitting gives a pedal-aware starting position, not collision-free fitting.
+- Explicit kit fitting adjusts hand-played contact positions/radii together; kick and
+  pedal contacts remain fixed. [Calibration](calibration.md) owns search bounds and
+  the limited meaning of a complete proposal.
 - Target X is bounded to ±2 m, Y to 0.02–2.50 m and Z to −0.50–2.50 m.
 - Kick and hi-hat pedal height is further bounded to 0.04–0.20 m.
 - Closed and open hi-hat share a surface contact; pedal hi-hat is independent.
@@ -68,13 +71,22 @@ failures rather than altering limb lengths or source times.
 
 The grip uses a measured diagonal hand-local mount and available finger curl.
 Palm up/inward/down is a common calibration choice; symmetric palms-up is not a
-complete traditional grip. Reference forearm roll reduces concentrated wrist twist,
-but the fixed reference orientation does not solve every distant target's wrist pose.
+complete traditional grip. Optional measured `handFrames` let the common solver
+orient the wrist for each target through a compound forearm/tool link, instead of a
+fixed world rotation. Forearm roll carries palm orientation. This preserves segment
+lengths and the calibrated grip, but does not establish anatomical limits or skin
+clearance. Profiles without hand frames retain the previous fixed-orientation path.
+
+The measured path uses instrument-relative ready tips and velocity-dependent lift/
+pitch under the [engine contract](engine-contract.md). Phrase assignment can alternate
+available hands during rapid snares; it does not define a complete sticking style.
 
 Feet rest on calibrated kick/hi-hat pedal contacts even without pedal notes. In the
 profile path, hip/knee/ankle positions remain fixed during the simple ankle stroke.
 A time-based foot pitch prepares and returns the sole socket to contact. Unreachable
-idle pedals produce diagnostics. This is not full heel-up/down or pedal mechanics.
+idle pedals produce diagnostics. Explicit hi-hat controls can drive the left-foot
+pitch instead of paired close strikes; [MIDI interpretation](midi-interpretation.md)
+owns that policy. This is not full heel-up/down, measured sole support or pedal mechanics.
 
 Each evaluation resets the normalized pose and spring state, applies the solved pose
 and updates VRM at delta zero. Expressions/look-at are neutral; node constraints are

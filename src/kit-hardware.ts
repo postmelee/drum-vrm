@@ -1,19 +1,19 @@
 import * as THREE from 'three';
-import type { Instrument, KitPiece, Vec3 } from './types';
+import { pieceInstrument, type PieceId, type KitPiece, type Vec3 } from './types';
 
 /** Shared mounting frames are kit data, never an avatar or a model-preset rule. */
 export interface PieceAnchors { contact: Vec3; mount: Vec3; }
 export function pieceAnchors(piece: KitPiece): PieceAnchors {
   const [x, y, z] = piece.position;
-  const cymbal = ['hihat', 'openHat', 'crash', 'ride'].includes(piece.id);
+  const cymbal = ['hihat', 'openHat', 'crash', 'ride'].includes(pieceInstrument(piece));
   return {
     contact: [...piece.position],
-    mount: piece.id === 'kick' ? [x, .32, z + .34]
+    mount: pieceInstrument(piece) === 'kick' ? [x, .32, z + .34]
       : cymbal ? [x, y, z + piece.radius * .5] : [x, y, z],
   };
 }
 const up = new THREE.Vector3(0, 1, 0);
-const canonical = (id: Instrument): Instrument => id === 'openHat' || id === 'pedalHat' ? 'hihat' : id;
+const canonical = (id: PieceId): PieceId => id === 'openHat' || id === 'pedalHat' ? 'hihat' : id;
 
 /** Original application hardware. Only a layout edit replaces these objects;
  * body changes, finishes and hit feedback never inherit into their transforms. */
@@ -54,14 +54,14 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[]): 
     const anchor = new THREE.Object3D(); anchor.name = `${name}Anchor`; anchor.position.set(...point as Vec3); root.add(anchor);
   }
   root.userData.anchors = anchors;
-  if (piece.id === 'kick') {
+  if (pieceInstrument(piece) === 'kick') {
     pedal('kick', piece.position);
     rod([x, y + .04, z + .08], [x, .28, z + .14], .008);
     add(new THREE.SphereGeometry(.028, 16, 12), dark, [x, .28, z + .15]);
     for (const side of [-1, 1]) rod([x + side * .24, .18, z + .4], [x + side * .35, .015, z + .49], .012);
-  } else if (['hihat', 'crash', 'ride'].includes(piece.id)) {
+  } else if (['hihat', 'crash', 'ride'].includes(pieceInstrument(piece))) {
     const mountZ = anchors.mount[2]; stand(x, y + .065, mountZ);
-    if (piece.id === 'hihat') {
+    if (pieceInstrument(piece) === 'hihat') {
       const contact = kit.find(value => value.id === 'pedalHat')?.position ?? [-.22, .08, .55];
       pedal('pedalHat', contact);
       rod([x, .04, mountZ], [contact[0], .04, contact[2]]);
@@ -86,7 +86,7 @@ export class KitHardwareLayer {
   constructor() { this.root.name = 'SharedKitHardware'; }
   /** Returns false when only body/preset settings changed; all object identities remain stable. */
   setLayout(kit: readonly KitPiece[]): boolean {
-    const next = JSON.stringify(kit.map(piece => [piece.id, piece.position, piece.radius]));
+    const next = JSON.stringify(kit.map(piece => [piece.id, pieceInstrument(piece), piece.position, piece.radius]));
     if (this.signature === next) return false;
     const replacement = new THREE.Group();
     for (const piece of kit) if (canonical(piece.id) === piece.id) replacement.add(createPieceHardware(piece, kit));

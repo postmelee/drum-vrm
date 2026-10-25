@@ -1,5 +1,5 @@
-import init, { Performance } from './wasm/drum_engine';
-import type { KitPiece, MidiInfo, PerformancePlan, RigProfile, Selection } from './types';
+import init, { Performance, fit_kit } from './wasm/drum_engine';
+import type { KitPiece, KitFitProposal, MidiInfo, PerformancePlan, RigProfile, Selection } from './types';
 import { applyKitLayout, validateKitLayout } from './kit-calibration';
 export class EngineClient {
   private worker: Worker | null = null;
@@ -9,6 +9,11 @@ export class EngineClient {
   private sourcePlan: PerformancePlan | null = null;
   private profile: RigProfile | null = null;
   private layout: KitPiece[] | null = null;
+  async fitKit(profile: RigProfile, kit: readonly KitPiece[]): Promise<KitFitProposal> {
+    this.ready ??= init();
+    try{await this.ready;}catch(error){this.ready=null;throw error;}
+    return JSON.parse(fit_kit(JSON.stringify(profile),JSON.stringify(kit)));
+  }
   setProfile(profile: RigProfile): PerformancePlan | null {
     return this.setSetup(profile, this.layout);
   }

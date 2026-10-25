@@ -223,7 +223,7 @@ export async function exportVideo(options: ExportOptions): Promise<ExportResult>
   const duration = outputDuration(plan);
   const samples = Math.round(duration * SAMPLE_RATE);
   if (audio.numberOfChannels !== 2 || audio.sampleRate !== SAMPLE_RATE || audio.length !== samples) {
-    throw new Error('합성 오디오의 길이·채널·샘플 레이트가 영상 설정과 일치하지 않습니다.');
+    throw new Error('선택한 오디오의 길이·채널·샘플 레이트가 영상 설정과 일치하지 않습니다.');
   }
   const output = createOutput(profile);
   let encodedFrames = 0;

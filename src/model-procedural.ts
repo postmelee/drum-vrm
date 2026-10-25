@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Instrument, KitPiece } from './types';
+import { pieceInstrument, type PieceId, type KitPiece } from './types';
 import { createPieceHardware, pieceAnchors } from './kit-hardware';
 
 export type KitPresetId = 'studio' | 'vintage' | 'electronic' | 'library' | 'batoski' | 'smoj';
@@ -11,9 +11,9 @@ export const KIT_PRESETS = [
   { id: 'electronic', label: 'Electronic' }, { id: 'library', label: 'Innerscene Acoustic · CC0' },
   { id: 'batoski', label: 'Batoski Acoustic · CC BY 3.0' }, { id: 'smoj', label: 'smoj Low-poly · CC BY 3.0' },
 ] as const;
-export const canonicalPieceId = (id: Instrument): Instrument => id === 'openHat' || id === 'pedalHat' ? 'hihat' : id;
-export function resolvePieceVisual(preset: KitPresetId, id: Instrument, override: PieceVisualOptions = {}): PieceVisualSettings {
-  const cymbal = ['hihat', 'crash', 'ride'].includes(canonicalPieceId(id));
+export const canonicalPieceId = (id: PieceId): PieceId => id === 'openHat' || id === 'pedalHat' ? 'hihat' : id;
+export function resolvePieceVisual(preset: KitPresetId, id: PieceId, override: PieceVisualOptions = {}): PieceVisualSettings {
+  const cymbal = ['hihat', 'crash', 'crashRight', 'ride'].includes(canonicalPieceId(id));
   const defaults = {
     studio: { finish: cymbal ? '#ba995b' : '#e1e1dd', model: 'standard' as const },
     vintage: { finish: cymbal ? '#a18346' : '#8e4d2e', model: 'deep' as const },
@@ -100,7 +100,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
     [...root.children].filter(child => child.userData.hitResponseRole !== 'marker' && child.userData.hitResponseRole !== 'hardware').forEach(child => body.add(child));
     pivot.add(body); root.add(pivot); return model;
   };
-  const [x, y, z] = piece.position;
+  const [x, y, z] = piece.position, instrument = pieceInstrument(piece);
   if (includeHardware) root.add(createPieceHardware(piece, kit));
   const radius = piece.radius * visual.scale;
   const electronic = preset === 'electronic';
@@ -113,7 +113,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
   const ring = new THREE.Mesh(new THREE.RingGeometry(radius * .81, radius * .94, 48), ringMat);
   ring.userData.hitResponseRole = 'marker';
   ring.rotation.x = -Math.PI / 2; ring.position.set(x, y + .008, z); ring.visible = false; root.add(ring);
-  if (piece.id === 'kick') {
+  if (instrument === 'kick') {
     const bass = new THREE.Group(); bass.userData.hitResponseRole = 'shell'; root.add(bass);
     const drumRadius = electronic ? .17 * visual.scale : Math.max(.31, piece.radius) * visual.scale;
     const depth = electronic ? .075 : .4 * modelDepth;
@@ -130,7 +130,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
     ring.geometry.dispose(); ring.geometry = new THREE.RingGeometry(.08, .10, 36); ring.position.set(x, y + .008, z);
     return finish({ root, ring });
   }
-  if (['hihat', 'crash', 'ride'].includes(piece.id)) {
+  if (['hihat', 'crash', 'ride'].includes(instrument)) {
     const mountZ = pieceAnchors(piece).mount[2];
     const cymbal = new THREE.Group(); cymbal.userData.hitResponseRole = 'surface'; root.add(cymbal);
     if (electronic) {
@@ -145,7 +145,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
       shell.metalness = .78; shell.side = THREE.DoubleSide;
       const profile = [new THREE.Vector2(.008, -.004), new THREE.Vector2(radius * .12, 0), new THREE.Vector2(radius * .24, -.022), new THREE.Vector2(radius * .8, -.038), new THREE.Vector2(radius, -.044)];
       const bow = mesh(cymbal, new THREE.LatheGeometry(profile, 80), shell); bow.name = 'contactSurface';
-      if (piece.id === 'hihat') mesh(cymbal, new THREE.LatheGeometry(profile, 64), shell).position.y = -.026;
+      if (instrument === 'hihat') mesh(cymbal, new THREE.LatheGeometry(profile, 64), shell).position.y = -.026;
       const etched = mat(0x88713f, .68, .46);
       for (const fraction of [.36, .52, .68, .84]) {
         const line = mesh(cymbal, new THREE.TorusGeometry(radius * fraction, .0006, 4, 64), etched);
@@ -156,7 +156,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
     ring.geometry.dispose(); ring.geometry = new THREE.RingGeometry(radius * .24, radius * .31, 40);
     return finish({ root, ring, cymbal });
   }
-  const depth = electronic ? .04 : (piece.id === 'snare' ? .13 : piece.id === 'tomLow' ? .29 : .22) * modelDepth;
+  const depth = electronic ? .04 : (instrument === 'snare' ? .13 : instrument === 'tomLow' ? .29 : .22) * modelDepth;
   const drum = new THREE.Group(); drum.userData.hitResponseRole = 'shell'; drum.position.set(x, y - depth / 2, z); root.add(drum);
   cylinder(drum, radius, depth, shell);
   const surface = cylinder(drum, radius - .007, .008, head); surface.position.y = depth / 2 - .004; surface.name = 'contactSurface';

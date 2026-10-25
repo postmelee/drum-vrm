@@ -55,8 +55,9 @@ const BATOSKI_PARTS: Record<string, Part> = {
   'Asta Crash': { instrument: 'crash', role: 'hardware' },
   Ride: { instrument: 'ride', role: 'surface', contact: true },
   'Asta Ride': { instrument: 'ride', role: 'hardware' },
-  // The second crash and stool are intentionally omitted: no independent
-  // second-crash event role exists in the current PerformancePlan.
+  // This source adapter retains one verified crash body. The scene can clone
+  // it for distinct left/right physical instances; source geometry and rights
+  // remain unchanged. Unverified source nodes and the stool stay omitted.
 };
 
 // Pinned source-node inventory. Explicit semantic grouping avoids nearest-part

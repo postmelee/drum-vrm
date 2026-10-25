@@ -3,10 +3,23 @@ use crate::model::{Vec3, POSE_FLOATS};
 use crate::motion::{add, distance, sub, ARM_ROOTS, LEG_ROOTS, STICK_VECTOR};
 use serde::{Deserialize, Serialize};
 
+#[path = "hand_solver.rs"]
+mod hand_solver;
+pub use hand_solver::HandSolution;
+
 pub type Quat = [f64; 4]; // xyzw, local tool frame -> legacy world frame
 pub const RIG_POSE_FLOATS: usize = POSE_FLOATS + 16;
 pub const COORDINATE_SYSTEM: &str = "legacy-y-up-z-forward-left-negative-x";
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HandControlFrame {
+    /// Neutral world directions measured from the semantic hand, not raw axes.
+    pub forearm: Vec3,
+    pub palm: Vec3,
+    pub desired_palm: Vec3,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -25,6 +38,10 @@ pub struct RigProfile {
     pub grip_offsets: [Vec3; 4],
     pub tip_offsets: [Vec3; 4],
     pub contact_rotations: [Quat; 4],
+    /// Optional opt-in to target-dependent neutral wrists. Old profiles retain
+    /// their fixed world rotation contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hand_frames: Option<[HandControlFrame; 2]>,
     pub pelvis: Vec3,
     pub chest: Vec3,
     pub head: Vec3,
@@ -80,6 +97,7 @@ impl RigProfile {
                 [0.0, 0.0, 0.20],
             ],
             contact_rotations: [[0.0, 0.0, 0.0, 1.0]; 4],
+            hand_frames: None,
             pelvis: [0.0, 0.71, -0.15],
             chest: [0.0, 1.24, -0.10],
             head: [0.0, 1.62, -0.10],
@@ -112,6 +130,24 @@ impl RigProfile {
         }
         if ![self.pelvis, self.chest, self.head].iter().all(point) {
             return Err("리그 몸통 좌표가 유한한 미터 범위를 벗어납니다.".into());
+        }
+        if let Some(frames) = &self.hand_frames {
+            for frame in frames {
+                let unit = |v: Vec3| point(&v) && (distance(v, [0.0; 3]) - 1.0).abs() < 1e-6;
+                let perpendicular: f64 = frame
+                    .forearm
+                    .iter()
+                    .zip(frame.palm)
+                    .map(|(a, b)| a * b)
+                    .sum();
+                if !unit(frame.forearm)
+                    || !unit(frame.palm)
+                    || !unit(frame.desired_palm)
+                    || perpendicular.abs() > 1e-6
+                {
+                    return Err("손목 기준 축은 유한한 직교 단위 방향이어야 합니다.".into());
+                }
+            }
         }
         for limb in 0..4 {
             let q = self.contact_rotations[limb];
@@ -152,7 +188,31 @@ impl RigProfile {
         )
     }
 
+    pub fn solve_hand(&self, limb: usize, tip: Vec3, pitch: f64) -> Option<HandSolution> {
+        if limb >= 2 {
+            return None;
+        }
+        self.hand_frames
+            .as_ref()
+            .map(|frames| hand_solver::solve(self, limb, tip, pitch, &frames[limb]))
+    }
+
     pub fn reachable(&self, limb: usize, tip: Vec3) -> bool {
+        if limb < 2 {
+            if let Some(frames) = &self.hand_frames {
+                let lower = self.lengths[limb][1];
+                let compound = add(
+                    frames[limb].forearm.map(|v| v * lower),
+                    self.offset(limb, self.contact_rotations[limb]),
+                );
+                let length = distance(compound, [0.0; 3]);
+                let upper = self.lengths[limb][0];
+                let d = distance(self.roots[limb], tip);
+                return length >= 1e-6
+                    && d >= (upper - length).abs() + 1e-5
+                    && d <= upper + length - 1e-4;
+            }
+        }
         let d = distance(
             self.roots[limb],
             sub(tip, self.offset(limb, self.contact_rotations[limb])),

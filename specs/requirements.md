@@ -24,17 +24,23 @@ which identifies the deployed release separately from development work.
 | INV05 | Keep performance intent separate from a renderer or avatar. Use measured semantic body dimensions, not avatar-name-specific animation branches. |
 | INV06 | Fit seat and targets without stretching bones. Measure actual attached tool contacts; near-zero contact error alone does not prove natural motion or absence of collision. |
 | INV07 | Keep visual instrument appearance and hit feedback separate from musical targets and audio. Deliberate layout changes update related targets together. |
-| INV08 | Process uploaded MIDI, drum GLB and VRM locally in the browser. Do not commit user files, private models or conversation originals. |
+| INV08 | Process uploaded MIDI, WAV, drum GLB and VRM locally in the browser. Do not commit user files, private models or conversation originals. |
 | INV09 | Report export failures; do not silently turn an audio export into a silent success. A silent video is an explicit choice. |
 | INV10 | Keep source code, research, motion data, weights, models and sound assets under their respective rights. |
 
 ## Implemented workflow boundary
 
-The application accepts SMF MIDI, prepares a plan and synthesized audio, and supports
-play/pause/seek with a piano-roll preview. The current source uses a shared semantic
-humanoid path for the built-in skeleton and imported VRM 1.0 characters. Seat/contact
-calibration is session-only. Drum bodies can be replaced while retaining common
-hardware. Output uses fixed-frame browser encoding and a runtime codec check.
+The application accepts SMF MIDI with explicit GM/Logic mapping and optional count-in/
+hi-hat interpretation, preserving source evidence under the
+[MIDI interpretation contract](architecture/midi-interpretation.md). A bounded phrase
+planner assigns hits; playback and seeking use the piano roll and either synthesized
+drums or a local WAV aligned to the same export clock.
+
+The shared semantic humanoid path serves the built-in skeleton and imported VRM 1.0
+characters, with target-dependent neutral wrists and instrument-relative ready poses.
+Seat/contact calibration and explicit static kit fitting are session-only. Drum bodies
+can be replaced while retaining common hardware. Output uses fixed-frame browser
+encoding and a runtime codec check.
 
 Exact limits and coordinate/time contracts belong in the
 [engine](architecture/engine-contract.md), [rig](architecture/rig-contract.md)
@@ -43,8 +49,8 @@ They are engineering bounds, not promises of performance on every accepted input
 
 ## Extension boundary
 
-WAV synchronization, editing and persistence, arbitrary humanoid GLB mapping,
-controlled body-proportion comparisons, target-dependent wrist limits, explicit
+Editing and persistence, arbitrary humanoid GLB mapping, controlled body-proportion
+comparisons, measured anatomical joint limits, explicit
 playing styles, physically coupled pedal techniques and expressive motion remain
 separate issue scopes. The existing right-hand-hi-hat/left-hand-snare preference is
 not a full crossed-arm style or collision solver.

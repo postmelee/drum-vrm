@@ -11,7 +11,8 @@ for the public app and quick start.
 | --- | --- |
 | Purpose and invariants | [Product requirements](requirements.md) |
 | Components and data flow | [Architecture overview](architecture/overview.md) |
-| MIDI and pose interface | [Engine contract](architecture/engine-contract.md) |
+| Source events, mapping and performer intent | [MIDI interpretation](architecture/midi-interpretation.md) |
+| Timing, assignment and pose interface | [Engine contract](architecture/engine-contract.md) |
 | Humanoid, coordinates and drum hardware | [Rig contract](architecture/rig-contract.md) |
 | Audio clock and video frames | [Audio/export contract](architecture/audio-export-contract.md) |
 | Body, seat, grip and contact fitting | [Calibration](architecture/calibration.md) |

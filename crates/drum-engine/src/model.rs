@@ -24,6 +24,23 @@ pub enum Instrument {
     Ride,
 }
 
+impl Instrument {
+    pub fn default_piece_id(self) -> &'static str {
+        match self {
+            Self::Kick => "kick",
+            Self::Snare => "snare",
+            Self::Hihat => "hihat",
+            Self::OpenHat => "openHat",
+            Self::PedalHat => "pedalHat",
+            Self::TomHigh => "tomHigh",
+            Self::TomMid => "tomMid",
+            Self::TomLow => "tomLow",
+            Self::Crash => "crash",
+            Self::Ride => "ride",
+        }
+    }
+}
+
 pub fn map_note(note: u8) -> Option<Instrument> {
     use Instrument::*;
     Some(match note {
@@ -41,32 +58,69 @@ pub fn map_note(note: u8) -> Option<Instrument> {
     })
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KitPiece {
-    pub id: Instrument,
+    pub id: String,
+    pub instrument: Instrument,
     pub label: String,
     pub position: Vec3,
     pub radius: f64,
 }
 
+impl<'de> Deserialize<'de> for KitPiece {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        struct Fields {
+            id: String,
+            instrument: Option<Instrument>,
+            label: String,
+            position: Vec3,
+            radius: f64,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        // Version-one layouts used the instrument enum as their piece ID.
+        // Infer only that documented legacy representation, never an arbitrary name.
+        let instrument = match fields.instrument {
+            Some(value) => value,
+            None => serde_json::from_value(serde_json::Value::String(fields.id.clone()))
+                .map_err(serde::de::Error::custom)?,
+        };
+        Ok(Self {
+            id: fields.id,
+            instrument,
+            label: fields.label,
+            position: fields.position,
+            radius: fields.radius,
+        })
+    }
+}
+
 pub fn default_kit() -> Vec<KitPiece> {
     use Instrument::*;
     [
-        (Kick, "Kick", [0.20, 0.08, 0.62], 0.26),
-        (Snare, "Snare", [-0.18, 0.79, 0.40], 0.22),
-        (Hihat, "Hi-hat", [-0.48, 0.96, 0.44], 0.22),
-        (OpenHat, "Open hi-hat", [-0.48, 0.96, 0.44], 0.22),
-        (PedalHat, "Hi-hat pedal", [-0.22, 0.08, 0.55], 0.12),
-        (TomHigh, "High tom", [-0.26, 1.00, 0.72], 0.18),
-        (TomMid, "Mid tom", [0.18, 0.98, 0.74], 0.20),
-        (TomLow, "Low tom", [0.62, 0.80, 0.42], 0.23),
-        (Crash, "Crash", [-0.66, 1.26, 0.68], 0.30),
-        (Ride, "Ride", [0.66, 1.15, 0.67], 0.28),
+        ("kick", Kick, "Kick", [0.20, 0.08, 0.62], 0.26),
+        ("snare", Snare, "Snare", [-0.18, 0.79, 0.40], 0.22),
+        ("hihat", Hihat, "Hi-hat", [-0.48, 0.96, 0.44], 0.22),
+        ("openHat", OpenHat, "Open hi-hat", [-0.48, 0.96, 0.44], 0.22),
+        (
+            "pedalHat",
+            PedalHat,
+            "Hi-hat pedal",
+            [-0.22, 0.08, 0.55],
+            0.12,
+        ),
+        ("tomHigh", TomHigh, "High tom", [-0.26, 1.00, 0.72], 0.18),
+        ("tomMid", TomMid, "Mid tom", [0.18, 0.98, 0.74], 0.20),
+        ("tomLow", TomLow, "Low tom", [0.62, 0.80, 0.42], 0.23),
+        ("crash", Crash, "Crash left", [-0.66, 1.26, 0.68], 0.30),
+        ("crashRight", Crash, "Crash right", [0.58, 1.20, 0.64], 0.30),
+        ("ride", Ride, "Ride", [0.70, 0.99, 0.39], 0.28),
     ]
     .into_iter()
-    .map(|(id, label, position, radius)| KitPiece {
-        id,
+    .map(|(id, instrument, label, position, radius)| KitPiece {
+        id: id.into(),
+        instrument,
         label: label.to_string(),
         position,
         radius,
@@ -87,6 +141,12 @@ pub struct Hit {
     pub note: u8,
     pub velocity: u8,
     pub instrument: Instrument,
+    #[serde(default)]
+    pub piece_id: String,
+    #[serde(default)]
+    pub articulation: String,
+    #[serde(default)]
+    pub source_event_id: String,
     pub limb: Option<usize>,
     pub target: Vec3,
 }
@@ -145,6 +205,27 @@ pub struct MidiInfo {
 pub struct Selection {
     pub tracks: Vec<usize>,
     pub channel: Option<u8>,
+    #[serde(default)]
+    pub mapping_profile: crate::interpretation::MappingProfile,
+    #[serde(default)]
+    pub count_in_note75: bool,
+    #[serde(default)]
+    pub hihat_policy: crate::hihat::HihatPolicy,
+    #[serde(default = "crate::hihat::default_openness")]
+    pub hihat_openness: f64,
+}
+
+impl Default for Selection {
+    fn default() -> Self {
+        Self {
+            tracks: Vec::new(),
+            channel: None,
+            mapping_profile: Default::default(),
+            count_in_note75: false,
+            hihat_policy: Default::default(),
+            hihat_openness: crate::hihat::default_openness(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -188,4 +269,20 @@ pub struct PerformancePlan {
     pub tempo_map: Vec<TempoAnchor>,
     #[serde(default)]
     pub time_signatures: Vec<TimeSignature>,
+    #[serde(default)]
+    pub mapping_profile: crate::interpretation::MappingProfile,
+    #[serde(default)]
+    pub mapping_version: String,
+    #[serde(default)]
+    pub count_in_note75: bool,
+    #[serde(default)]
+    pub source_events: Vec<crate::interpretation::SourceEvent>,
+    #[serde(default)]
+    pub interpretations: Vec<crate::interpretation::Interpretation>,
+    #[serde(default)]
+    pub hihat_policy: crate::hihat::HihatPolicy,
+    #[serde(default = "crate::hihat::default_openness")]
+    pub hihat_openness: f64,
+    #[serde(default)]
+    pub controls: Vec<crate::hihat::HihatControl>,
 }
