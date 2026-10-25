@@ -129,3 +129,12 @@ Rust 구현은 실제 코드이며 MIDI 시각·velocity 기반 키프레임 생
 ## Implementation comparison — 2026-10-24
 
 The [rig and motion audit](rig-and-studio-audit.md) compares current code with R01/R03/R04 and VRM 1.0. It explicitly separates independent design ideas from model/code adoption. No DRUMS/Disney learned model, weights, or motion data have been integrated. Basic grip/contact work is tracked in #30 with #17/#18, ahead of advanced #20/#21 work.
+
+## Ergonomics and sticking follow-up
+
+The [follow-up assessment](ergonomics-and-sticking.md) records default kit/hardware
+intersections, fitted versus unfitted body evidence, coordinated arm/torso proposals,
+PAS/Vic Firth/Zildjian sticking instruction and general import guidance. It preserves
+source credits and reuse boundaries without incorporating scores, recordings or
+datasets. Its proposed completion criteria extend #14/#18/#20/#23; they are not a
+claim that PR #40 implements full-body clearance or infers the original technique.

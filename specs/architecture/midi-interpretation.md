@@ -187,6 +187,24 @@ choke behavior. It does not determine the avatar's hands. User WAV replacement f
 the [audio/export time contract](audio-export-contract.md) and does not require a
 VST host or a recreation of Logic's sound engine.
 
+## Planned import guidance
+
+The current explicit controls above are implemented; the following generalization
+is proposed for #14, based on the [follow-up research](../../docs/research/ergonomics-and-sticking.md).
+Treat producer metadata, instrument mapping and performance intent separately.
+Standard MIDI Files do not guarantee a producer identifier, and one DAW can export
+different instrument maps. Recommend a profile with evidence and uncertainty rather
+than asserting that a file came from Logic or choosing solely by unmapped-note count.
+
+Expose relevant choices under **Drum sound mapping / Interpretation**: count-in
+candidates only when present, and hi-hat control choices only when applicable.
+Generalize short-open-close handling through mapped roles/capabilities rather than
+a DAW name or fixed note keys. Show affected events and retain reversible explicit
+intent; a short pair is not automatically a partial opening, nor is note 75 always
+count-in. Controller interpretation still requires a defining profile. Persist
+confirmed policy and overrides with the future project format (#15). These proposed
+controls do not imply new runtime support for other maps or controllers.
+
 ## Compatibility and verification
 
 Schema 1 plans can only supply the information they already contain. Migration can
@@ -215,6 +233,9 @@ in issues and evidence reports rather than this contract.
 
 ## External references
 
+- [MIDI Association: Standard MIDI Files](https://midi.org/standard-midi-files) and
+  [Apple: Standard MIDI files](https://support.apple.com/en-il/guide/logicpro/lgcpdf6a3851/mac)
+  describe interchange data and metadata; neither guarantees exporter identification.
 - [Apple: Drum Kit Designer mappings](https://support.apple.com/en-ae/guide/logicpro/lgsia2ae90f1/mac)
   distinguishes mapping modes. GM + ModWheel changes hi-hat key meanings and uses
   modulation for openness; its brush-snare hand behavior is specific to brush sounds.
