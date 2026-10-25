@@ -26,7 +26,7 @@ VRM 0.x needs conversion or re-export as VRM 1.0 where the model's terms permit 
 4. [Adjust the seat and targets](calibration.md), then compare playback and arbitrary forward/backward seeks. Check the visible grip, attached stick tips, feet and pedals. Contact measurements use tool/foot sockets, not all skin, glove or shoe vertices.
 5. Choose **기본 리그** (Default rig) to restore the skeleton. Import and reset replan the current MIDI for the selected body without changing original hit times.
 
-Spring motion is reset for each evaluated pose so seeking and output are repeatable. Dynamic hair/clothing simulation, collision-free seating, precise skin/sole calibration and natural wrists at every target are not established by a successful import. Model/calibration choices last for the current session.
+Spring motion is reset for each evaluated pose so seeking and output are repeatable. Dynamic hair/clothing simulation, collision-free seating, precise skin/sole calibration and natural wrists at every target are not established by a successful import. Use a [local project](projects.md) to retain model/calibration choices across sessions; the same model file must be relinked.
 
 ## Find a model
 

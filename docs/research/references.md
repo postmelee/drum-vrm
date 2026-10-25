@@ -138,3 +138,12 @@ PAS/Vic Firth/Zildjian sticking instruction and general import guidance. It pres
 source credits and reuse boundaries without incorporating scores, recordings or
 datasets. Its proposed completion criteria extend #14/#18/#20/#23; they are not a
 claim that PR #40 implements full-body clearance or infers the original technique.
+
+## Motion adoption and inspection decision
+
+The [motion adoption gates](motion-adoption-gates.md) recheck R01/R02/R04/R06/R07,
+compare selective ARDrum source porting with independent browser trace tooling, and
+specify a candidate-to-contact-correction experiment. The decision favors independent
+traces and constrained procedural motion for the browser-quality milestone. It does
+not claim runnable DRUMS/Disney artifacts or model/data adoption; earlier evidence
+and partial-license-verification records above remain unchanged.

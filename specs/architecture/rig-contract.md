@@ -23,10 +23,16 @@ Native VRM left is positive X. Position conversion is `[-x, y, z]`; xyzw quatern
 conversion is `[x, -y, -z, w]`. Native skeletal roots remain positive-scale. Only the
 legacy kit/debug display uses its reflected root.
 
-Pose quaternions transform a local tool frame into engine world space. They are not
-raw bone quaternions. Hand/socket orientation and the model's rest basis are applied
-explicitly. Measure the transformed stick endpoint or foot-local sole socket against
-the target; this does not measure every skin, glove or shoe vertex.
+The four tool quaternions transform local tool frames into engine world space. They
+are not raw bone quaternions. Hand/socket orientation and the model's rest basis are
+applied explicitly. The 77-float pose appends a coordinated torso quaternion at
+offset 73; it describes spine facing, not a fifth tool. The humanoid adapter accepts
+the older 73-float buffer without that rotation. The [engine contract](engine-contract.md)
+owns the complete buffer layout.
+
+Measure the transformed stick endpoint or foot-local sole socket against the target;
+this does not measure every skin, glove or shoe vertex. Numeric skeletal-proxy
+inspection is a separate boundary from these rendered attachment measurements.
 
 ## Model import
 
@@ -63,7 +69,7 @@ use, independent of the application's MIT license.
 - Changing layout updates `plan.kit` and matching `hit.target` together, then replans
   with the measured profile. Preserve original MIDI data and audio.
 
-Settings are session-only. Calibration is unavailable during conflicting operations.
+Calibration is unavailable during conflicting operations.
 Seat translation alone cannot accommodate every arm-to-leg ratio; retain reach
 failures rather than altering limb lengths or source times.
 
@@ -74,12 +80,27 @@ Palm up/inward/down is a common calibration choice; symmetric palms-up is not a
 complete traditional grip. Optional measured `handFrames` let the common solver
 orient the wrist for each target through a compound forearm/tool link, instead of a
 fixed world rotation. Forearm roll carries palm orientation. This preserves segment
-lengths and the calibrated grip, but does not establish anatomical limits or skin
-clearance. Profiles without hand frames retain the previous fixed-orientation path.
+lengths and the calibrated grip. The bend plane is transported continuously across
+the front workspace, and palm roll is a bounded preference rather than an exact
+constraint. This does not establish anatomical limits or skin clearance. Profiles
+without hand frames retain the previous fixed-orientation path.
+With hand frames, a bounded, precomputed two-arm swivel track adjusts the elbow
+planes while retaining the calibrated hand/tool relationship. It evaluates existing
+contact paths against numeric proxies; its limits and remaining collision scope
+are defined in [calibration](calibration.md).
+
+Optional `torsoPivot` in the numeric profile is the measured normalized spine
+position, translated with the seat. The evaluator uses it to coordinate shoulder
+roots with a precomputed, bounded torso-facing curve, then solves both arms again
+to world targets. Pelvis and leg roots remain stable. Profiles without the pivot
+retain zero torso yaw. Exact bounds and proxy limitations belong to
+[calibration](calibration.md).
 
 The measured path uses instrument-relative ready tips and velocity-dependent lift/
-pitch under the [engine contract](engine-contract.md). Phrase assignment can alternate
-available hands during rapid snares; it does not define a complete sticking style.
+pitch under the [engine contract](engine-contract.md). Phrase assignment considers
+available hands for snare/tom fills, accent-to-tap doubles and groove-to-crash role
+continuity. It preserves simultaneous source demands and does not recover an
+original sticking style or guarantee clear arm paths.
 
 Feet rest on calibrated kick/hi-hat pedal contacts even without pedal notes. In the
 profile path, hip/knee/ankle positions remain fixed during the simple ankle stroke.
@@ -88,8 +109,8 @@ idle pedals produce diagnostics. Explicit hi-hat controls can drive the left-foo
 pitch instead of paired close strikes; [MIDI interpretation](midi-interpretation.md)
 owns that policy. This is not full heel-up/down, measured sole support or pedal mechanics.
 
-Each evaluation resets the normalized pose and spring state, applies the solved pose
-and updates VRM at delta zero. Expressions/look-at are neutral; node constraints are
+Each evaluation resets the normalized pose and spring state, applies torso rotation
+before the solved limb pose, and updates VRM at delta zero. Expressions/look-at are neutral; node constraints are
 applied. Dynamic hair/clothing integration is outside this deterministic contract.
 
 ## Shared hardware and replaceable bodies
@@ -98,6 +119,10 @@ applied. Dynamic hair/clothing integration is outside this deterministic contrac
 Appearance adapters swap drum shell/head/cymbal bodies while retaining that hardware.
 Finish, visual scale, rotation and hit response do not change musical targets/audio.
 Deliberate layout calibration may move/rebuild the hardware to follow new contacts.
+Nominal drum-body and hi-hat-rod clearance participate in kit fitting. Other cymbal
+stands can use a bounded mast/boom placement search, but that search may report no
+clear placement and is not part of the fit's `complete` certificate. Exact imported
+meshes, cosmetic overrides and every stand component still need visual inspection.
 
 Bundled adapters may use source geometry identifiers to normalize a model. Those
 identifiers must not enter the Rust planner or avatar solver. Local GLB authors must

@@ -60,7 +60,7 @@ overlap. The UI displays trimming and lack of overlap rather than hiding them.
 Preview and export use the same aligned buffer. Loading WAV replaces drum synthesis;
 removing it restores synthesis. Reapplying an offset starts from the unchanged source,
 so edits do not accumulate resampling or trimming. A changed plan realigns that source
-to the new duration. Settings remain session-only; a silent export is still an
+to the new duration. [Local projects](project-format.md) retain the offset and require the same WAV file to be relinked; a silent export is still an
 explicit choice. See the [export guide](../../docs/export.md) for controls.
 
 ## Encoding

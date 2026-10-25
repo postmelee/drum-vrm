@@ -10,6 +10,7 @@ Start with the [app workflow and local setup](../README.md#use-the-app). These g
 | --- | --- |
 | Find a model, check its terms and load VRM | [Character models](models.md) |
 | Fit the seat, hands and feet; replace drum parts | [Calibration and drum parts](calibration.md) |
+| Save a setup and relink its local files | [Local projects](projects.md) |
 | Align your WAV and export video | [WAV and video export](export.md) |
 | Understand the instructional basis and source credits | [Performance foundations](performance-foundations.md) |
 

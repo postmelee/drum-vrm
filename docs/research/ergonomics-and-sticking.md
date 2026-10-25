@@ -141,7 +141,7 @@ Current UI and engine checks restrict count-in and short-open-close policy to
 `logicDkdGm`; the latter also examines raw note keys. Generalization should operate
 on mapped semantic roles/capabilities. A short close can still be a real foot chick,
 and GM note 75 can be claves. Do not replace ambiguity with always-on inference.
-The [central interpretation contract](../../specs/architecture/midi-interpretation.md#planned-import-guidance)
+The [central interpretation contract](../../specs/architecture/midi-interpretation.md#import-guidance)
 owns the proposed producer/profile distinction, conditional UI and intent precedence.
 
 ## Sequence and existing issue ownership

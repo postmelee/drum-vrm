@@ -10,6 +10,7 @@
 | --- | --- |
 | 모델을 구하고 이용 조건을 확인한 뒤 VRM 불러오기 | [캐릭터 모델](models.ko.md) |
 | 좌석·손·발을 맞추고 드럼 부품 교체하기 | [보정과 드럼 부품](calibration.ko.md) |
+| 설정을 저장하고 원본 파일 다시 연결하기 | [로컬 프로젝트](projects.ko.md) |
 | 사용자 WAV를 맞추고 영상 출력하기 | [WAV와 영상 출력](export.ko.md) |
 | 교육 자료와 저자·출처 이해하기 | [연주 표현의 원칙](performance-foundations.ko.md) |
 

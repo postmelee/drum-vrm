@@ -5,8 +5,10 @@
 ## Purpose
 
 Turn an authored drum MIDI file into a reviewable 3D performance and an exported video.
-The primary workflow is local file preparation, deterministic playback and seeking,
-character/kit adjustment, then fixed-frame video output. Rust owns musical events and
+The immediate quality target is a natural, reviewable browser performance synchronized
+to the user’s WAV. The workflow is local file preparation, deterministic playback and
+seeking, character/kit adjustment, and reproducible review. Video output remains
+available; expanded production/interchange outputs follow this browser baseline. Rust owns musical events and
 motion planning; WASM connects the browser; Three.js renders the selected rig.
 
 This contract describes the checked-out implementation. Public availability is
@@ -38,7 +40,8 @@ drums or a local WAV aligned to the same export clock.
 
 The shared semantic humanoid path serves the built-in skeleton and imported VRM 1.0
 characters, with target-dependent neutral wrists and instrument-relative ready poses.
-Seat/contact calibration and explicit static kit fitting are session-only. Drum bodies
+Seat/contact calibration and explicit static kit fitting can be retained in a
+[local project](architecture/project-format.md), with exact external files relinked. Drum bodies
 can be replaced while retaining common hardware. Output uses fixed-frame browser
 encoding and a runtime codec check.
 
@@ -49,7 +52,7 @@ They are engineering bounds, not promises of performance on every accepted input
 
 ## Extension boundary
 
-Editing and persistence, arbitrary humanoid GLB mapping, controlled body-proportion
+Arbitrary humanoid GLB mapping, controlled body-proportion
 comparisons, measured anatomical joint limits, explicit
 playing styles, physically coupled pedal techniques and expressive motion remain
 separate issue scopes. The existing right-hand-hi-hat/left-hand-snare preference is
