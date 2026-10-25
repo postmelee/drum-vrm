@@ -24,8 +24,8 @@ DAW에서 만든 드럼 MIDI를 브라우저에서 3D 드러머의 연주 영상
 
 | 버전 | 제공 범위 |
 | --- | --- |
-| 저장소 / 로컬 빌드 | 이 문서의 MIDI 해석·프레이즈 계획·체형과 키트 맞춤·동작 검수·WAV·로컬 프로젝트 기능을 포함합니다. 이 변경들은 별도 배포 전입니다. |
-| [Pages 빌드](https://postmelee.github.io/drum-vrm/) | 배포 기준 [`d8dfab3`](https://github.com/postmelee/drum-vrm/commit/d8dfab38cefc3bffd6edc0b88643d02ff829af73): VRM 불러오기, 좌석·손바닥·타점 보정, 합성 드럼을 포함한 영상 출력. 이후 배포는 [Pages 작업](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml)에서 확인하세요. |
+| 저장소 / 로컬 빌드 | 이 문서의 MIDI 해석·프레이즈 계획·체형과 키트 맞춤·동작 검수·WAV·로컬 프로젝트 기능을 포함합니다. 승인된 변경 묶음은 Pages에서도 사용할 수 있습니다. |
+| [Pages 빌드](https://postmelee.github.io/drum-vrm/) | 배포 묶음 [`045b78a`](https://github.com/postmelee/drum-vrm/commit/045b78aa56f00709471359d8e861c420222bda93): MIDI 해석·프레이즈 계획·체형과 키트 맞춤·동작 검수·WAV·로컬 프로젝트. [배포 검증](docs/verification/pages-browser-performance.md). 이후 배포는 [Pages 작업](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml)에서 확인하세요. |
 | [태그 v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | 과거 릴리스: MIDI 재생·출력, 기본 스켈레톤, 자체 도형/Innerscene 키트와 정적 드럼 GLB 교체. [당시 검증](docs/verification/studio-0.2.md). |
 
 안내 문서는 이 저장소 빌드를 설명합니다. 더 최신 로컬 변경이 공개되었다고 판단하기 전에 배포 커밋을 확인하세요. 상세 개발 검사는 연결된 [검증 기록](docs/README.ko.md#검증)에서 확인할 수 있습니다.

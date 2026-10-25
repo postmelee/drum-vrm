@@ -39,3 +39,10 @@ See [release policy / 릴리스 정책](release-policy.md). This record document
 The owner instructed: “남은 PR도 검토후 문제없다면 병합하고 현재까지 진행된 것을 Pages에 배포해줘. 릴리즈는 하지 말아줘.”
 
 This authorizes review and merge of the remaining PRs #34/#39 and one Pages deployment of the verified integrated main commit. Record that exact commit, workflow run and public checks on the PRs and #36. It does **not** authorize a version bump, release tag or GitHub Release. The earlier v0.2.0 public-state statements above remain historical. Further feature work waits for the owner's next instruction; this is not ongoing deployment approval.
+
+
+## 2026-10-26 — browser performance batch, merge and Pages only
+
+The owner requested Pages access to the current changes while away from the local server, then explicitly approved merging PRs #40/#41 and deploying the tested integrated commit by replying “승인할게” to that concrete scope. Both PRs were merged and commit `045b78aa56f00709471359d8e861c420222bda93` was deployed. Its tree exactly matches tested candidate `5d5d7ae6363f4562209bc5c94f4e2860d8d3903d`.
+
+This approval covers that batch only, with no version bump, release tag or GitHub Release. [Deployment evidence](verification/pages-browser-performance.md) records the successful workflow, public artifact comparison and browser smoke checks. It does not authorize future deployments or declare remaining motion-quality issues complete.

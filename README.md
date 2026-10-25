@@ -24,8 +24,8 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 
 | Version | Availability |
 | --- | --- |
-| Repository / local build | Includes the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. These changes await a separate deployment. |
-| [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed baseline [`d8dfab3`](https://github.com/postmelee/drum-vrm/commit/d8dfab38cefc3bffd6edc0b88643d02ff829af73): VRM import, seat/palm/contact calibration and video export with synthesized drums. Check [Pages workflow runs](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml) for subsequent deployments. |
+| Repository / local build | Includes the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. The approved batch is also available on Pages. |
+| [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed batch [`045b78a`](https://github.com/postmelee/drum-vrm/commit/045b78aa56f00709471359d8e861c420222bda93): MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local projects. [Deployment verification](docs/verification/pages-browser-performance.md). Check [Pages workflow runs](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml) for subsequent deployments. |
 | [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
 The guides describe this repository build. Check the deployed commit before assuming a newer local change is public; detailed development checks remain in the linked [verification records](docs/README.md#verification).
