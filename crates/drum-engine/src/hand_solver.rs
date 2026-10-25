@@ -156,14 +156,10 @@ pub fn solve(
     let reachable = desired_distance >= inner + 1e-5 && desired_distance <= outer - 1e-4;
     let length = desired_distance.clamp(inner + 1e-6, outer - 1e-6);
     let tip = add(root, mul(axis, length));
-    // Recover the calibrated elbow pole so a neutral rest target reproduces
-    // its original pose instead of introducing a posture jump at preparation.
-    let reference_wrist = sub(
-        profile.rest_tips[limb],
-        profile.offset(limb, profile.contact_rotations[limb]),
-    );
-    let reference_elbow = sub(reference_wrist, mul(reference.forearm, lower));
-    let bend = projected(sub(reference_elbow, root), axis);
+    // Prefer a low elbow with modest outward/front clearance. A pole recovered
+    // from the wrist rest target can project upward and behind the shoulder
+    // when a long forearm/tool link folds toward a near drum target.
+    let bend = projected([profile.bend_poles[limb][0] * 0.4, -1.0, 0.35], axis);
     let along =
         (upper * upper - compound_length * compound_length + length * length) / (2.0 * length);
     let middle = add(

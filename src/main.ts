@@ -187,8 +187,9 @@ function invalidateVideo() {
   get('export-note').textContent='1280 × 720 · 30 fps · 현재 설정으로 다시 추출하세요. 시작 준비 0.5초 · 끝 여운 0.25초 포함.';
 }
 function applyCalibration(seat: HumanoidCalibration, kit: KitPiece[], feedbackId: string) {
-  if(busy||exporting||modelBusy)return;
+  if(busy||exporting||modelBusy)return false;
   const oldSeat=scene.getCalibration(), oldKit=scene.getKitLayout();
+  let applied=false;
   const time=audio?.pause()??0;
   try {
     scene.setKitLayout(kit);
@@ -198,11 +199,12 @@ function applyCalibration(seat: HumanoidCalibration, kit: KitPiece[], feedbackId
     invalidateVideo();
     const unavailable=plan?.hits.filter(h=>h.limb===null).length??0;
     get(feedbackId).textContent=`보정 적용 완료${unavailable?` · 표현하지 못한 타격 ${unavailable}개 (연주정보 확인)`:''}`;
+    applied=true;
   } catch(error) {
     scene.setKitLayout(oldKit);scene.setCalibration(oldSeat);updateFrame(time);
     get(feedbackId).textContent=error instanceof Error?error.message:String(error);
   }
-  refreshCalibration();refreshTarget();
+  refreshCalibration();refreshTarget();return applied;
 }
 refreshCalibration();refreshTarget();
 get('seat-apply').onclick=()=>{
@@ -215,8 +217,9 @@ get('kit-fit').onclick=async()=>{
   if(busy||exporting||modelBusy)return;
   audio?.pause();modelBusy=true;controls();get('calibration-message').textContent='체형에 맞는 배치를 계산하고 있습니다…';
   try{const proposal=await engine.fitKit(scene.getRigProfile(),scene.getKitLayout());modelBusy=false;
-    applyCalibration(scene.getCalibration(),proposal.kit,'calibration-message');
-    get('calibration-message').textContent+=` · 키트 ${(proposal.scale*100).toFixed(0)}% · ${proposal.complete?'지정한 손의 타점 도달 확인':`도달 확인 필요: ${proposal.unreachablePieceIds.join(', ')}`}`;
+    if(!proposal.complete){get('calibration-message').textContent=`기본 팔 자세를 만족하는 배치를 찾지 못했습니다: ${proposal.unreachablePieceIds.join(', ')}. 현재 배치를 유지합니다. 좌석과 타점을 직접 조정해 주세요.`;return;}
+    if(!applyCalibration(scene.getCalibration(),proposal.kit,'calibration-message'))return;
+    get('calibration-message').textContent+=` · 키트 ${(proposal.scale*100).toFixed(0)}% · 개별 타점 ${proposal.pieceAdjustments.length}개 조정 · 타점과 기본 팔 자세 확인`;
   }catch(error){get('calibration-message').textContent=String(error);}
   finally{modelBusy=false;controls();}
 };

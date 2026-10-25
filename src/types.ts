@@ -15,7 +15,7 @@ export const RIG_POSE_FLOATS = 73;
 export type Instrument = 'kick'|'snare'|'hihat'|'openHat'|'pedalHat'|'tomHigh'|'tomMid'|'tomLow'|'crash'|'ride';
 /** Physical identity is separate from its voice; both crashes use the crash voice. */
 export type PieceId = Instrument | 'crashRight';
-export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; unreachablePieceIds: string[]; complete: boolean; }
+export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; complete: boolean; }
 export interface KitPiece { id: PieceId; instrument?: Instrument; label: string; position: Vec3; radius: number; }
 export const pieceInstrument = (piece: KitPiece): Instrument => piece.instrument ?? (piece.id === 'crashRight' ? 'crash' : piece.id);
 export const hitPieceId = (hit: Hit): PieceId => hit.pieceId ?? hit.instrument;

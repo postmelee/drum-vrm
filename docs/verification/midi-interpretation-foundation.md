@@ -2,7 +2,9 @@
 
 Measured on 2026-10-25 against `codex/midi-interpretation-foundation`, based on
 `d8dfab38cefc3bffd6edc0b88643d02ff829af73`. The PR records the final tested commit.
-These are local candidate results, not a release or Pages deployment.
+These are local candidate results, not a release or Pages deployment. The first
+review checkpoint is `79ddff3`; [PR #40](https://github.com/postmelee/drum-vrm/pull/40)
+tracks subsequent corrections and their checks.
 
 ## What changed
 
@@ -13,7 +15,8 @@ separates left/right crash contacts. Body fitting and phrase assignment consume 
 interpretation; neither changes the original events to hide an unreachable strike.
 
 The common hand solver uses measured forearm/tool frames. Explicit kit fitting
-adjusts hand-played surfaces together while keeping kick and pedal contacts fixed.
+adjusts hand-played surfaces and repairs individual posture failures while keeping
+kick and pedal contacts fixed.
 Phrase lookahead, same-instrument ready positions and velocity-dependent lift/pitch
 replace the previous isolated-hit behavior. Uploaded WAV replaces synthesized audio
 on the shared preview/export timeline.
@@ -34,17 +37,20 @@ under ignored `.local/` or the temporary directory.
 | Source and import validation | Raw selected messages, mapping provenance, control derivation, schema migration, limb roles, timing and transfer constraints have regression coverage. |
 | WAV formats | Actual Chrome decoding passed PCM 8/16/24/32, float32, extensible PCM24 and extensible float32. Unit tests cover bounds, malformed chunks, offsets, trimming and mono/stereo behavior. |
 | Independent short output | An authored WAV onset at 0.1000208 s with +0.25 s offset appears at 0.8500208 s after the shared 0.5 s pre-roll in independently decoded output. VP9/Opus, 1280×720, 48 kHz stereo. |
-| Full-song rendered output | Actual Seed-san VRM, corrected MIDI, silent H.264 MP4: 5,814 frames, 30 fps, 1280×720, 193.800 s. `ffprobe -count_frames` confirmed those values; a full `ffmpeg -f null` decode completed without errors. A decoded frame was visually inspected against the local preview. |
+| Full-song rendered output | Actual Seed-san VRM, corrected MIDI, silent H.264 MP4: 5,814 frames, 30 fps, 1280×720, 193.800 s. Repeated after the posture follow-up (47,869,325 bytes). `ffprobe -count_frames` confirmed those values; a full `ffmpeg -f null` decode completed without errors. A decoded frame was visually inspected against the local preview. |
 | Browser controls | Real local MIDI/VRM import, explicit fitting, seek, WAV offset, WAV removal and malformed replacement passed without page exceptions. An initial test-harness attempt to transfer a large blob as a number array exhausted Node memory; using the browser's normal download path succeeded. |
 | Additional rendered VRMs | Twist sample and AvatarSample B loaded, fitted and prepared with zero unmapped/unassigned hits. Close/rear-oblique views showed curled fingers and approximately straight visible impact wrists on the twist sample. Avatar B's cuffs/hair obscure the grip; these views do not establish skin clearance. |
-| Automated checks | Rust 54 tests, web 106 tests, formatting, clippy, pinned WASM rebuild, typecheck/production build and generated-notice comparison passed. The build retains the existing large-chunk advisory. |
+| Automated checks | Rust 55 tests, web 106 tests, formatting, clippy, pinned WASM rebuild, typecheck/production build and generated-notice comparison passed. The build retains the existing large-chunk advisory. |
 | Documentation | Paired links and authored-document limits checked; eight Mermaid diagrams rendered and inspected with Mermaid 11.12.1 in Chrome 155. |
 
 The original-input measurement is intentionally retained. Replacing the private
 source file does not retroactively turn its impossible event into a successful plan.
 The corrected case is a separate input and result.
 
-## Contact and posture limits
+## Checkpoint contact measurements
+
+The following measurements precede the posture follow-up. Imported models used
+constructor base profiles; they are not the UI's automatically seated profiles.
 
 The original-input six-profile fit audit measured assigned stick-tip contact below
 `4.84e-7 m`, impact wrist swing below `0.027°`, and zero differences after shuffled
@@ -58,11 +64,51 @@ All six fitted profiles had zero unassigned hits. Without fitting, the smaller a
 different-proportion profiles still had unreachable contacts, so the explicit fit
 step remains material to these results.
 
-Short-arm transfers still reached approximately 71–82° per 60 fps frame despite
+Short-arm transfers reached approximately 71–82° per 60 fps frame despite
 continuous motion. Dense checks around the worst intervals did not reveal a branch
-jump, but continuity does not establish comfortable movement. `complete` in a fit
-proposal certifies preferred-hand static reach only. It does not certify shoulder
-limits, forearm/stick separation, skin clearance or naturalness throughout a phrase.
+jump, but continuity does not establish comfortable movement. At checkpoint
+`79ddff3`, `complete` certified preferred-hand static reach only.
+
+Closer side views exposed a whole-arm problem: the twist and Avatar B models could
+fold an elbow above/behind the torso during a snare roll. The fit had brought the
+snare too close. This observation overrides any inference of naturalness from those
+contact numbers. The UI's automatic seat calibration must be included when
+reproducing the imported-model path.
+
+## Posture follow-up
+
+The common elbow preference now bends down, moderately outward and forward. Fit
+proposals check contact and two preparation samples, then repair individual targets
+within bounded offsets. Failed proposals retain the original layout. The paired
+[calibration contract](../../specs/architecture/calibration.md) owns these bounds;
+they are engineering guards, not a claim of anatomical or mesh clearance.
+
+The final WASM SHA-256 is
+`e3e817ff538835c5cda3cde119fa34d18940414c72e1513301cf6d6235d1ecaa`.
+The corrected song was rechecked at 60 fps on native, twist, Seed-san, Avatar B and
+controlled 0.8×/1.2× twist arm proportions, with the production automatic seat path:
+
+| Observation | Final result |
+| --- | --- |
+| Source accounting | All six: 1,729 strikes, 42 controls, 3 cues; zero unmapped, unassigned, diagnostics or original-time changes. |
+| Contact and rig | Maximum tip error `4.866e-7 m`, observed marker error `5.514e-7 m`, bone-length error below `1.00e-7 m`; shuffled-seek pose/marker differences zero. |
+| Wrist swing | Impact maximum `0.02254°`; motion maximum `18.29171°`. These are hand/forearm swing measurements, not every anatomical joint angle. |
+| Fast transitions | Maximum hand rotation per 60 fps frame: native 23.9°, twist 36.7°, Seed-san 23.5°, Avatar B 40.2°, short arms 42.8°, long arms 24.8°. Refining each worst interval found no instantaneous flip; fast continuous transfers remain visible. |
+| Rendered comparison | Six matching side views on twist/Avatar B, covering snare roll, snare/hat and dual crash. At 58 s the folded elbow and stick butt behind the back were removed; hands/sticks stayed in front over the fitted snare. No new obvious wrist reversal or detached tool was observed in these samples. |
+
+The numerical audit uses the real adapter and extracted model node hierarchies,
+not skinned pixels. Rendered observations are bounded spot checks. Intermediate
+transfer frames still exceed some front/back posture guards: `complete` certifies
+the sampled target/preparation poses, not every frame or all limb assignments.
+Hair, cuffs and tilted cymbals can hide or intersect the grip/shaft. A full-song
+naturalness or collision-free claim would exceed this evidence.
+
+Private JSON evidence is retained under `.local/hand-posture-ui-final-e3e817ff.json`
+and `.local/hand-posture-ui-continuity-e3e817ff.json`; image comparisons remain local.
+Regressions cover reachable-but-unsafe near-snare placement, bounded repairs,
+preserved pedals, repeat-fit identity and unchanged layout on failed fitting.
+
+## Remaining limits
 
 Other explicit limits:
 
