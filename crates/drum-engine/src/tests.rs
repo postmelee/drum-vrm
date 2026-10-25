@@ -555,7 +555,7 @@ fn two_proportions_preserve_midi_and_make_actual_grip_and_pedal_contacts() {
                 serde_json::to_value(hit).unwrap()
             );
             let pose = motion.evaluate_rig(hit.time);
-            assert_eq!(pose.len(), 73);
+            assert_eq!(pose.len(), 77);
             let limb = hit.limb.unwrap();
             let q = std::array::from_fn(|i| pose[57 + limb * 4 + i] as f64);
             let grip = motion::add(

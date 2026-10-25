@@ -267,5 +267,8 @@ fn intent_fields_and_control_tampering_are_validated_on_load() {
     }
     let mut invalid = selected(HihatPolicy::ShortOpenClose);
     invalid.mapping_profile = MappingProfile::Gm;
-    assert!(build_plan(&file(&[&[0, 0x90, 46, 80]]), &invalid).is_err());
+    let gm = build_plan(&file(&[&[0, 0x90, 46, 80], &[30, 0x90, 44, 60]]), &invalid).unwrap();
+    assert_eq!(gm.controls.len(), 1);
+    assert_eq!(gm.hits.len(), 1);
+    interpretation::validate_interpretation(&gm).unwrap();
 }

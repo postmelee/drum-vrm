@@ -99,10 +99,16 @@ impl<'de> Deserialize<'de> for KitPiece {
 pub fn default_kit() -> Vec<KitPiece> {
     use Instrument::*;
     [
-        ("kick", Kick, "Kick", [0.20, 0.08, 0.62], 0.26),
-        ("snare", Snare, "Snare", [-0.18, 0.79, 0.40], 0.22),
-        ("hihat", Hihat, "Hi-hat", [-0.48, 0.96, 0.44], 0.22),
-        ("openHat", OpenHat, "Open hi-hat", [-0.48, 0.96, 0.44], 0.22),
+        ("kick", Kick, "Kick", [0.20, 0.08, 0.62], 0.254),
+        ("snare", Snare, "Snare", [-0.18, 0.79, 0.36], 0.1778),
+        ("hihat", Hihat, "Hi-hat", [-0.52, 0.96, 0.35], 0.1778),
+        (
+            "openHat",
+            OpenHat,
+            "Open hi-hat",
+            [-0.52, 0.96, 0.35],
+            0.1778,
+        ),
         (
             "pedalHat",
             PedalHat,
@@ -110,12 +116,18 @@ pub fn default_kit() -> Vec<KitPiece> {
             [-0.22, 0.08, 0.55],
             0.12,
         ),
-        ("tomHigh", TomHigh, "High tom", [-0.26, 1.00, 0.72], 0.18),
-        ("tomMid", TomMid, "Mid tom", [0.18, 0.98, 0.74], 0.20),
-        ("tomLow", TomLow, "Low tom", [0.62, 0.80, 0.42], 0.23),
-        ("crash", Crash, "Crash left", [-0.66, 1.26, 0.68], 0.30),
-        ("crashRight", Crash, "Crash right", [0.58, 1.20, 0.64], 0.30),
-        ("ride", Ride, "Ride", [0.70, 0.99, 0.39], 0.28),
+        ("tomHigh", TomHigh, "High tom", [-0.26, 1.00, 0.72], 0.1524),
+        ("tomMid", TomMid, "Mid tom", [0.18, 0.98, 0.74], 0.1651),
+        ("tomLow", TomLow, "Low tom", [0.62, 0.80, 0.42], 0.2032),
+        ("crash", Crash, "Crash left", [-0.66, 1.26, 0.68], 0.2032),
+        (
+            "crashRight",
+            Crash,
+            "Crash right",
+            [0.58, 1.20, 0.64],
+            0.2286,
+        ),
+        ("ride", Ride, "Ride", [0.70, 0.99, 0.39], 0.254),
     ]
     .into_iter()
     .map(|(id, instrument, label, position, radius)| KitPiece {
@@ -213,6 +225,10 @@ pub struct Selection {
     pub hihat_policy: crate::hihat::HihatPolicy,
     #[serde(default = "crate::hihat::default_openness")]
     pub hihat_openness: f64,
+    #[serde(default)]
+    pub omitted_source_event_ids: Vec<String>,
+    #[serde(default)]
+    pub hand_overrides: std::collections::BTreeMap<String, usize>,
 }
 
 impl Default for Selection {
@@ -224,6 +240,8 @@ impl Default for Selection {
             count_in_note75: false,
             hihat_policy: Default::default(),
             hihat_openness: crate::hihat::default_openness(),
+            omitted_source_event_ids: Vec::new(),
+            hand_overrides: Default::default(),
         }
     }
 }
@@ -285,4 +303,8 @@ pub struct PerformancePlan {
     pub hihat_openness: f64,
     #[serde(default)]
     pub controls: Vec<crate::hihat::HihatControl>,
+    #[serde(default)]
+    pub omitted_source_event_ids: Vec<String>,
+    #[serde(default)]
+    pub hand_overrides: std::collections::BTreeMap<String, usize>,
 }

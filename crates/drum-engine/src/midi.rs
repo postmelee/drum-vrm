@@ -1,7 +1,7 @@
 use crate::interpretation::{self, InterpretationKind, SourceEvent, SourceMessage};
 use crate::model::*;
 use midly::{Format, MetaMessage, MidiMessage, Smf, Timing, TrackEventKind};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy)]
 struct Tempo {
@@ -354,6 +354,12 @@ impl Parsed<'_> {
         let mut source_events = Vec::new();
         let mut interpretations = Vec::new();
         let mut unmapped: BTreeMap<(usize, u8, u8), usize> = BTreeMap::new();
+        let omitted: BTreeSet<_> = selection
+            .omitted_source_event_ids
+            .iter()
+            .map(String::as_str)
+            .collect();
+        let mut had_supported_strike = false;
         for index in selected {
             let mut tick = 0u64;
             for (event_index, event) in self.smf.tracks[index].iter().enumerate() {
@@ -375,7 +381,9 @@ impl Parsed<'_> {
                         &source,
                         selection.mapping_profile,
                         selection.count_in_note75,
+                        omitted.contains(source.id.as_str()),
                     );
+                    had_supported_strike |= interpreted.instrument.is_some();
                     if interpreted.kind == InterpretationKind::Unmapped {
                         if let SourceMessage::NoteOn { key, .. } = source.message {
                             *unmapped.entry((index, channel.as_int(), key)).or_default() += 1;
@@ -421,7 +429,14 @@ impl Parsed<'_> {
         for ((track, channel, note), count) in unmapped {
             diagnostics.push(Diagnostic::new("UNMAPPED_NOTE", format!("트랙 {} / 채널 {} / MIDI 음표 {note}: {count}개의 원본 이벤트를 보존했지만 선택한 매핑으로 연주할 수 없습니다.", track + 1, channel + 1)));
         }
-        if hits.is_empty() {
+        interpretation::validate_arrangement(
+            &source_events,
+            &selection.omitted_source_event_ids,
+            &selection.hand_overrides,
+            selection.mapping_profile,
+            selection.count_in_note75,
+        )?;
+        if hits.is_empty() && !had_supported_strike {
             return Err("선택한 트랙/채널에 지원하는 드럼 타격이 없습니다. 트랙 선택과 GM 드럼 음표를 확인하세요.".into());
         }
         hits.sort_by_key(|h| (h.time_us, h.track, h.event_index));
@@ -472,6 +487,8 @@ impl Parsed<'_> {
             hihat_policy: selection.hihat_policy,
             hihat_openness: selection.hihat_openness,
             controls: Vec::new(),
+            omitted_source_event_ids: selection.omitted_source_event_ids.clone(),
+            hand_overrides: selection.hand_overrides.clone(),
         };
         crate::hihat::apply_policy(&mut plan);
         Ok(plan)

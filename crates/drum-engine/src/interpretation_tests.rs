@@ -103,7 +103,11 @@ fn logic_mapping_and_explicit_count_in_are_separate_from_gm() {
     assert_eq!(cue.source_events[0].id, "0:0");
     assert_eq!(cue.hits.len(), logic.hits.len());
     assert!(cue.diagnostics.iter().all(|d| d.code != "UNMAPPED_NOTE"));
-    assert!(build_plan(&bytes, &selection(MappingProfile::Gm, true)).is_err());
+    let gm_intent = build_plan(&bytes, &selection(MappingProfile::Gm, true)).unwrap();
+    assert!(gm_intent
+        .interpretations
+        .iter()
+        .any(|i| i.kind == InterpretationKind::CountIn));
     assert!(serde_json::from_str::<Selection>(
         r#"{"tracks":[0],"channel":null,"mappingProfile":"logicDkdModWheel"}"#
     )
@@ -226,4 +230,309 @@ fn source_selection_keeps_track_event_identity_across_channel_filtering() {
     assert_eq!(plan.source_events[0].id, "0:2");
     assert_eq!(plan.hits[0].source_event_id, "0:2");
     assert_eq!(plan.hits[0].time_us, 125_000);
+}
+
+#[test]
+fn explicit_omission_preserves_source_and_only_changes_arranged_events() {
+    let bytes = file(&[
+        &[0, 0x90, 32, 100],
+        &[0, 0x90, 49, 110],
+        &[0, 0x90, 57, 105],
+        &[0, 0x90, 36, 90],
+        &[120, 0x80, 32, 64],
+    ]);
+    let original = build_plan(&bytes, &selection(MappingProfile::LogicDkdGm, false)).unwrap();
+    let mut selected = selection(MappingProfile::LogicDkdGm, false);
+    selected.omitted_source_event_ids = vec!["0:0".into()];
+    let arranged = build_plan(&bytes, &selected).unwrap();
+    assert_eq!(
+        serde_json::to_value(&arranged.source_events).unwrap(),
+        serde_json::to_value(&original.source_events).unwrap()
+    );
+    assert_eq!(arranged.duration, original.duration);
+    assert_eq!(arranged.midi_hash, original.midi_hash);
+    assert_eq!(arranged.hits.len(), 3);
+    assert_eq!(
+        arranged.interpretations[0].kind,
+        InterpretationKind::Omitted
+    );
+    assert_eq!(
+        arranged.interpretations[0].piece_id.as_deref(),
+        Some("snare")
+    );
+    assert_eq!(
+        arranged.interpretations[0].articulation.as_deref(),
+        Some("rimshotEdge")
+    );
+    assert_eq!(arranged.interpretations[0].hit_id, None);
+    assert_eq!(
+        arranged.interpretations[4].kind,
+        InterpretationKind::Preserved
+    );
+    for hit in &arranged.hits {
+        let original_hit = original
+            .hits
+            .iter()
+            .find(|old| old.source_event_id == hit.source_event_id)
+            .unwrap();
+        assert_eq!(hit.time_us, original_hit.time_us);
+        assert_eq!(hit.velocity, original_hit.velocity);
+        assert_eq!(hit.note, original_hit.note);
+    }
+    let loaded = load_motion(&serde_json::to_string(&arranged).unwrap(), None).unwrap();
+    assert_eq!(
+        loaded.plan.omitted_source_event_ids,
+        selected.omitted_source_event_ids
+    );
+    assert_eq!(loaded.plan.interpretations, arranged.interpretations);
+    // Removing the explicit instruction cannot silently preserve its derived omission.
+    let mut forged = arranged.clone();
+    forged.omitted_source_event_ids.clear();
+    assert!(load_motion(&serde_json::to_string(&forged).unwrap(), None).is_err());
+    let mut forged = original;
+    forged.omitted_source_event_ids = selected.omitted_source_event_ids;
+    assert!(load_motion(&serde_json::to_string(&forged).unwrap(), None).is_err());
+}
+
+#[test]
+fn arrangement_rejects_unknown_nonpositive_conflicting_and_foot_directives() {
+    let bytes = file(&[
+        &[0, 0x90, 38, 100],
+        &[24, 0x80, 38, 64],
+        &[24, 0x90, 38, 0],
+        &[24, 0xb0, 4, 60],
+        &[24, 0x90, 36, 90],
+        &[24, 0x90, 75, 100],
+        &[24, 0x90, 99, 100],
+    ]);
+    for ids in [
+        vec!["0:99"],
+        vec!["0:1"],
+        vec!["0:2"],
+        vec!["0:3"],
+        vec!["0:0", "0:0"],
+    ] {
+        let mut selected = selection(MappingProfile::Gm, true);
+        selected.omitted_source_event_ids = ids.iter().map(|id| id.to_string()).collect();
+        assert!(build_plan(&bytes, &selected).is_err(), "omitted {ids:?}");
+    }
+    for (id, hand) in [
+        ("0:0", 2),
+        ("0:1", 0),
+        ("0:2", 1),
+        ("0:3", 1),
+        ("0:4", 0),
+        ("0:5", 0),
+        ("0:6", 0),
+        ("0:99", 1),
+    ] {
+        let mut selected = selection(MappingProfile::Gm, true);
+        selected.hand_overrides.insert(id.into(), hand);
+        assert!(build_plan(&bytes, &selected).is_err(), "hand {id} {hand}");
+    }
+    let mut selected = selection(MappingProfile::Gm, false);
+    selected.omitted_source_event_ids.push("0:0".into());
+    selected.hand_overrides.insert("0:0".into(), 0);
+    assert!(build_plan(&bytes, &selected).is_err());
+    selected.hand_overrides.clear();
+    selected.channel = Some(1);
+    assert!(build_plan(&bytes, &selected).is_err());
+}
+
+#[test]
+fn omission_recomputes_hihat_pairs_and_preparation_from_remaining_events() {
+    let bytes = file(&[
+        &[0, 0x90, 36, 90],
+        &[48, 0x90, 44, 70],
+        &[48, 0x90, 46, 85],
+        &[24, 0x90, 44, 65],
+        &[120, 0x90, 38, 90],
+    ]);
+    let mut selected = selection(MappingProfile::Gm, false);
+    selected.hihat_policy = crate::hihat::HihatPolicy::ShortOpenClose;
+    let original = build_plan(&bytes, &selected).unwrap();
+    assert_eq!(original.controls.len(), 1);
+    assert_eq!(original.controls[0].release_start_time_us, 50_000);
+    for omitted in ["0:2", "0:3"] {
+        selected.omitted_source_event_ids = vec![omitted.into()];
+        let arranged = build_plan(&bytes, &selected).unwrap();
+        assert!(arranged.controls.is_empty());
+        assert!(arranged
+            .interpretations
+            .iter()
+            .all(|i| i.kind != InterpretationKind::Control));
+        assert!(arranged
+            .interpretations
+            .iter()
+            .any(|i| i.source_event_id == omitted && i.kind == InterpretationKind::Omitted));
+        interpretation::validate_interpretation(&arranged).unwrap();
+        let mut forged = arranged;
+        forged.controls = original.controls.clone();
+        assert!(load_motion(&serde_json::to_string(&forged).unwrap(), None).is_err());
+    }
+    selected.omitted_source_event_ids = vec!["0:1".into()];
+    let arranged = build_plan(&bytes, &selected).unwrap();
+    assert_eq!(arranged.controls.len(), 1);
+    assert_eq!(arranged.controls[0].release_start_time_us, 0);
+    assert_eq!(arranged.controls[0].open_source_event_id, "0:2");
+    assert_eq!(arranged.controls[0].source_event_id, "0:3");
+    interpretation::validate_interpretation(&arranged).unwrap();
+}
+
+#[test]
+fn all_strikes_can_be_explicitly_omitted_and_old_plans_default_to_no_edits() {
+    let bytes = file(&[&[0, 0x90, 38, 100], &[120, 0x80, 38, 0]]);
+    let mut selected = selection(MappingProfile::Gm, false);
+    selected.omitted_source_event_ids.push("0:0".into());
+    let arranged = build_plan(&bytes, &selected).unwrap();
+    assert!(arranged.hits.is_empty());
+    assert_eq!(arranged.source_events.len(), 2);
+    load_motion(&serde_json::to_string(&arranged).unwrap(), None).unwrap();
+
+    let original = build_plan(&bytes, &selection(MappingProfile::Gm, false)).unwrap();
+    let mut old_json = serde_json::to_value(&original).unwrap();
+    old_json
+        .as_object_mut()
+        .unwrap()
+        .remove("omittedSourceEventIds");
+    old_json.as_object_mut().unwrap().remove("handOverrides");
+    let loaded = load_motion(&old_json.to_string(), None).unwrap();
+    assert!(loaded.plan.omitted_source_event_ids.is_empty());
+    assert!(loaded.plan.hand_overrides.is_empty());
+    let mut legacy = original;
+    legacy.schema_version = 1;
+    legacy.source_events.clear();
+    legacy.interpretations.clear();
+    legacy.omitted_source_event_ids.push("0:0".into());
+    assert!(interpretation::validate_interpretation(&legacy).is_err());
+    legacy.omitted_source_event_ids.clear();
+    legacy.hand_overrides.insert("0:0".into(), 0);
+    assert!(interpretation::validate_interpretation(&legacy).is_err());
+}
+
+#[test]
+fn explicit_hands_survive_roundtrip_and_competing_choices_remain_diagnostic() {
+    let bytes = file(&[&[0, 0x90, 38, 100], &[120, 0x90, 38, 70]]);
+    let mut selected = selection(MappingProfile::Gm, false);
+    selected.hand_overrides.insert("0:0".into(), 1);
+    selected.hand_overrides.insert("0:1".into(), 0);
+    let plan = build_plan(&bytes, &selected).unwrap();
+    assert_eq!(
+        plan.hits.iter().map(|hit| hit.limb).collect::<Vec<_>>(),
+        [Some(1), Some(0)]
+    );
+    let loaded = load_motion(&serde_json::to_string(&plan).unwrap(), None).unwrap();
+    assert_eq!(loaded.plan.hand_overrides, selected.hand_overrides);
+    assert_eq!(
+        loaded
+            .plan
+            .hits
+            .iter()
+            .map(|hit| hit.limb)
+            .collect::<Vec<_>>(),
+        [Some(1), Some(0)]
+    );
+    let mut forged = plan;
+    forged.hits[0].limb = Some(0);
+    assert!(load_motion(&serde_json::to_string(&forged).unwrap(), None).is_err());
+
+    let bytes = file(&[
+        &[0, 0x90, 38, 100],
+        &[0, 0x90, 42, 80],
+        &[120, 0x90, 36, 90],
+    ]);
+    selected.hand_overrides.insert("0:1".into(), 1);
+    let plan = build_plan(&bytes, &selected).unwrap();
+    assert_eq!(
+        plan.hits[..2]
+            .iter()
+            .filter(|hit| hit.limb == Some(1))
+            .count(),
+        1
+    );
+    assert_eq!(
+        plan.hits[..2]
+            .iter()
+            .filter(|hit| hit.limb.is_none())
+            .count(),
+        1
+    );
+    assert!(plan.hits[..2]
+        .iter()
+        .all(|hit| hit.time_us == 0 && hit.limb != Some(0)));
+    assert_eq!(
+        plan.diagnostics
+            .iter()
+            .filter(|d| d.code == "HAND_OVERRIDE_INFEASIBLE")
+            .count(),
+        1
+    );
+    let loaded = load_motion(&serde_json::to_string(&plan).unwrap(), None).unwrap();
+    assert_eq!(
+        loaded
+            .plan
+            .hits
+            .iter()
+            .map(|hit| hit.limb)
+            .collect::<Vec<_>>(),
+        plan.hits.iter().map(|hit| hit.limb).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn unreachable_forced_hand_does_not_fall_back_to_a_reachable_other_hand() {
+    let bytes = file(&[&[0, 0x90, 38, 100], &[120, 0x80, 38, 0]]);
+    let mut selected = selection(MappingProfile::Gm, false);
+    selected.hand_overrides.insert("0:0".into(), 1);
+    let plan = build_plan(&bytes, &selected).unwrap();
+    let mut profile = crate::rig::RigProfile::primitive();
+    profile.id = "independent-asymmetric-reach-fixture".into();
+    profile.rest_tips[1][0] += 2.5 - profile.roots[1][0];
+    profile.roots[1][0] = 2.5;
+    assert!(profile.reachable(0, plan.hits[0].target));
+    assert!(!profile.reachable(1, plan.hits[0].target));
+    let motion = crate::motion::Motion::with_profile(plan, profile.clone()).unwrap();
+    assert_eq!(motion.plan.hits[0].limb, None);
+    assert_eq!(motion.plan.hits[0].time_us, 0);
+    assert!(motion
+        .plan
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "HAND_OVERRIDE_INFEASIBLE"));
+    let loaded = load_motion(
+        &serde_json::to_string(&motion.plan).unwrap(),
+        Some(&serde_json::to_string(&profile).unwrap()),
+    )
+    .unwrap();
+    assert_eq!(loaded.plan.hits[0].limb, None);
+    assert_eq!(
+        loaded
+            .plan
+            .diagnostics
+            .iter()
+            .filter(|d| d.code == "HAND_OVERRIDE_INFEASIBLE")
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn unmapped_note33_does_not_close_a_gm_hihat() {
+    let bytes = file(&[&[0, 0x90, 46, 80], &[12, 0x91, 33, 80], &[12, 0x90, 44, 65]]);
+    let mut selected = selection(MappingProfile::Gm, false);
+    selected.hihat_policy = crate::hihat::HihatPolicy::ShortOpenClose;
+    let gm = build_plan(&bytes, &selected).unwrap();
+    assert_eq!(gm.controls.len(), 1);
+    assert_eq!(gm.controls[0].source_event_id, "0:2");
+    assert_eq!(gm.controls[0].release_start_time_us, -100_000);
+    assert_eq!(gm.interpretations[1].kind, InterpretationKind::Unmapped);
+    interpretation::validate_interpretation(&gm).unwrap();
+    selected.mapping_profile = MappingProfile::LogicDkdGm;
+    let logic = build_plan(&bytes, &selected).unwrap();
+    assert!(logic.controls.is_empty());
+    assert!(logic
+        .diagnostics
+        .iter()
+        .any(|d| d.code == "HIHAT_INTENT_CONFLICT"));
+    interpretation::validate_interpretation(&logic).unwrap();
 }

@@ -1,9 +1,9 @@
 //! Explicit visual intent over preserved GM Standard channel events. This is not
 //! a reconstruction of a source instrument's samples or hidden pedal controller.
-use crate::interpretation::{InterpretationKind, MappingProfile, SourceMessage};
-use crate::model::{Diagnostic, PerformancePlan};
+use crate::interpretation::{mapped_note, InterpretationKind, MappingProfile, SourceMessage};
+use crate::model::{Diagnostic, Instrument, PerformancePlan};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,15 +35,12 @@ pub struct HihatControl {
 }
 
 pub fn validate_options(
-    profile: MappingProfile,
-    policy: HihatPolicy,
+    _profile: MappingProfile,
+    _policy: HihatPolicy,
     openness: f64,
 ) -> Result<(), String> {
     if !openness.is_finite() || !(0.05..=1.0).contains(&openness) {
         return Err("하이햇 개방량은 0.05–1.0 범위여야 합니다.".into());
-    }
-    if policy == HihatPolicy::ShortOpenClose && profile != MappingProfile::LogicDkdGm {
-        return Err("짧은 오픈·닫힘 해석은 Logic Drum Kit Designer GM 매핑에서 선택하세요.".into());
     }
     Ok(())
 }
@@ -65,7 +62,15 @@ pub fn derive_controls(plan: &PerformancePlan) -> (Vec<HihatControl>, Vec<Diagno
     let mut closure_generation = 0;
     let mut controls = Vec::<HihatControl>::new();
     let mut diagnostics = Vec::new();
+    let omitted: BTreeSet<_> = plan
+        .omitted_source_event_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
     for (index, source) in plan.source_events.iter().enumerate() {
+        if omitted.contains(source.id.as_str()) {
+            continue;
+        }
         let Some(open_slot) = pending.get_mut(source.channel as usize) else {
             continue;
         };
@@ -75,8 +80,8 @@ pub fn derive_controls(plan: &PerformancePlan) -> (Vec<HihatControl>, Vec<Diagno
         if velocity == 0 {
             continue;
         }
-        match key {
-            46 => {
+        match mapped_note(plan.mapping_profile, key).map(|m| m.instrument) {
+            Some(Instrument::OpenHat) => {
                 *open_slot = Some(PendingOpen {
                     index,
                     release_start_time_us: (source.time_us as i64 - 100_000)
@@ -84,8 +89,12 @@ pub fn derive_controls(plan: &PerformancePlan) -> (Vec<HihatControl>, Vec<Diagno
                     closure_generation,
                 });
             }
-            42 | 33 => *open_slot = None,
-            44 => {
+            Some(Instrument::Hihat) => {
+                *open_slot = None;
+                last_closure_time_us = Some(source.time_us);
+                closure_generation += 1;
+            }
+            Some(Instrument::PedalHat) => {
                 let candidate = open_slot.take();
                 // Every physical closure constrains future preparation, whether
                 // this event becomes a control or remains a literal foot strike.
@@ -134,10 +143,6 @@ pub fn derive_controls(plan: &PerformancePlan) -> (Vec<HihatControl>, Vec<Diagno
                 });
             }
             _ => {}
-        }
-        if matches!(key, 42 | 33) {
-            last_closure_time_us = Some(source.time_us);
-            closure_generation += 1;
         }
     }
     (controls, diagnostics)

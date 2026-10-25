@@ -3,6 +3,9 @@ use crate::model::*;
 use crate::rig::{pitch_rotation, RigProfile, RIG_POSE_FLOATS};
 use std::f64::consts::PI;
 
+#[path = "sticking.rs"]
+mod sticking;
+
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
 pub const LEG_ROOTS: [Vec3; 2] = [[-0.14, 0.71, -0.15], [0.14, 0.71, -0.15]];
@@ -89,13 +92,13 @@ fn pedal_contact(plan: &PerformancePlan, profile: &RigProfile, limb: usize) -> V
 struct LimbState {
     time: f64,
     target: Vec3,
-    instrument: Option<Instrument>,
 }
 
 #[derive(Clone)]
 struct Candidate {
     states: [LimbState; 4],
     choices: Vec<Option<usize>>,
+    history: sticking::History,
     cost: f64,
 }
 
@@ -103,12 +106,10 @@ fn assignment_cost(
     limb: usize,
     hit: &Hit,
     state: LimbState,
-    profile: Option<&RigProfile>,
+    contact_reachable: bool,
+    preferred: usize,
 ) -> Option<f64> {
-    if !profile.map_or_else(
-        || reachable(limb, hit.target),
-        |p| p.reachable(limb, hit.target),
-    ) {
+    if !contact_reachable {
         return None;
     }
     let dt = hit.time - state.time;
@@ -116,26 +117,59 @@ fn assignment_cost(
     if dt < MIN_INTERVAL - 1e-9 || dist > MAX_TIP_SPEED * dt {
         return None;
     }
-    let preference = if (if hit.piece_id == "crashRight" {
-        1
-    } else {
-        preferred_limb(hit.instrument)
-    }) == limb
-    {
+    let preference = if preferred == limb {
         0.0
+    } else if matches!(
+        hit.instrument,
+        Instrument::Hihat | Instrument::OpenHat | Instrument::Ride | Instrument::Crash
+    ) {
+        0.65
     } else {
         0.3
     };
-    // Fast repetitions prefer alternating hands; long rests return to handedness.
-    let repeated_snare = hit.instrument == Instrument::Snare
-        && state.instrument == Some(Instrument::Snare)
-        && dt < 0.18;
-    Some(
-        preference + dist * 0.6 + 0.02 / dt.min(2.0) + if repeated_snare { 0.08 / dt } else { 0.0 },
-    )
+    // The hard speed ceiling only rules out impossible assignments. Below it,
+    // a short, fast cross-kit transfer should still lose to an available hand
+    // with time to prepare. This scale is an engineering preference, not a
+    // measured physiological limit or a change to the source event time.
+    let transfer_effort = if limb < 2 {
+        (dist / dt / 3.0).powi(2)
+    } else {
+        0.0
+    };
+    Some(preference + dist * 0.6 + 0.02 / dt.min(2.0) + transfer_effort)
 }
 
-/// Receding-horizon beam search spans up to 24 events / 0.35 seconds.
+/// A two-cymbal chord has an outward ownership preference, independent of MIDI
+/// event order or kit IDs. A groove's right hand preference for a single left
+/// crash must not turn a simultaneous pair into crossed forearms. Feasibility
+/// and explicit hand overrides still take precedence over this soft cost.
+fn dual_crash_hands(plan: &PerformancePlan, profile: Option<&RigProfile>) -> Vec<Option<usize>> {
+    let shoulders = profile.map_or(ARM_ROOTS, |p| [p.roots[0], p.roots[1]]);
+    let right_axis = normalized(sub(shoulders[1], shoulders[0]));
+    let mut result = vec![None; plan.hits.len()];
+    let mut start = 0;
+    while start < plan.hits.len() {
+        let mut end = start + 1;
+        while end < plan.hits.len() && plan.hits[end].time_us == plan.hits[start].time_us {
+            end += 1;
+        }
+        let crashes: Vec<_> = (start..end)
+            .filter(|&index| plan.hits[index].instrument == Instrument::Crash)
+            .collect();
+        if let [a, b] = crashes.as_slice() {
+            let difference = dot(sub(plan.hits[*b].target, plan.hits[*a].target), right_axis);
+            if difference.abs() > 1e-4 {
+                result[*a] = Some(usize::from(difference < 0.0));
+                result[*b] = Some(usize::from(difference > 0.0));
+            }
+        }
+        start = end;
+    }
+    result
+}
+
+/// Receding-horizon beam search spans up to 24 events / two local quarter notes,
+/// bounded to 0.35–1.2 seconds. Sticking candidates include both lead hands.
 /// Future hits consume limbs in each candidate, unlike independent forecasts.
 /// Commit only the current simultaneous group; original timestamps never move.
 pub fn assign(plan: &mut PerformancePlan) {
@@ -145,7 +179,6 @@ pub fn assign(plan: &mut PerformancePlan) {
 fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) {
     let mut states = std::array::from_fn(|limb| LimbState {
         time: -PRE_ROLL,
-        instrument: None,
         target: profile.map_or_else(
             || rest_tip(limb),
             |p| {
@@ -157,7 +190,51 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
             },
         ),
     });
-    plan.planner_version = "phrase-beam-8-horizon-24-v1".into();
+    let contexts = sticking::contexts(plan);
+    let dual_crash_hands = dual_crash_hands(plan, profile);
+    // Reach/clearance depends on the physical contact and body, not the current
+    // beam history. Cache it before expanding candidates so wrist solving does
+    // not multiply with every lookahead branch.
+    let mut contacts = std::collections::BTreeMap::new();
+    let contact_checks: Vec<([bool; 4], [f64; 2])> = plan
+        .hits
+        .iter()
+        .map(|hit| {
+            let mut clearance = [0.0; 2];
+            let valid = std::array::from_fn(|limb| {
+                let allowed = match hit.instrument {
+                    Instrument::Kick => limb == 3,
+                    Instrument::PedalHat => limb == 2,
+                    _ => limb < 2,
+                };
+                if !allowed {
+                    return false;
+                }
+                let (valid, cost) = *contacts
+                    .entry((hit.target.map(f64::to_bits), limb))
+                    .or_insert_with(|| {
+                        let valid = profile.map_or_else(
+                            || reachable(limb, hit.target),
+                            |p| p.reachable(limb, hit.target),
+                        );
+                        let cost = if valid && limb < 2 {
+                            profile
+                                .map_or(0.0, |p| crate::clearance::hand_cost(p, limb, hit.target))
+                        } else {
+                            0.0
+                        };
+                        (valid, cost)
+                    });
+                if limb < 2 {
+                    clearance[limb] = cost;
+                }
+                valid
+            });
+            (valid, clearance)
+        })
+        .collect();
+    let mut history = sticking::History::default();
+    plan.planner_version = "phrase-beam-8-beat-horizon-24-v3".into();
     let mut start = 0;
     while start < plan.hits.len() {
         let mut end = start + 1;
@@ -167,6 +244,7 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
         let mut beam = vec![Candidate {
             states,
             choices: Vec::new(),
+            history: history.clone(),
             cost: 0.0,
         }];
         // Pathological chords remain audible/diagnosed, but cannot expand a beam
@@ -174,12 +252,14 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
         let mut horizon = end;
         while horizon < plan.hits.len()
             && horizon < start + 24
-            && plan.hits[horizon].time - plan.hits[start].time <= 0.35
+            && plan.hits[horizon].time - plan.hits[start].time <= contexts[start].horizon
         {
             horizon += 1;
         }
         let beam_end = horizon.min(start + 32);
-        for hit in &plan.hits[start..beam_end] {
+        for (offset, hit) in plan.hits[start..beam_end].iter().enumerate() {
+            let context = contexts[start + offset];
+            let (contact_reachable, clearance) = contact_checks[start + offset];
             let allowed: &[usize] = match hit.instrument {
                 Instrument::Kick => &[3],
                 Instrument::PedalHat => &[2],
@@ -188,15 +268,36 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
             let mut expanded = Vec::new();
             for candidate in beam {
                 for &limb in allowed {
-                    if let Some(cost) = assignment_cost(limb, hit, candidate.states[limb], profile)
+                    if plan
+                        .hand_overrides
+                        .get(&hit.source_event_id)
+                        .is_some_and(|forced| *forced != limb)
                     {
+                        continue;
+                    }
+                    if let Some(cost) = assignment_cost(
+                        limb,
+                        hit,
+                        candidate.states[limb],
+                        contact_reachable[limb],
+                        context.preferred,
+                    ) {
                         let mut next = candidate.clone();
-                        next.cost += cost;
+                        next.cost += cost
+                            + candidate.history.cost(limb, hit, context)
+                            + if limb < 2 { clearance[limb] } else { 0.0 }
+                            + if dual_crash_hands[start + offset]
+                                .is_some_and(|outward| outward != limb)
+                            {
+                                8.0
+                            } else {
+                                0.0
+                            };
                         next.states[limb] = LimbState {
                             time: hit.time,
                             target: hit.target,
-                            instrument: Some(hit.instrument),
                         };
+                        next.history.record(limb, hit);
                         next.choices.push(Some(limb));
                         expanded.push(next);
                     }
@@ -226,8 +327,8 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
                 states[limb] = LimbState {
                     time: hit.time,
                     target: hit.target,
-                    instrument: Some(hit.instrument),
                 };
+                history.record(limb, hit);
             }
             if hit.limb.is_none() {
                 let allowed: &[usize] = match hit.instrument {
@@ -237,7 +338,9 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
                 };
                 let unreachable = profile
                     .is_some_and(|p| allowed.iter().all(|limb| !p.reachable(*limb, hit.target)));
-                let (code, reason) = if unreachable {
+                let (code, reason) = if plan.hand_overrides.contains_key(&hit.source_event_id) {
+                    ("HAND_OVERRIDE_INFEASIBLE", "지정한 손으로 원래 시각에 타격할 수 없습니다. 자동으로 다른 손을 사용하지 않습니다")
+                } else if unreachable {
                     (
                         "RIG_UNREACHABLE_HIT",
                         "현재 체형·좌석·그립에서 타점에 도달하지 못했습니다",
@@ -354,7 +457,13 @@ fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
             || !point(&hit.target)
             || hit.time_us > 300_000_000
             || (hit.time - hit.time_us as f64 / 1_000_000.0).abs() > 1e-9
-            || hit.limb.is_some_and(|limb| limb >= 4)
+            || hit.limb.is_some_and(|limb| {
+                limb >= 4
+                    || plan
+                        .hand_overrides
+                        .get(&hit.source_event_id)
+                        .is_some_and(|forced| *forced != limb)
+            })
             || hit.channel > 15
             || hit.velocity == 0
             || hit.velocity > 127
@@ -375,17 +484,12 @@ fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
     Ok(())
 }
 
-fn arc(a: Vec3, b: Vec3, phase: f64, height: f64) -> Vec3 {
-    let phase = phase.clamp(0.0, 1.0);
-    let mut point = lerp(a, b, smooth(phase));
-    point[1] += (PI * phase).sin() * height;
-    point
-}
-
 pub struct Motion {
     pub plan: PerformancePlan,
     limbs: [Vec<usize>; 4],
     profile: Option<RigProfile>,
+    body_turns: Vec<f64>,
+    hand_swivels: Vec<crate::hand_coordination::SwivelSample>,
 }
 
 impl Motion {
@@ -406,7 +510,10 @@ impl Motion {
         plan.diagnostics.retain(|d| {
             !matches!(
                 d.code.as_str(),
-                "UNRESOLVED_HIT" | "RIG_UNREACHABLE_HIT" | "RIG_UNREACHABLE_PEDAL"
+                "UNRESOLVED_HIT"
+                    | "RIG_UNREACHABLE_HIT"
+                    | "RIG_UNREACHABLE_PEDAL"
+                    | "HAND_OVERRIDE_INFEASIBLE"
             )
         });
         for limb in 2..4 {
@@ -443,7 +550,6 @@ impl Motion {
         let mut limbs: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
         let mut states: [LimbState; 4] = std::array::from_fn(|limb| LimbState {
             time: -PRE_ROLL,
-            instrument: None,
             target: profile.as_ref().map_or_else(
                 || rest_tip(limb),
                 |p| {
@@ -462,7 +568,18 @@ impl Motion {
                     Instrument::PedalHat => limb == 2,
                     _ => limb < 2,
                 };
-                if !allowed || assignment_cost(limb, hit, states[limb], profile.as_ref()).is_none()
+                if !allowed
+                    || assignment_cost(
+                        limb,
+                        hit,
+                        states[limb],
+                        profile.as_ref().map_or_else(
+                            || reachable(limb, hit.target),
+                            |p| p.reachable(limb, hit.target),
+                        ),
+                        preferred_limb(hit.instrument),
+                    )
+                    .is_none()
                 {
                     return Err("연주 계획의 손발 배정이 유효하지 않습니다.".into());
                 }
@@ -475,16 +592,85 @@ impl Motion {
                 states[limb] = LimbState {
                     time: hit.time,
                     target: hit.target,
-                    instrument: Some(hit.instrument),
                 };
                 limbs[limb].push(index);
             }
         }
-        Ok(Self {
+        let mut motion = Self {
             plan,
             limbs,
             profile,
-        })
+            body_turns: Vec::new(),
+            hand_swivels: Vec::new(),
+        };
+        if let Some(profile) = &motion.profile {
+            if profile.torso_pivot.is_some() {
+                let count = ((motion.plan.duration + PRE_ROLL + TAIL) / crate::body_motion::STEP)
+                    .ceil() as usize
+                    + 1;
+                let mut yaw = 0.0;
+                for index in 0..count {
+                    let time = index as f64 * crate::body_motion::STEP - PRE_ROLL;
+                    let samples = [motion.stroke_at(0, time), motion.stroke_at(1, time)];
+                    yaw = crate::body_motion::candidate(
+                        profile,
+                        samples.map(|s| s.0),
+                        samples.map(|s| -s.1),
+                        yaw,
+                    );
+                    motion.body_turns.push(yaw);
+                }
+                // Facing is optional. Attenuate the entire C1 curve if any exact
+                // source contact (including between grid knots) loses reach.
+                // A per-frame fallback would introduce a pose discontinuity.
+                let original = motion.body_turns.clone();
+                let mut scale = 1.0;
+                while motion.plan.hits.iter().any(|hit| {
+                    hit.limb.is_some_and(|limb| {
+                        limb < 2
+                            && !profile
+                                .turned(crate::body_motion::at(&motion.body_turns, hit.time))
+                                .reachable(limb, hit.target)
+                    })
+                }) {
+                    scale *= 0.5;
+                    if scale < 1.0 / 1024.0 {
+                        motion.body_turns.fill(0.0);
+                        break;
+                    }
+                    motion.body_turns = original.iter().map(|yaw| yaw * scale).collect();
+                }
+            }
+        }
+        if let Some(profile) = &motion.profile {
+            if profile.hand_frames.is_some() {
+                let count = ((motion.plan.duration + PRE_ROLL + TAIL)
+                    / crate::hand_coordination::STEP)
+                    .ceil() as usize
+                    + 1;
+                let mut times: Vec<_> = (0..count)
+                    .map(|i| i as f64 * crate::hand_coordination::STEP - PRE_ROLL)
+                    .collect();
+                times.extend(motion.plan.hits.iter().map(|hit| hit.time));
+                times.sort_by(f64::total_cmp);
+                times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+                let inputs: Vec<_> = times
+                    .into_iter()
+                    .map(|time| {
+                        let samples = [motion.stroke_at(0, time), motion.stroke_at(1, time)];
+                        crate::hand_coordination::HandCoordinationInput {
+                            time,
+                            profile: profile
+                                .turned(crate::body_motion::at(&motion.body_turns, time)),
+                            tips: samples.map(|s| s.0),
+                            pitches: samples.map(|s| -s.1),
+                        }
+                    })
+                    .collect();
+                motion.hand_swivels = crate::hand_coordination::plan(&inputs);
+            }
+        }
+        Ok(motion)
     }
 
     fn stroke_at(&self, limb: usize, time: f64) -> (Vec3, f64) {
@@ -515,40 +701,88 @@ impl Motion {
                 p.rest_tips[limb]
             },
         );
+        let transfer = |a: Vec3, b: Vec3, phase: f64, lift: f64| {
+            let weight = smooth(phase.clamp(0.0, 1.0));
+            let mut tip = lerp(a, b, weight);
+            tip[1] += lift;
+            if limb < 2 {
+                if let Some(profile) = &self.profile {
+                    // Straight chords across the kit can fold a long forearm/tool
+                    // toward the chest. Preserve interpolated shoulder distance
+                    // while moving around the front of the body instead. Apply
+                    // this after the lift: an upward preparation must not fold
+                    // the effective forearm/tool link back toward the shoulder.
+                    let root = profile.roots[limb];
+                    let radius = distance(root, a) * (1.0 - weight) + distance(root, b) * weight;
+                    let direction = sub(tip, root);
+                    let actual = distance(tip, root);
+                    if actual > 1e-6 && radius > actual {
+                        tip = add(root, mul(direction, radius / actual));
+                    }
+                }
+            }
+            tip
+        };
         let foot = limb >= 2;
         let max_height = if foot { 0.045 } else { 0.11 };
         let stroke_pitch = |velocity: u8, interval: f64| {
             (0.12 + 0.30 * velocity as f64 / 127.0) * (interval / 0.20).min(1.0)
         };
+        // Long moves to/from the ready position need time. If both windows
+        // would overlap, connect the two source contacts directly instead of
+        // abruptly abandoning an unfinished recovery for the next preparation.
+        let recovery = previous.map_or(0.18, |hit| {
+            if foot {
+                0.18
+            } else {
+                (distance(hit.target, rest) / 2.5).clamp(0.18, 0.65)
+            }
+        });
+        let preparation = next.map_or(0.22, |hit| {
+            if foot {
+                0.22
+            } else {
+                (distance(rest, hit.target) / 2.5).clamp(0.22, 0.65)
+            }
+        });
         match (previous, next) {
             (Some(prev), _) if (time - prev.time).abs() < 1e-9 => (prev.target, 0.0),
-            (Some(prev), Some(next)) if next.time - prev.time <= 0.42 => {
+            (Some(prev), Some(next)) if next.time - prev.time <= recovery + preparation + 0.02 => {
                 let phase = (time - prev.time) / (next.time - prev.time);
                 let height = max_height
                     * (0.35 + 0.65 * next.velocity as f64 / 127.0)
                     * ((next.time - prev.time) / 0.15).min(1.0);
+                let envelope = sticking::stroke_envelope(phase, prev.velocity, next.velocity);
+                let tip = transfer(prev.target, next.target, phase, envelope * height);
                 (
-                    arc(prev.target, next.target, phase, height),
-                    (PI * phase).sin() * stroke_pitch(next.velocity, next.time - prev.time),
+                    tip,
+                    envelope * stroke_pitch(next.velocity, next.time - prev.time),
                 )
             }
-            (_, Some(next)) if next.time - time <= 0.22 => {
-                let phase = 1.0 - (next.time - time) / 0.22;
+            (_, Some(next)) if next.time - time <= preparation => {
+                let phase = 1.0 - (next.time - time) / preparation;
                 (
-                    arc(
+                    transfer(
                         rest,
                         next.target,
                         phase,
-                        max_height * (0.35 + 0.65 * next.velocity as f64 / 127.0),
+                        (PI * phase).sin()
+                            * max_height
+                            * (0.35 + 0.65 * next.velocity as f64 / 127.0),
                     ),
-                    (PI * phase).sin() * stroke_pitch(next.velocity, 0.22),
+                    (PI * phase).sin() * stroke_pitch(next.velocity, preparation),
                 )
             }
-            (Some(prev), _) if time - prev.time < 0.18 => {
-                let phase = (time - prev.time) / 0.18;
+            (Some(prev), _) if time - prev.time < recovery => {
+                let phase = (time - prev.time) / recovery;
                 (
-                    arc(prev.target, rest, phase, max_height * 0.22),
-                    (PI * phase).sin() * stroke_pitch(prev.velocity, 0.18) * 0.35,
+                    transfer(
+                        prev.target,
+                        rest,
+                        phase,
+                        (PI * phase).sin() * max_height * 0.22,
+                    ),
+                    (PI * phase).sin() * stroke_pitch(prev.velocity, recovery) * 0.35,
                 )
             }
             _ => (rest, 0.0),
@@ -610,26 +844,50 @@ impl Motion {
         -amplitude * (PI * phase).sin().powi(2)
     }
 
+    pub fn inspect_pose(&self, song_time: f64) -> String {
+        let pose = self.evaluate_rig(song_time);
+        let yaw = crate::body_motion::at(
+            &self.body_turns,
+            if song_time.is_finite() {
+                song_time
+            } else {
+                -PRE_ROLL
+            },
+        );
+        let profile = self
+            .profile
+            .clone()
+            .unwrap_or_else(RigProfile::primitive)
+            .turned(yaw);
+        serde_json::to_string(&crate::clearance::inspect(&profile, &pose))
+            .expect("finite inspection")
+    }
+
     pub fn evaluate(&self, song_time: f64) -> Vec<f32> {
         let mut pose = self.evaluate_rig(song_time);
         pose.truncate(POSE_FLOATS);
         pose
     }
 
-    /// v2: the v1 position block followed by LH/RH/LF/RF world xyzw quaternions.
+    /// v3: positions, four tool quaternions, then the coordinated torso quaternion.
     pub fn evaluate_rig(&self, song_time: f64) -> Vec<f32> {
         let time = if song_time.is_finite() {
             song_time.clamp(-PRE_ROLL, MAX_DURATION + 10.0)
         } else {
             -PRE_ROLL
         };
+        let yaw = crate::body_motion::at(&self.body_turns, time);
+        let posed_profile = self.profile.as_ref().map(|p| p.turned(yaw));
+        let swivels = crate::hand_coordination::at(&self.hand_swivels, time);
         let mut pose = Vec::with_capacity(RIG_POSE_FLOATS);
         let mut rotations = [[0.0, 0.0, 0.0, 1.0]; 4];
         for (limb, rotation) in rotations.iter_mut().enumerate() {
             let (tip, pitch) = self.stroke_at(limb, time);
-            if let Some(profile) = &self.profile {
+            if let Some(profile) = &posed_profile {
                 if limb < 2 {
-                    if let Some(solution) = profile.solve_hand(limb, tip, -pitch) {
+                    if let Some(solution) =
+                        profile.solve_hand_with_swivel(limb, tip, -pitch, swivels[limb])
+                    {
                         *rotation = solution.rotation;
                         for point in [
                             profile.roots[limb],
@@ -695,7 +953,7 @@ impl Motion {
         } else {
             0.0
         };
-        let (pelvis, chest, mut head) = self.profile.as_ref().map_or(
+        let (pelvis, chest, mut head) = posed_profile.as_ref().map_or(
             ([0.0, 0.71, -0.15], [0.0, 1.24, -0.10], [0.0, 1.62, -0.10]),
             |p| (p.pelvis, p.chest, p.head),
         );
@@ -707,6 +965,7 @@ impl Motion {
         for rotation in rotations {
             pose.extend(rotation.map(|x| x as f32));
         }
+        pose.extend([0.0, (yaw * 0.5).sin() as f32, 0.0, (yaw * 0.5).cos() as f32]);
         pose
     }
 }
