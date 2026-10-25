@@ -108,7 +108,29 @@ describe('interpreted drum preview audio', () => {
 });
 
 describe('Web Audio transport', () => {
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {vi.unstubAllGlobals();vi.restoreAllMocks();});
+
+  it('uses the audible output clock once, including output-time seeks, without double latency subtraction',async()=>{
+    let context:FakeAudioContext|undefined;
+    class FakeAudioContext {
+      currentTime=10;state='running';destination={};outputLatency=.1;onstatechange:(()=>void)|null=null;
+      stamp={contextTime:9.9,performanceTime:1000};
+      constructor(){context=this;}
+      async resume(){} async close(){this.state='closed';}
+      getOutputTimestamp(){return this.stamp;}
+      createGain(){return {gain:{value:0,setTargetAtTime:vi.fn()},connect:vi.fn(),disconnect:vi.fn()};}
+      createBufferSource(){return {buffer:null,connect:vi.fn(),disconnect:vi.fn(),start:vi.fn(),stop:vi.fn(),onended:null};}
+    }
+    vi.stubGlobal('AudioContext',FakeAudioContext);vi.spyOn(performance,'now').mockReturnValue(1000);
+    const transport=new DrumAudio({duration:240.7666667,sampleRate:48000} as AudioBuffer);
+    await transport.play(120.5);
+    expect(transport.currentTime).toBe(120.5); // Waiting for the scheduled audible onset.
+    context!.currentTime=10.52;context!.stamp={contextTime:10.42,performanceTime:1000};
+    expect(transport.currentTime).toBeCloseTo(120.9,10); // .4 s heard, no second .1 s subtraction.
+    expect(transport.pause()).toBeCloseTo(120.9,10);
+    transport.seek(200.5);expect(transport.currentTime).toBe(200.5);
+    transport.dispose();
+  });
 
   it('creates audio on play, pauses/resumes once, seeks without duplicate sources, and disposes', async () => {
     const sources: Array<{ buffer: AudioBuffer | null; connect: ReturnType<typeof vi.fn>; disconnect: ReturnType<typeof vi.fn>;

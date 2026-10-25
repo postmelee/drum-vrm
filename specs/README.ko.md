@@ -11,6 +11,7 @@
 | 목적과 불변 조건 | [제품 요구사항](requirements.ko.md) |
 | 구성 요소와 데이터 흐름 | [아키텍처 개요](architecture/overview.ko.md) |
 | 원본 이벤트·매핑·연주 의도 | [MIDI 해석](architecture/midi-interpretation.ko.md) |
+| 로컬 저장·재열기와 원본 재연결 | [프로젝트 형식](architecture/project-format.ko.md) |
 | 시간·손발 배정·포즈 인터페이스 | [엔진 계약](architecture/engine-contract.ko.md) |
 | 휴머노이드·좌표·드럼 하드웨어 | [리그 계약](architecture/rig-contract.ko.md) |
 | 오디오 시계와 영상 프레임 | [오디오·출력 계약](architecture/audio-export-contract.ko.md) |

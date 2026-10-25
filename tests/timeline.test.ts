@@ -104,6 +104,10 @@ describe('source note evidence in the piano roll', () => {
     const notes = createTimelineNotes({ ...plan, hits: [hit] });
     expect(notes).toEqual([{ id: '0', time: .321987, note: 57, velocity: 33, name: 'Crash R', kind: 'strike', hit }]);
   });
+  it('preserves omitted source notes as distinct inspectable evidence',()=>{
+    const notes=createTimelineNotes({...plan,schemaVersion:2,hits:[],sourceEvents:[source('1:0',123000,38)],interpretations:[{sourceEventId:'1:0',kind:'omitted',instrument:'snare',pieceId:'snare'}]});
+    expect(notes).toEqual([{id:'1:0',time:.123,note:38,velocity:100,name:'Snare',kind:'omitted',hit:undefined}]);
+  });
 
   it('keeps ride and snare edge articulations on the correct instrument rows', () => {
     const notes=createTimelineNotes({...plan,hits:[

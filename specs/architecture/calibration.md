@@ -44,25 +44,33 @@ skin clearance or all drum targets. Implementation details live in
 ## Bounded kit fitting
 
 Different arm-to-leg ratios can require target layout changes even when both feet
-reach their pedals. An explicit **Fit kit to body** operation uses
-[fit.rs](../../crates/drum-engine/src/fit.rs) to fit hand-played surfaces in two stages:
+reach their pedals. [fit.rs](../../crates/drum-engine/src/fit.rs) proposes a layout
+from the measured body, with the snare posture as the first reference. It fits
+hand-played surfaces in two stages:
 
 1. Search a uniform transform. Scale positions around `[0, 1.235, 0.06]` metres
    and contact radii together, from 100% down to 60% in 2% steps. Lateral shift is
    zero. Shared vertical shift is bounded to ±0.5 m; forward shift ranges from
-   −0.25 to +0.10 m in 0.025 m steps. Height candidates are zero plus the mean
-   shoulder height minus 1.235 m, offset by −0.12 to +0.12 m in 0.03 m steps.
-2. For each reachable candidate, repair only surfaces that fail the posture checks
-   below. Local translation relative to that candidate is `Δx = 0`,
-   `Δy ∈ [−0.25, 0] m`, `Δz ∈ [0, +0.30] m`, sampled in 0.025 m steps.
-   Choose the smallest squared local displacement that passes; this step does not
-   change radii. Closed/open hi-hat move together in both stages. Kick and both
-   pedal contacts remain unchanged.
+   −0.25 to +0.10 m in 0.025 m steps. Height candidates include zero, the measured
+   snare-reference height difference clamped to ±0.5 m, and mean shoulder height
+   minus 1.235 m offset by −0.12 to +0.12 m in 0.03 m steps.
+2. Repair local placement in order: snare, hi-hat, floor tom, rack toms, cymbals.
+   Each piece must clear already placed nominal bodies while satisfying reach and
+   posture; this makes the snare an anchor rather than a target fitted around all
+   original obstacles. Relative translation is `Δx, Δz ∈ [−0.30, +0.30] m` and
+   `Δy ∈ [−0.25, +0.25] m`, sampled in 0.05 m steps. The exact snare-reference
+   displacement is also considered when within those bounds. This stage does not
+   change radii. Closed/open hi-hat move together. Kick and both pedal contacts
+   remain fixed throughout both stages.
 
 Try the original layout with local repair first. Otherwise prefer the largest scale
 with a complete candidate, then minimize the common squared displacement multiplied
 by the number of kit entries plus the sum of squared local displacements. A failed
 local repair does not stop the search for another uniform candidate or smaller scale.
+Within local repair, prefer proximity to the measured snare reference for the snare
+and to the candidate position for other pieces, with a smaller displacement cost.
+The reference uses mean shoulder position, upper-arm/forearm length and tool length;
+it is a soft placement preference, not a prescribed anatomical pose.
 
 For profiles with `handFrames`, `complete` requires designated hands to pass reach
 and skeletal posture checks at contact and two preparation samples. The samples are
@@ -73,22 +81,32 @@ and skeletal posture checks at contact and two preparation samples. The samples 
   0.10 times upper-arm length. Higher targets are exempt from this height bound.
 - Elbow forward position is at least shoulder Z minus 0.35 times upper-arm length.
 - Wrist forward position is at least shoulder Z plus 0.15 times forearm length.
+- Arm/tool-to-torso proxy clearance is at least −0.002 m.
 
-Snare checks both hands; other surfaces use their designated preferred hand.
-Legacy profiles without `handFrames` retain static reach checks only. These sampled
-guards do not certify every frame, transfer speed, anatomical joint comfort or
-skin/instrument clearance.
+Snare height must also be 0.4–1.6 upper-arm lengths below each shoulder. Snare, toms
+and crashes check both hands; hi-hat and ride check the right hand. Legacy profiles
+without `handFrames` retain static reach checks without these posture guards.
+
+All candidates also check nominal instrument bodies and the vertical hi-hat pull
+rod. Horizontal or vertical separation must provide a 5 mm margin; the rod uses a
+25 mm clearance radius. These envelopes follow the physical kit radii and standard
+body depths, not the exact imported meshes or cosmetic overrides. `complete` requires
+both the reach/posture and nominal-body/hi-hat-rod checks to pass. It does not certify
+every motion frame, transfer speed, anatomical comfort, skin clearance or all stand
+hardware.
 
 The proposal records the uniform `scale` and `translation`, plus `pieceAdjustments`
 entries containing `pieceId` and local `translation`. If no complete candidate exists,
 return the **original layout unchanged**, `scale: 1`, zero translation,
-`pieceAdjustments: []`, `complete: false` and failing `unreachablePieceIds`; those IDs
-can indicate posture failure as well as reach failure. The UI does not apply an
-incomplete proposal and asks for manual seat/target adjustment. It applies a complete
-proposal and replans only on the explicit action, never silently on character import.
+`pieceAdjustments: []` and `complete: false`. `unreachablePieceIds` identifies reach
+or posture failures; `clearancePieceIds` identifies nominal-body/hi-hat-rod overlaps.
+The UI keeps proposal and application separate: inspect a complete proposal, then
+explicitly apply it to change the layout and replan. An incomplete proposal leaves
+the current layout intact for manual seat/target adjustment. Character import does
+not silently apply a proposal; the previous applied setup can be restored.
 Fitting a successful result again leaves the layout unchanged and returns no local
-adjustments. Automatic collision-free fitting and controlled short/tall VRoid
-comparisons remain separate unfinished work.
+adjustments. These numeric guards do not establish universal fit across VRM body
+shapes; rendered comparisons remain necessary.
 
 ## Contact is a transform chain
 
@@ -108,16 +126,64 @@ around it; missing fingers use a less detailed fallback. The adapter supplies me
 forearm/palm axes and a desired palm direction in `handFrames`. The Rust solver treats
 the forearm and attached tool as a compound link, solves the elbow toward each target,
 then recovers the actual wrist and tool orientation while preserving bone lengths.
-Its common bend preference points down with modest outward/forward clearance, rather
-than deriving an elbow pole from the wrist rest target. This reduces upward/backward
-folding near the body; the fit guards above still check the resulting posture.
-Forearm roll follows the desired palm direction where geometry permits.
+The anatomical elbow preference combines the outward shoulder axis with a downward
+component. A shortest-arc rotation transports that perpendicular bend plane from
+body-forward to the shoulder-to-tip direction. This avoids projecting a fixed pole
+through a singularity within the front playing workspace. A shortest-arc rotation
+aligns the compound link; a continuous, bounded roll prefers the desired palm
+direction without forcing it exactly. There is no iterative per-frame clearance
+optimization. The fit guards above separately check the resulting posture.
 
 This replaces a fixed world hand orientation with a target-dependent neutral wrist;
 stroke pitch is applied around that calibrated relationship. It does not implement
 per-joint anatomical limits, skin collisions or every grip style. Contact error and
 hand-forward/forearm swing are distinct observations: inspect both, including the
 rendered fingers and mesh, before claiming a natural grip.
+
+## Coordinated torso and inspection
+
+Optional `torsoPivot` is measured from the normalized spine and translated with the
+seat. [body_motion.rs](../../crates/drum-engine/src/body_motion.rs) precomputes a
+12 Hz yaw curve, bounded to ±0.24 radians. Each step examines 13 candidates within
+±0.06 radians of the previous planned yaw. Costs balance the direction of both hand
+targets, torso/forearm proxy clearance and change in yaw. Smooth interpolation is
+evaluated by absolute time; this is planned continuity, not accumulated frame state.
+The resulting curve is checked at every assigned hand impact, including impacts
+between sample knots. If facing loses reach, the entire curve is attenuated by
+halving its angles until reach is retained, with zero yaw as the fallback. This
+preserves curve continuity and the source contact times.
+
+Rotating the profile moves shoulders, bend references, chest and head around the
+pivot. Both arms are then solved again to the original world-space tool targets.
+Pelvis, leg roots and pedal support remain stable. Without `torsoPivot`, the body
+stays facing forward. The renderer applies the corresponding spine rotation before
+solving its limb bones, so a decorative chest turn cannot substitute for moved
+shoulder roots.
+
+When `handFrames` are available,
+[hand_coordination.rs](../../crates/drum-engine/src/hand_coordination.rs) then plans
+both elbow swivels on a 30 Hz grid plus the original impact timestamps. It evaluates
+the already turned body and existing tool paths, with forward/backward refinement
+of torso, arm-to-arm and stick-to-stick proxy costs. Angles remain within ±0.8 rad;
+neighboring samples differ by at most 2 rad/s. C1 smoothstep interpolation has a
+maximum 3 rad/s angular rate for this additional swivel track. These bounds apply
+to the swivel contribution, not the entire animated elbow or wrist. The track is
+precomputed, independent of playback order, and does not move source impacts or
+stretch bones. Lower proxy costs can still leave penetrations and do not establish
+skin clearance or natural posture.
+
+[clearance.rs](../../crates/drum-engine/src/clearance.rs) estimates an elliptical
+torso from semantic shoulder width and checks sampled arm/tool segments against it.
+`inspect_pose_at` additionally reports arm-to-arm and stick-to-stick proxy distances
+and bone-length error. The [engine contract](engine-contract.md) defines the fields.
+These metrics support reproducible inspection but do not inspect skin, clothing,
+all instrument geometry or the entire continuous path. Zero numeric contact error
+and nonnegative proxy clearance are separate from a convincing rendered pose.
+
+The [ergonomics and sticking research](../../docs/research/ergonomics-and-sticking.md)
+motivates these constraints. Numeric search bounds and cost weights are engineering
+choices, not biomechanical measurements from Yamaha, PAS or Zildjian. Learned
+whole-body motion and expanded expressive gestures are separate extensions.
 
 ## Calibration update transaction
 

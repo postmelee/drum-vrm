@@ -61,12 +61,14 @@ local file for re-import. Retaining a message also does not mean its musical eff
 is implemented.
 
 `interpretations` references each retained event by `sourceEventId` and classifies
-it as `strike`, `countIn`, `control`, `unmapped` or `preserved`. A strike links to a `hitId` and
+it as `strike`, `countIn`, `control`, `omitted`, `unmapped` or `preserved`. A strike links to a `hitId` and
 its instrument, physical piece and articulation. `preserved` means retained without
 an applied motion/control effect, including currently unconsumed note-offs and CCs.
 An unsupported positive note-on remains visible as `unmapped`, with a diagnostic.
 An explicit hi-hat policy can interpret a close as `control`, referencing the open
 event with `relatedSourceEventId` instead of creating a second hit.
+`omitted` records an explicit arrangement omission while retaining the source message
+and available mapping metadata; it creates neither a hit nor a control.
 
 Calibration can change a hit's target and limb, but not the source event. Hit-array
 indices may change after selecting a different mapping; use source event identity
@@ -92,7 +94,7 @@ DAWs can display different octave names for the same MIDI key.
 | 42 / 44 / 46 | Hi-hat `closed` / `footClose` / `open` | Same meanings |
 | 49 / 57 | Left/right crash pieces | Left/right crash pieces |
 | 52 | Crash `china` | Ride `edge` |
-| 75 | Unmapped | Count-in only with the explicit option; otherwise unmapped |
+| 75 | Count-in only with the explicit option; otherwise unmapped | Same meanings |
 
 This table highlights profile differences, not the complete supported-note table.
 The mapping implementation owns all accepted notes. Logic foot splash and crash-stop
@@ -109,12 +111,43 @@ surface; `pedalHat` addresses its separate foot contact. These aliases are not t
 independent hi-hat cymbals. Contact-region-specific rimshot mechanics are separate
 from identifying an event as a rimshot.
 
-`Selection.countInNote75` is false by default. In the Logic profile, enabling it
+`Selection.countInNote75` is false by default. In either supported profile, enabling it
 explicitly interprets note 75 as a count-in cue. The source event is retained, but
 no drum hit, limb assignment or synthesized strike is added. A different file can
 use that note as played percussion, so this choice must remain visible and reversible.
 It is not automatic count-in detection or a stick-click animation.
-Enabling this option with `gm` is rejected rather than silently ignored.
+
+## Explicit arrangement edits
+
+`Selection` and schema 2 plans retain two reversible, source-addressed directives:
+
+| Field | Meaning |
+| --- | --- |
+| `omittedSourceEventIds` | Array of positive note-on source IDs excluded from this arrangement; default `[]` |
+| `handOverrides` | Object mapping a retained hand-strike source ID to left `0` or right `1`; default `{}` |
+
+IDs use the existing `track:eventIndex` identity, not a hit-array index, song filename
+or avatar. They must exist in the selected tracks/channel. Omission rejects duplicate
+IDs and nonpositive or non-note-on events. A hand override must identify a mapped,
+non-omitted hand strike; foot events, cues and unmapped notes cannot receive a hand.
+Removing an override returns that event to automatic assignment. Source messages,
+ticks, velocity, duration and the original MIDI remain unchanged.
+
+Omission precedes hi-hat control derivation: omitted opens/closes do not create pairs
+or constrain preparation. Recompute controls from remaining arranged events, then
+validate their retained source references. A hand override narrows the planner's
+allowed hand after reach, occupancy and transfer checks. If that hand is infeasible,
+retain the hit as unassigned with a diagnostic; do not substitute the other hand or
+retime the event. An explicit omission is distinct from an unresolved required hit.
+The existing synthesized preview follows the arranged hits; a supplied WAV is not
+edited by either directive.
+
+Loading a plan revalidates IDs and rederives interpretation/control consistency.
+Changing only the omission list without its corresponding interpretations/hits is
+rejected. Older schema 2 plans default to empty directives; schema 1 cannot contain
+nonempty directives because it lacks retained source evidence. The event inspector
+exposes omission and automatic/left/right selection; the
+[project format](project-format.md) preserves the selected directives alongside the plan.
 
 ## Explicit hi-hat intent and control state
 
@@ -124,10 +157,11 @@ an applicable continuous controller or an explicit user instruction, a short gap
 does not uniquely identify aperture.
 
 `Selection.hihatPolicy` and the corresponding plan field choose `literal` (default)
-or `shortOpenClose`. The latter is an explicit choice for `logicDkdGm`, not automatic
-intent detection. It pairs a positive note 44 with the nearest preceding unpaired
-positive note 46 on the same channel, including across selected tracks. A positive
-42, 33 or another 46 replaces/cancels the pending open. The gap must be positive and at
+or `shortOpenClose`. The latter is an explicit choice in either supported mapping,
+not automatic intent detection. It pairs mapped positive foot-close events with the
+nearest preceding unpaired open-hi-hat on the same channel, including across selected
+tracks. A mapped closed hi-hat cancels the pending open; another open replaces it.
+The gap must be positive and at
 most both 80 ms and one quarter of the local quarter-note duration. Conflicting
 overlapping control intervals or closures on another selected channel remain literal
 foot strikes with a diagnostic: the selected channels share one physical hi-hat.
@@ -142,8 +176,10 @@ and the selected policy when loading a plan.
 
 Absolute-time evaluation smoothly opens during at most 100 ms before the hand
 strike, then reaches zero at the original close time. The signed `releaseStartTimeUs`
-is the later of open time minus 100 ms and the latest preceding positive 42/33/44
-on any selected channel, including literal strikes. It can be negative for preparation
+is the later of open time minus 100 ms and the latest preceding mapped closed-hi-hat
+or foot-close event on any selected channel, including literal strikes and excluding
+omitted events. Note 33 constrains closure only in a mapping that gives it that role.
+The start can be negative for preparation
 before song time zero. A closure with no remaining preparation time or during an open
 interval prevents pairing. Loading rederives the release boundary from source events;
 an edited curve cannot override an original closure. The ankle remains at its pedal
@@ -155,8 +191,9 @@ The same curve is evaluated for playback, seek and export without accumulating s
 Retained CCs do not yet drive openness, and there is no automatic pairing in `literal`.
 The current visual state drives the ankle; it does not separate the cymbal meshes.
 
-The policy applies to the selected performance. Future per-event/region overrides
-and continuous controllers should use this precedence:
+The policy applies to the selected arrangement. Explicit omissions already precede
+derivation; future per-event aperture/region overrides and continuous controllers
+should use this precedence:
 
 1. Apply an explicit user cue for the selected source events or region.
 2. Interpret controller values only through a profile that defines their meaning.
@@ -187,23 +224,21 @@ choke behavior. It does not determine the avatar's hands. User WAV replacement f
 the [audio/export time contract](audio-export-contract.md) and does not require a
 VST host or a recreation of Logic's sound engine.
 
-## Planned import guidance
+## Import guidance
 
-The current explicit controls above are implemented; the following generalization
-is proposed for #14, based on the [follow-up research](../../docs/research/ergonomics-and-sticking.md).
-Treat producer metadata, instrument mapping and performance intent separately.
+The controls separate instrument mapping from performance intent, following the
+[research](../../docs/research/ergonomics-and-sticking.md).
 Standard MIDI Files do not guarantee a producer identifier, and one DAW can export
-different instrument maps. Recommend a profile with evidence and uncertainty rather
-than asserting that a file came from Logic or choosing solely by unmapped-note count.
+different instrument maps. The browser shows note-based mapping evidence, without
+asserting that a file came from Logic or automatically selecting a profile.
 
-Expose relevant choices under **Drum sound mapping / Interpretation**: count-in
-candidates only when present, and hi-hat control choices only when applicable.
-Generalize short-open-close handling through mapped roles/capabilities rather than
-a DAW name or fixed note keys. Show affected events and retain reversible explicit
-intent; a short pair is not automatically a partial opening, nor is note 75 always
-count-in. Controller interpretation still requires a defining profile. Persist
-confirmed policy and overrides with the future project format (#15). These proposed
-controls do not imply new runtime support for other maps or controllers.
+Under **Drum sound mapping / Interpretation**, count-in candidates and applicable
+hi-hat control choices are shown from the prepared selection. Short-open-close
+handling uses mapped roles rather than a DAW identity. A short pair is not
+automatically a partial opening, nor is note 75 always count-in. Controller
+interpretation still requires a defining profile. Confirmed policy and source-event
+edits persist with the [project format](project-format.md). These controls do not
+imply support for additional instrument maps or controllers.
 
 ## Compatibility and verification
 
@@ -217,12 +252,12 @@ Acceptance separates event accounting from performance quality:
 
 - Every selected channel event has a stable identity and interpretation; unsupported
   positive notes are counted separately from supported but unassigned strikes.
-- Count-in cues and state changes are not counted as missing physical impacts.
+- Count-in cues, explicit omissions and state changes are not counted as missing physical impacts.
 - Two original simultaneous crashes remain two events and two intended surfaces.
 - Replanning preserves original times, values and identities; repeated or shuffled
   evaluation preserves the major pose.
 - Restored limb assignments must respect instrument roles, the same-limb minimum
-  interval and transfer-speed limits used by the planner, not just endpoint reach.
+  interval, transfer-speed limits and explicit hand overrides, not just endpoint reach.
 - Actual tool/foot contact, wrist posture, reach and clearance are measured separately.
   An accurate target or zero unassigned hits alone does not establish natural playing.
 

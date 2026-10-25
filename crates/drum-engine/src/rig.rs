@@ -8,7 +8,7 @@ mod hand_solver;
 pub use hand_solver::HandSolution;
 
 pub type Quat = [f64; 4]; // xyzw, local tool frame -> legacy world frame
-pub const RIG_POSE_FLOATS: usize = POSE_FLOATS + 16;
+pub const RIG_POSE_FLOATS: usize = POSE_FLOATS + 20;
 pub const COORDINATE_SYSTEM: &str = "legacy-y-up-z-forward-left-negative-x";
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
 
@@ -42,6 +42,8 @@ pub struct RigProfile {
     /// their fixed world rotation contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hand_frames: Option<[HandControlFrame; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub torso_pivot: Option<Vec3>,
     pub pelvis: Vec3,
     pub chest: Vec3,
     pub head: Vec3,
@@ -98,6 +100,7 @@ impl RigProfile {
             ],
             contact_rotations: [[0.0, 0.0, 0.0, 1.0]; 4],
             hand_frames: None,
+            torso_pivot: None,
             pelvis: [0.0, 0.71, -0.15],
             chest: [0.0, 1.24, -0.10],
             head: [0.0, 1.62, -0.10],
@@ -128,7 +131,9 @@ impl RigProfile {
         {
             return Err("지원하지 않는 리그 프로필 버전·좌표계·ID입니다.".into());
         }
-        if ![self.pelvis, self.chest, self.head].iter().all(point) {
+        if ![self.pelvis, self.chest, self.head].iter().all(point)
+            || self.torso_pivot.as_ref().is_some_and(|v| !point(v))
+        {
             return Err("리그 몸통 좌표가 유한한 미터 범위를 벗어납니다.".into());
         }
         if let Some(frames) = &self.hand_frames {
@@ -196,6 +201,20 @@ impl RigProfile {
             .as_ref()
             .map(|frames| hand_solver::solve(self, limb, tip, pitch, &frames[limb]))
     }
+    pub fn solve_hand_with_swivel(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+    ) -> Option<HandSolution> {
+        if limb >= 2 {
+            return None;
+        }
+        self.hand_frames.as_ref().map(|frames| {
+            hand_solver::solve_with_swivel(self, limb, tip, pitch, &frames[limb], swivel)
+        })
+    }
 
     pub fn reachable(&self, limb: usize, tip: Vec3) -> bool {
         if limb < 2 {
@@ -219,5 +238,23 @@ impl RigProfile {
         );
         let [a, b] = self.lengths[limb];
         d >= (a - b).abs() + 1e-5 && d <= a + b - 1e-4
+    }
+}
+
+impl RigProfile {
+    pub fn turned(&self, yaw: f64) -> Self {
+        let Some(pivot) = self.torso_pivot else {
+            return self.clone();
+        };
+        let mut p = self.clone();
+        let q = [0.0, (yaw * 0.5).sin(), 0.0, (yaw * 0.5).cos()];
+        let turn = |v| add(pivot, rotate(q, sub(v, pivot)));
+        for limb in 0..2 {
+            p.roots[limb] = turn(p.roots[limb]);
+            p.bend_poles[limb] = rotate(q, p.bend_poles[limb]);
+        }
+        p.chest = turn(p.chest);
+        p.head = turn(p.head);
+        p
     }
 }

@@ -135,3 +135,74 @@ fn malformed_hand_frames_are_rejected_before_solving() {
     invalid.hand_frames.as_mut().unwrap()[0].desired_palm = [0.0, 2.0, 0.0];
     assert!(invalid.validate().is_err());
 }
+
+/// Independent asymmetric held-tool geometry, with a palm already angled in
+/// the calibrated posture. Exercise local IK continuity across the front
+/// workspace, including folded but reachable preparatory positions.
+#[test]
+fn nearby_targets_do_not_switch_elbow_or_palm_branches() {
+    let mut profile = profile(0.82, [0.0, 1.0, 0.0]);
+    let forearm = unit([-0.48, -0.52, 0.71]);
+    let palm = projected([0.2, 0.9, 0.5], forearm);
+    profile.contact_rotations[0] = [0.0, 0.0, 0.0, 1.0];
+    profile.grip_offsets[0] = [-0.035, 0.005, 0.025];
+    profile.tip_offsets[0] = [0.0, 0.0, 0.31];
+    profile.hand_frames.as_mut().unwrap()[0] = HandControlFrame {
+        forearm,
+        palm,
+        desired_palm: [0.0, 1.0, 0.0],
+    };
+    for x in -12..=12 {
+        for y in -12..=4 {
+            for z in 3..=14 {
+                let target = add(
+                    profile.roots[0],
+                    [x as f64 * 0.05, y as f64 * 0.05, z as f64 * 0.05],
+                );
+                let a = profile.solve_hand(0, target, -0.2).unwrap();
+                if !a.reachable {
+                    continue;
+                }
+                for direction in [[1e-6, 0.0, 0.0], [0.0, 1e-6, 0.0], [0.0, 0.0, 1e-6]] {
+                    let b = profile.solve_hand(0, add(target, direction), -0.2).unwrap();
+                    if !b.reachable {
+                        continue;
+                    }
+                    assert!(
+                        distance(a.middle, b.middle) < 0.001,
+                        "elbow jumped near {target:?}"
+                    );
+                    assert!(
+                        distance(a.end, b.end) < 0.001,
+                        "wrist jumped near {target:?}"
+                    );
+                    let agreement = a
+                        .rotation
+                        .iter()
+                        .zip(b.rotation)
+                        .map(|(x, y)| x * y)
+                        .sum::<f64>()
+                        .abs()
+                        .min(1.0);
+                    assert!(agreement.acos() * 2.0 < 0.01, "palm jumped near {target:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn degenerate_shoulder_span_and_swivel_keep_real_lengths() {
+    for right in [[-0.19, 1.235, 0.06], [-0.19, 1.5, 0.06]] {
+        let mut p = profile(1.0, [0.0, 1.0, 0.0]);
+        p.roots[1] = right;
+        for swivel in [-0.8, 0.0, 0.8] {
+            let hand = p
+                .solve_hand_with_swivel(0, [-0.18, 0.79, 0.4], 0.0, swivel)
+                .unwrap();
+            assert!((distance(p.roots[0], hand.middle) - p.lengths[0][0]).abs() < 1e-9);
+            assert!((distance(hand.middle, hand.end) - p.lengths[0][1]).abs() < 1e-9);
+            assert!(distance(hand.tip, [-0.18, 0.79, 0.4]) < 1e-9);
+        }
+    }
+}

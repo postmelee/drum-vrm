@@ -91,6 +91,7 @@ pub enum InterpretationKind {
     Unmapped,
     Preserved,
     Control,
+    Omitted,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -157,6 +158,7 @@ pub fn interpret(
     source: &SourceEvent,
     profile: MappingProfile,
     count_in_note75: bool,
+    omitted: bool,
 ) -> Interpretation {
     let mut result = Interpretation {
         source_event_id: source.id.clone(),
@@ -169,7 +171,7 @@ pub fn interpret(
     };
     if let SourceMessage::NoteOn { key, velocity } = source.message {
         if velocity > 0 {
-            if profile == MappingProfile::LogicDkdGm && count_in_note75 && key == 75 {
+            if count_in_note75 && key == 75 {
                 result.kind = InterpretationKind::CountIn;
             } else if let Some(mapped) = mapped_note(profile, key) {
                 result.kind = InterpretationKind::Strike;
@@ -179,16 +181,62 @@ pub fn interpret(
             } else {
                 result.kind = InterpretationKind::Unmapped;
             }
+            if omitted {
+                // Preserve mapping metadata as context, but never create a Hit
+                // or a control for an explicitly omitted source performance event.
+                result.kind = InterpretationKind::Omitted;
+            }
         }
     }
     result
 }
 
-pub fn validate_options(profile: MappingProfile, count_in_note75: bool) -> Result<(), String> {
-    if count_in_note75 && profile != MappingProfile::LogicDkdGm {
-        return Err(
-            "노트 75 카운트인은 Logic Drum Kit Designer GM 매핑에서 명시적으로 선택하세요.".into(),
-        );
+pub fn validate_options(_profile: MappingProfile, _count_in_note75: bool) -> Result<(), String> {
+    // Intent is explicitly selected by the user, independent of the producer.
+    Ok(())
+}
+
+/// Arrangement directives address retained positive note-ons, never indexes in a
+/// derived hit array. A hand choice is meaningful only for a mapped hand strike.
+pub fn validate_arrangement(
+    sources: &[SourceEvent],
+    omitted_ids: &[String],
+    hand_overrides: &BTreeMap<String, usize>,
+    profile: MappingProfile,
+    count_in_note75: bool,
+) -> Result<(), String> {
+    if omitted_ids.len() > MAX_EVENTS || hand_overrides.len() > MAX_HITS {
+        return Err("연주 편집 지시가 이벤트 한계를 초과합니다.".into());
+    }
+    let sources: BTreeMap<_, _> = sources
+        .iter()
+        .map(|source| (source.id.as_str(), source))
+        .collect();
+    let mut omitted = BTreeSet::new();
+    let positive_source = |id: &str| -> Result<&SourceEvent, String> {
+        sources.get(id).copied().filter(|source| {
+            matches!(source.message, SourceMessage::NoteOn { velocity, .. } if velocity > 0)
+        }).ok_or_else(|| format!("연주 편집의 원본 이벤트 {id}가 선택한 양의 note-on에 없습니다."))
+    };
+    for id in omitted_ids {
+        positive_source(id)?;
+        if !omitted.insert(id.as_str()) {
+            return Err("제외할 원본 이벤트가 중복되었습니다.".into());
+        }
+    }
+    for (id, hand) in hand_overrides {
+        let source = positive_source(id)?;
+        let mapped = interpret(source, profile, count_in_note75, false);
+        if *hand > 1
+            || omitted.contains(id.as_str())
+            || mapped.kind != InterpretationKind::Strike
+            || matches!(
+                mapped.instrument,
+                Some(Instrument::Kick | Instrument::PedalHat) | None
+            )
+        {
+            return Err(format!("손 지정 {id}는 제외하지 않은 손 타격에 왼손(0) 또는 오른손(1)만 사용할 수 있습니다."));
+        }
     }
     Ok(())
 }
@@ -232,6 +280,8 @@ pub fn validate_interpretation(plan: &PerformancePlan) -> Result<(), String> {
             || plan.count_in_note75
             || plan.hihat_policy != crate::hihat::HihatPolicy::Literal
             || !plan.controls.is_empty()
+            || !plan.omitted_source_event_ids.is_empty()
+            || !plan.hand_overrides.is_empty()
         {
             return Err("버전 1 연주 계획은 버전 2 해석 정보를 포함할 수 없습니다.".into());
         }
@@ -312,6 +362,18 @@ pub fn validate_interpretation(plan: &PerformancePlan) -> Result<(), String> {
     if interpretations.len() != plan.interpretations.len() {
         return Err("중복 MIDI 해석입니다.".into());
     }
+    validate_arrangement(
+        &plan.source_events,
+        &plan.omitted_source_event_ids,
+        &plan.hand_overrides,
+        plan.mapping_profile,
+        plan.count_in_note75,
+    )?;
+    let omitted: BTreeSet<_> = plan
+        .omitted_source_event_ids
+        .iter()
+        .map(String::as_str)
+        .collect();
     let (expected_controls, _) = crate::hihat::derive_controls(plan);
     if expected_controls != plan.controls {
         return Err("하이햇 제어가 원본 이벤트와 선택한 해석 규칙에 일치하지 않습니다.".into());
@@ -348,7 +410,12 @@ pub fn validate_interpretation(plan: &PerformancePlan) -> Result<(), String> {
         let Some(actual) = interpretations.get(source.id.as_str()) else {
             return Err("원본 이벤트의 해석이 없습니다.".into());
         };
-        let mut expected = interpret(source, plan.mapping_profile, plan.count_in_note75);
+        let mut expected = interpret(
+            source,
+            plan.mapping_profile,
+            plan.count_in_note75,
+            omitted.contains(source.id.as_str()),
+        );
         if let Some(control) = closes.get(source.id.as_str()) {
             expected.kind = InterpretationKind::Control;
             expected.related_source_event_id = Some(control.open_source_event_id.clone());

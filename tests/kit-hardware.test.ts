@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { KitHardwareLayer, pieceAnchors } from '../src/kit-hardware';
+import { KitHardwareLayer, pieceAnchors, pieceBodyEnvelope, cymbalStandRoute, segmentClearsBody } from '../src/kit-hardware';
 import { createPieceModel, disposeModel, resolvePieceVisual } from '../src/model-procedural';
 import { alignInstrumentBody } from '../src/instrument-body';
 import { applyHitResponse, bindHitResponse } from '../src/hit-response';
 import type { KitPiece } from '../src/types';
+import { DEFAULT_KIT } from '../src/scene';
 
 const kit: KitPiece[] = [
   { id: 'kick', label: 'Kick', position: [.2, .08, .62], radius: .26 },
@@ -76,5 +77,59 @@ describe('shared hardware and interchangeable bodies', () => {
     expect(pivot.userData.approximateContact).toBe(false);
     snapshot(hardware.root).forEach((value, index) => expect(value.matrix).toEqual(before[index].matrix));
     hardware.dispose(); disposeModel(pivot);
+  });
+});
+
+describe('physical baseline and cymbal support routing', () => {
+  it('has separated nominal body volumes in the rendered default layout', () => {
+    const bodies = DEFAULT_KIT.flatMap(piece => { const envelope = pieceBodyEnvelope(piece); return envelope ? [{ id: piece.id, ...envelope }] : []; });
+    for (const [index, a] of bodies.entries()) for (const b of bodies.slice(index + 1)) {
+      const verticalGap = Math.max(a.minY, b.minY) - Math.min(a.maxY, b.maxY);
+      const horizontalGap = Math.hypot(a.center[0] - b.center[0], a.center[2] - b.center[2]) - a.radius - b.radius;
+      expect(Math.max(verticalGap, horizontalGap), `${a.id}/${b.id} nominal clearance`).toBeGreaterThan(.005);
+    }
+    const diameters = Object.fromEntries(DEFAULT_KIT.map(piece => [piece.id, 2 * piece.radius / .0254]));
+    expect(diameters.snare).toBeCloseTo(14); expect(diameters.hihat).toBeCloseTo(14);
+    expect(diameters.kick).toBeCloseTo(20);
+  });
+
+  it('routes the ride mast outside the floor tom while retaining its cymbal mount and target', () => {
+    const ride = DEFAULT_KIT.find(piece => piece.id === 'ride')!, floor = DEFAULT_KIT.find(piece => piece.id === 'tomLow')!;
+    const mount = pieceAnchors(ride).mount, body = pieceBodyEnvelope(floor)!;
+    expect(segmentClearsBody([mount[0], .025, mount[2]], [mount[0], mount[1] + .065, mount[2]], body)).toBe(false);
+    const route = cymbalStandRoute(ride, DEFAULT_KIT);
+    expect(route.clear).toBe(true); expect(route.base[0]).not.toBe(mount[0]);
+    expect(route.mount).toEqual([mount[0], mount[1] + .065, mount[2]]);
+    expect(segmentClearsBody(route.base, route.boom, body)).toBe(true);
+    expect(segmentClearsBody(route.boom, route.mount, body)).toBe(true);
+    const hardware = new KitHardwareLayer(); hardware.setLayout(DEFAULT_KIT);
+    expect(hardware.root.getObjectByName('Hardware/ride')!.getObjectByName('cymbalBoom')).toBeDefined();
+    hardware.dispose();
+  });
+
+  it('checks full mast/boom segments and reports an impossible straight hi-hat support', () => {
+    const obstacle = { center: [0, .5, 0] as [number, number, number], radius: .2, minY: .4, maxY: .6 };
+    expect(segmentClearsBody([-.4, .5, 0], [.4, .5, 0], obstacle)).toBe(false);
+    expect(segmentClearsBody([-.4, .7, 0], [.4, .7, 0], obstacle)).toBe(true);
+    const hat = DEFAULT_KIT.find(piece => piece.id === 'hihat')!;
+    const obstructed = [...DEFAULT_KIT, { id: 'tomHigh', label: 'Obstruction', position: pieceAnchors(hat).mount, radius: .2 } satisfies KitPiece];
+    const route = cymbalStandRoute(hat, obstructed);
+    expect(route.clear).toBe(false);
+    expect(route.base[0]).toBe(hat.position[0]); // Never quietly move a pull-rod away from its cymbal.
+  });
+
+  it('uses physical kick diameter for both procedural and imported bodies', () => {
+    const kick = DEFAULT_KIT.find(piece => piece.id === 'kick')!;
+    const model = createPieceModel(kick, resolvePieceVisual('studio', kick.id), 'studio', DEFAULT_KIT, false);
+    model.root.updateMatrixWorld(true);
+    const shell = model.root.children.find(node => node.userData.hitResponseRole === 'shell')!;
+    const bounds = new THREE.Box3().setFromObject(shell);
+    expect(bounds.getSize(new THREE.Vector3()).y).toBeCloseTo(2 * (kick.radius + .017), 5);
+    expect(bounds.min.y).toBeGreaterThanOrEqual(0);
+    const imported = new THREE.Group(); imported.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, .7), new THREE.MeshBasicMaterial()));
+    const pivot = new THREE.Group(); pivot.add(imported);
+    alignInstrumentBody(imported, pivot, kick, resolvePieceVisual('studio', kick.id));
+    expect(new THREE.Box3().setFromObject(pivot).getSize(new THREE.Vector3()).y).toBeCloseTo(2 * kick.radius);
+    disposeModel(model.root); disposeModel(pivot);
   });
 });

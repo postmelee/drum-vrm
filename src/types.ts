@@ -9,13 +9,13 @@ export interface RigProfile {
   lengths: [[number, number], [number, number], [number, number], [number, number]];
   restTips: [Vec3, Vec3, Vec3, Vec3]; bendPoles: [Vec3, Vec3, Vec3, Vec3];
   gripOffsets: [Vec3, Vec3, Vec3, Vec3]; tipOffsets: [Vec3, Vec3, Vec3, Vec3];
-  contactRotations: [Quat, Quat, Quat, Quat]; handFrames?: [HandControlFrame, HandControlFrame]; pelvis: Vec3; chest: Vec3; head: Vec3;
+  contactRotations: [Quat, Quat, Quat, Quat]; handFrames?: [HandControlFrame, HandControlFrame]; torsoPivot?: Vec3; pelvis: Vec3; chest: Vec3; head: Vec3;
 }
-export const RIG_POSE_FLOATS = 73;
+export const RIG_POSE_FLOATS = 77;
 export type Instrument = 'kick'|'snare'|'hihat'|'openHat'|'pedalHat'|'tomHigh'|'tomMid'|'tomLow'|'crash'|'ride';
 /** Physical identity is separate from its voice; both crashes use the crash voice. */
 export type PieceId = Instrument | 'crashRight';
-export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; complete: boolean; }
+export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; }
 export interface KitPiece { id: PieceId; instrument?: Instrument; label: string; position: Vec3; radius: number; }
 export const pieceInstrument = (piece: KitPiece): Instrument => piece.instrument ?? (piece.id === 'crashRight' ? 'crash' : piece.id);
 export const hitPieceId = (hit: Hit): PieceId => hit.pieceId ?? hit.instrument;
@@ -25,17 +25,17 @@ export interface TrackInfo { index: number; name: string; noteCount: number; dru
 export interface MidiInfo { tracks: TrackInfo[]; suggestedTracks: number[]; format: number; ppq: number; }
 export type MappingProfile = 'gm' | 'logicDkdGm';
 export type HihatPolicy = 'literal'|'shortOpenClose';
-export interface Selection { tracks: number[]; channel: number | null; mappingProfile?: MappingProfile; countInNote75?: boolean; hihatPolicy?: HihatPolicy; hihatOpenness?: number; }
+export interface Selection { tracks: number[]; channel: number | null; mappingProfile?: MappingProfile; countInNote75?: boolean; hihatPolicy?: HihatPolicy; hihatOpenness?: number; omittedSourceEventIds?: string[]; handOverrides?: Record<string,0|1>; }
 export type SourceMessage = { kind: 'noteOn'|'noteOff'; key: number; velocity: number }
   | { kind: 'controller'; controller: number; value: number } | { kind: 'programChange'; program: number }
   | { kind: 'pitchBend'; value: number } | { kind: 'polyAftertouch'; key: number; pressure: number }
   | { kind: 'channelAftertouch'; pressure: number };
 export interface SourceEvent { id: string; track: number; eventIndex: number; tick: number; timeUs: number; channel: number; message: SourceMessage; }
-export interface EventInterpretation { sourceEventId: string; kind: 'strike'|'countIn'|'unmapped'|'preserved'|'control'; relatedSourceEventId?: string; instrument?: Instrument; pieceId?: PieceId; articulation?: string; hitId?: number; }
+export interface EventInterpretation { sourceEventId: string; kind: 'strike'|'countIn'|'unmapped'|'preserved'|'control'|'omitted'; relatedSourceEventId?: string; instrument?: Instrument; pieceId?: PieceId; articulation?: string; hitId?: number; }
 export interface TempoAnchor { tick: number; time: number; microsecondsPerQuarter: number; }
 export interface TimeSignature { tick: number; numerator: number; denominator: number; }
 export interface HihatControl { kind: 'hihatClose'; sourceEventId: string; openSourceEventId: string; releaseStartTimeUs: number; openTimeUs: number; timeUs: number; openness: number; }
-export interface PerformancePlan { countInNote75?: boolean; hihatPolicy?: HihatPolicy; hihatOpenness?: number; controls?: HihatControl[]; mappingProfile?: MappingProfile; mappingVersion?: string; sourceEvents?: SourceEvent[]; interpretations?: EventInterpretation[]; engineVersion?: string; plannerVersion?: string; midiHash?: string; calibrationId?: string; preRoll?: number; tail?: number; schemaVersion: number; duration: number; hits: Hit[]; diagnostics: Diagnostic[]; kit: KitPiece[]; tempoCount: number; ppq?: number; endTick?: number; tempoMap?: TempoAnchor[]; timeSignatures?: TimeSignature[]; }
+export interface PerformancePlan { omittedSourceEventIds?: string[]; handOverrides?: Record<string,0|1>; countInNote75?: boolean; hihatPolicy?: HihatPolicy; hihatOpenness?: number; controls?: HihatControl[]; mappingProfile?: MappingProfile; mappingVersion?: string; sourceEvents?: SourceEvent[]; interpretations?: EventInterpretation[]; engineVersion?: string; plannerVersion?: string; midiHash?: string; calibrationId?: string; preRoll?: number; tail?: number; schemaVersion: number; duration: number; hits: Hit[]; diagnostics: Diagnostic[]; kit: KitPiece[]; tempoCount: number; ppq?: number; endTick?: number; tempoMap?: TempoAnchor[]; timeSignatures?: TimeSignature[]; }
 // Packed world-space XYZ: left arm, right arm, left leg, right leg, each
 // root, middle joint, end joint, stick tip/foot toe (12 floats); pelvis,
 // chest and head at 48, 51, 54. Total 57 floats. Metres, +Y up, +Z forward.
@@ -47,3 +47,5 @@ export const SAMPLE_RATE = 48000;
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const outputFrameCount = (plan: PerformancePlan) => Math.ceil((PRE_ROLL + plan.duration + TAIL) * FPS);
 export const outputDuration = (plan: PerformancePlan) => outputFrameCount(plan) / FPS;
+
+export interface PoseInspection { scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; boneLengthErrorMeters: number; poseFloats: number; }

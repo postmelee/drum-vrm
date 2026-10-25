@@ -10,6 +10,7 @@
 | [엔진](engine-contract.ko.md) | 입력 제한, 시간, 손발 배정과 프로필·포즈 API |
 | [리그](rig-contract.ko.md) | 의미 기반 본, 좌표 변환, 보정, 렌더링된 접촉과 드럼 외형 |
 | [오디오·출력](audio-export-contract.ko.md) | 곡·출력 시각, PCM, 재생 시계와 인코딩 |
+| [로컬 프로젝트 형식](project-format.ko.md) | 버전별 설정, 원본 근거, 동일 파일 연결과 복원 검증 |
 
 상세 문서는 [체형·도구·키트 보정](calibration.ko.md),
 [휴머노이드 호환성](rig-compatibility.ko.md), [주법과 표현](performance-expression.ko.md),

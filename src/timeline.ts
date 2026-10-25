@@ -107,11 +107,11 @@ export function createTimelineNotes(plan:PerformancePlan):TimelineNote[] {
     const meaning=meanings.get(source.id),hit=meaning?.hitId===undefined?undefined:plan.hits[meaning.hitId];
     const kind=meaning?.kind??'unmapped';
     return [{id:source.id,time:source.timeUs/1e6,note:source.message.key,velocity:source.message.velocity,
-      name:hit?hitName(hit):kind==='countIn'?'Count-in':kind==='control'?'Hat close':`Note ${source.message.key}`,kind,hit}];
+      name:hit?hitName(hit):kind==='countIn'?'Count-in':kind==='control'?'Hat close':kind==='omitted'&&meaning?.instrument?(meaning.pieceId==='crashRight'?'Crash R':meaning.instrument==='crash'?'Crash L':meaning.instrument==='snare'?(articulationNames[meaning.articulation??'']??'Snare'):instrumentNames[meaning.instrument]):`Note ${source.message.key}`,kind,hit}];
   });
 }
 interface NoteRow { note: number; name: string; hits: TimelineNote[]; }
-interface TimelineOptions { onSeek: (outputTime: number) => void; onInspect?: (hit: Hit | null) => void; }
+interface TimelineOptions { onSeek: (outputTime: number) => void; onInspect?: (hit: Hit | null) => void; onSourceInspect?: (sourceEventId: string | null) => void; }
 type Theme = 'light' | 'dark';
 
 const colors = {
@@ -201,6 +201,7 @@ export class DrumTimeline {
     this.inspector.style.display = 'none';
     this.resize();
     this.options.onInspect?.(null);
+    this.options.onSourceInspect?.(null);
   }
 
   setTime(outputTime: number): void {
@@ -297,8 +298,9 @@ export class DrumTimeline {
           if (x > this.width) break;
           if (x + noteWidth < this.labelWidth) continue;
           const lightness = (this.theme === 'dark' ? 30 : 35) + hit.velocity / 127 * 24;
-          context.fillStyle = hit.kind==='countIn'?c.muted:hit.kind==='control'?`hsl(210 45% ${lightness}%)`:`hsl(125 43% ${lightness}%)`;
+          context.fillStyle = hit.kind==='countIn'||hit.kind==='omitted'?c.muted:hit.kind==='control'?`hsl(210 45% ${lightness}%)`:`hsl(125 43% ${lightness}%)`;
           context.fillRect(x, y + 4, noteWidth, this.rowHeight - 8);
+          if(hit.kind==='omitted'){context.strokeStyle=c.background;context.beginPath();context.moveTo(x,y+this.rowHeight/2);context.lineTo(x+noteWidth,y+this.rowHeight/2);context.stroke();}
           if (hit.kind==='unmapped' || hit.hit?.limb === null || this.selected?.id === hit.id) {
             context.strokeStyle = this.selected?.id === hit.id ? c.selected : '#c79443';
             context.strokeRect(x + .5, y + 4.5, noteWidth - 1, this.rowHeight - 9);
@@ -354,9 +356,10 @@ export class DrumTimeline {
       }
     }
     this.selected = hit;
-    this.inspector.textContent = hit ? `${hit.name} · ${hit.note} · Velocity ${hit.velocity} · ${hit.time.toFixed(3)}s · ${hit.kind==='control'?'하이햇 제어':hit.kind==='countIn'?'카운트인':hit.kind==='unmapped'?'미매핑':hit.hit?.limb==null?'동작 미배정':['왼손','오른손','왼발','오른발'][hit.hit.limb]}` : '';
+    this.inspector.textContent = hit ? `${hit.name} · ${hit.note} · Velocity ${hit.velocity} · ${hit.time.toFixed(3)}s · ${hit.kind==='omitted'?'연주에서 제외':hit.kind==='control'?'하이햇 제어':hit.kind==='countIn'?'카운트인':hit.kind==='unmapped'?'미매핑':hit.hit?.limb==null?'동작 미배정':['왼손','오른손','왼발','오른발'][hit.hit.limb]}` : '';
     this.inspector.style.display = hit ? 'block' : 'none';
     this.options.onInspect?.(hit?.hit??null);
+    this.options.onSourceInspect?.(hit?.id??null);
     this.options.onSeek(hit ? hit.time + PRE_ROLL : time);
     this.scroll.focus({ preventScroll: true });
     this.draw();

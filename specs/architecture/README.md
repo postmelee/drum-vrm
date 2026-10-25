@@ -10,6 +10,7 @@ Start with the [overview](overview.md), then read the boundary relevant to the c
 | [Engine](engine-contract.md) | Input limits, timing, assignment and the profile/pose API |
 | [Rig](rig-contract.md) | Semantic bones, coordinate conversion, calibration, rendered contacts and drum appearance |
 | [Audio and export](audio-export-contract.md) | Song/output time, PCM, playback clock and encoding |
+| [Local project format](project-format.md) | Versioned settings, source evidence, exact file relinking and restore validation |
 
 The detailed chapters explain [body/tool/kit calibration](calibration.md),
 [humanoid compatibility](rig-compatibility.md), [technique and expression](performance-expression.md)

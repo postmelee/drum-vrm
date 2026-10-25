@@ -1,7 +1,10 @@
 //! MIDI parsing, immutable performance planning and random-access rig evaluation.
 //! Public JSON fields match src/types.ts; the pose buffer is an owned Float32Array.
 
+mod body_motion;
+pub mod clearance;
 mod fit;
+mod hand_coordination;
 pub mod hihat;
 pub mod interpretation;
 mod midi;
@@ -96,6 +99,10 @@ impl Performance {
 
     pub fn evaluate_rig_at(&self, song_time: f64) -> Vec<f32> {
         self.motion.evaluate_rig(song_time)
+    }
+
+    pub fn inspect_pose_at(&self, song_time: f64) -> String {
+        self.motion.inspect_pose(song_time)
     }
 
     pub fn evaluate_hihat_at(&self, song_time: f64) -> f64 {

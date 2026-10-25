@@ -16,13 +16,15 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 - Choose Studio, Vintage or Electronic procedural kits, or models by Innerscene, Batoski and smoj.
 - Use a white/black workspace, four settings panels, stage/front/top/player views and optional hit feedback.
 - Export 1280 × 720 video at 30 fps with the selected audio as MP4 or WebM, depending on browser codecs.
+- Inspect individual source notes, omit a mistaken strike or choose its hand without rewriting the MIDI. Review measured contact errors and stick paths.
+- Save a local project with interpretation, appearance, calibration, audio offset and view settings; relink original files when reopening.
 - Process selected MIDI, WAV and models in the browser without automatically uploading them.
 
 ### Which version am I using?
 
 | Version | Availability |
 | --- | --- |
-| Repository / local build | Includes the MIDI interpretation, phrase planning, target-dependent wrist, kit fitting and WAV features described here. These changes await a separate deployment. |
+| Repository / local build | Includes the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. These changes await a separate deployment. |
 | [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed baseline [`d8dfab3`](https://github.com/postmelee/drum-vrm/commit/d8dfab38cefc3bffd6edc0b88643d02ff829af73): VRM import, seat/palm/contact calibration and video export with synthesized drums. Check [Pages workflow runs](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml) for subsequent deployments. |
 | [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
@@ -31,10 +33,11 @@ The guides describe this repository build. Check the deployed commit before assu
 ## Use the app
 
 1. Open **업로드 · 연주정보** (Upload / Performance) and choose **30초 데모** (30-second demo) or a `.mid`/`.midi` file.
-2. Review tracks, channels, mapping profile and diagnostics. In the Logic profile, count-in and short open/close hi-hat interpretation are explicit options. Press **선택한 설정으로 다시 준비** (Prepare selected settings) after changes. **연주 검증 패턴** (Performance check pattern) provides a small authored fixture for visual checks.
+2. Review tracks, channels, mapping profile and diagnostics. Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **선택한 설정으로 다시 준비** (Prepare selected settings) after changes. **연주 검증 패턴** (Performance check pattern) provides a small authored fixture for visual checks.
 3. Press **재생** (Play). Seek on the timeline and use the viewpoint buttons or drag/scroll to adjust the camera. **연주자** (Player) view locks rotation, panning and zoom; closing drum editing restores the previous view.
 4. Optionally [load a character](docs/models.md) and [fit the seat, contact points or drum parts](docs/calibration.md).
-5. Open **내보내기** (Export). Optionally [load a WAV and adjust its start offset](docs/export.md), then export and save the video. The selected audio is included unless **오디오 없이 내보내기** (Export without audio) is selected.
+5. In **업로드 · 연주정보 → 연주 오디오** (Upload / Performance → Performance audio), [load a WAV and adjust its start offset](docs/export.md). Play and seek to review its synchronization.
+6. [Save a local project](docs/projects.md) to retain settings and explicit note edits. **내보내기** (Export) remains available for video; the selected audio is included unless **오디오 없이 내보내기** (Export without audio) is selected.
 
 Drum appearance changes do not change the sound, and the app does not reproduce the source DAW's instruments. Export adds 0.5 seconds of preparation and a 0.25-second tail: an exactly 30-second song produces 923 frames, approximately 30.7667 seconds.
 
@@ -49,7 +52,7 @@ Drum appearance changes do not change the sound, and the app does not reproduce 
 
 SMF 2, SMPTE timing and malformed files are rejected with a reason. Unmapped notes are reported and excluded from drum synthesis; supported hits the rig cannot perform retain their original sound, time and target highlight. The planner does not move notes or stretch bones to hide reach problems.
 
-Motion is rule-based. Dense hits, distant targets, body proportions and clothing can still produce awkward poses or intersections. The [model guide](docs/models.md) distinguishes input acceptance from measured compatibility. Generic humanoid GLB mapping, detailed collision/skin calibration, explicit playing styles, expression controls, project persistence, higher resolutions and 3D motion export remain future work. Appearance and calibration settings last only for the current session.
+Motion is rule-based. Dense hits, distant targets, body proportions and clothing can still produce awkward poses or intersections. The [model guide](docs/models.md) distinguishes input acceptance from measured compatibility. Generic humanoid GLB mapping, detailed collision/skin calibration, explicit playing styles, expression controls, higher resolutions and 3D motion export remain future work. Save a project to retain appearance and calibration across sessions; source files must be relinked and exact replay requires the same engine build.
 
 ## Local development
 
@@ -92,7 +95,7 @@ flowchart LR
     Pose --> Rig[Shared rig adapter<br/>skeleton or VRM]
     Rig --> Scene[Three.js scene]
     Engine --> Synth[Synthesized drums]
-    WAV[Local WAV and offset] --> Audio[Selected audio on export clock]
+    WAV[Local WAV and offset] --> Audio[Selected audio on shared clock]
     Synth --> Audio
     Scene --> Video[Video export]
     Audio --> Video
