@@ -3,7 +3,7 @@
 Assessment: 2026-10-26. Baseline: deployed `045b78a`. Candidate: planner
 `phrase-beam-8-beat-horizon-24-v4`, local WASM SHA-256
 `034ac279dd85cd882bdd328cbdc5c6190cc03a78e2b57814b11fda91e32f7ce4`.
-This is an implementation candidate, not a new Pages deployment.
+These measurements describe the implementation candidate. Its later approved Pages publication is recorded separately in the [deployment evidence](pages-browser-performance.md#groove-hand-correction-follow-up).
 
 ## Cause and boundary
 
