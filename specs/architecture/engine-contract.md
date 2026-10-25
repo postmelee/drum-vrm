@@ -49,7 +49,7 @@ calibration/replanning. A limb is either assigned or explicitly absent. Source-e
 scope, mapping options and schema 1 migration are defined in
 [MIDI interpretation](midi-interpretation.md).
 
-Planner `phrase-beam-8-beat-horizon-24-v3` uses an eight-candidate beam with lookahead
+Planner `phrase-beam-8-beat-horizon-24-v4` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each
@@ -60,14 +60,25 @@ mixed fills discourage extended one-hand repetition. A strong hit followed by a
 weaker hit on the same surface can instead favor a two-hit rebound candidate.
 Single, double and paradiddle sequences provide weak preferences, including mirrored
 and cyclic variants; they do not identify the original drummer's technique.
-Hi-hat/ride context gives nearby crashes a right-hand preference so a crash can
-continue the groove role. It remains a preference: simultaneous hi-hat/crash events
-still compete for separate available hands. A simultaneous two-crash chord instead
-strongly prefers outward spatial ownership (left hand to the left target, right hand
-to the right), independently of event order and kit names. Squared transfer-speed
-effort also favors an available hand over a rapid cross-kit reach, even below the
-hard speed ceiling. These remain soft costs and respect explicit hand overrides.
-No source hit is deleted or retimed to enforce a style.
+Candidates first minimize unassigned events, then deviations from the default
+right-handed groove roles, then transfer, clearance and rudiment costs. Hi-hat/open
+hi-hat/ride belong to the right hand; sparse snare backbeats near a groove belong to
+the left. Head strikes within 0.8 quarter notes (clamped to 0.15–0.4 s) remain fill/run
+candidates, free to alternate or use doubles. These windows are engineering choices,
+not recovery of a player's intended style. Explicit hand overrides take precedence;
+reach, same-limb occupancy and transfer bounds still determine feasibility.
+
+A nearby single crash continues the right-hand groove role unless the most recent
+head strike occurred after the last groove strike: that head-led exit releases the
+crash-hand preference. A simultaneous backbeat and hat do not break the groove.
+Post-fill candidates retain both hands and compare their previous contacts and the
+next destination; a left crash may use the left hand while the right prepares the
+hat. Do not change a source left crash into a right crash to shorten a path.
+A simultaneous two-crash chord prefers outward spatial ownership (left hand to the
+left target, right hand to the right), independently of event order and kit names.
+Original times and physical targets stay unchanged. The default roles are not a
+universal prohibition on two-handed hi-hat or open-handed playing; explicit style
+selection remains future work. [Instructional rationale](../../docs/research/ergonomics-and-sticking.md#groove-ownership-and-post-fill-crashes).
 
 Numeric torso-clearance cost is a soft preference at candidate contacts. Events
 outside the candidate cap retain sound/diagnostics. This is a bounded heuristic,

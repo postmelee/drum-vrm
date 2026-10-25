@@ -1,4 +1,4 @@
-//! Small, deterministic technique preferences. These are candidate costs, not
+//! Deterministic default groove roles and soft technique candidates, not a
 //! transcription of the original drummer or physiological limits. Reach, timing
 //! and simultaneous limb occupancy are checked separately by the planner.
 use crate::model::{Hit, Instrument, PerformancePlan};
@@ -6,6 +6,9 @@ use crate::model::{Hit, Instrument, PerformancePlan};
 #[derive(Clone, Copy)]
 pub(super) struct Context {
     pub preferred: usize,
+    /// Default right-handed groove ownership, below feasibility/explicit edits
+    /// but above geometric convenience. Fills remain free to use both hands.
+    pub role: Option<usize>,
     pub quarter: f64,
     pub horizon: f64,
 }
@@ -26,14 +29,21 @@ fn head(instrument: Instrument) -> bool {
 
 pub(super) fn contexts(plan: &PerformancePlan) -> Vec<Context> {
     let mut next_groove = vec![None; plan.hits.len()];
+    let mut next_head = vec![None; plan.hits.len()];
     let mut next = None;
+    let mut following_head = None;
     for (index, hit) in plan.hits.iter().enumerate().rev() {
+        next_head[index] = following_head;
+        if head(hit.instrument) {
+            following_head = Some(hit.time);
+        }
         if groove(hit.instrument) {
             next = Some(hit.time);
         }
         next_groove[index] = next;
     }
     let mut previous: Option<f64> = None;
+    let mut previous_head: Option<f64> = None;
     plan.hits
         .iter()
         .enumerate()
@@ -52,15 +62,44 @@ pub(super) fn contexts(plan: &PerformancePlan) -> Vec<Context> {
                 .into_iter()
                 .chain(next_groove[index])
                 .any(|time| (time - hit.time).abs() <= groove_window);
+            // A fill ending on a drum head breaks cymbal-groove ownership. The
+            // next hi-hat must not pull its preceding crash into the right hand
+            // across a completed tom/snare run.
+            let after_fill = previous_head.is_some_and(|time| {
+                hit.time > time
+                    && hit.time - time <= groove_window
+                    && previous.is_none_or(|groove_time| time > groove_time)
+            });
             let preferred = if hit.instrument == Instrument::Crash
-                && (hit.piece_id == "crashRight" || near_groove)
+                && (hit.piece_id == "crashRight" || (near_groove && !after_fill))
             {
                 1
             } else {
                 super::preferred_limb(hit.instrument)
             };
+            let fill_window = (quarter * 0.8).clamp(0.15, 0.4);
+            let in_head_run = previous_head
+                .into_iter()
+                .chain(next_head[index])
+                .any(|time| {
+                    let dt = (time - hit.time).abs();
+                    dt > 0.0 && dt <= fill_window
+                });
+            let role = if groove(hit.instrument)
+                || (hit.instrument == Instrument::Crash && near_groove && !after_fill)
+            {
+                Some(1)
+            } else if hit.instrument == Instrument::Snare && near_groove && !in_head_run {
+                Some(0)
+            } else {
+                None
+            };
+            if head(hit.instrument) {
+                previous_head = Some(hit.time);
+            }
             Context {
                 preferred,
+                role,
                 quarter,
                 horizon: (quarter * 2.0).clamp(0.35, 1.2),
             }

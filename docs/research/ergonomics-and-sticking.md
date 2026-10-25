@@ -131,6 +131,37 @@ right assignment while its current route is wrong. Keep original physical crash
 identity. Any user-requested replacement/omission is an explicit derived arrangement,
 not a hidden motion repair. WAV remains unchanged unless the user edits it separately.
 
+## Groove ownership and post-fill crashes
+
+Follow-up to the owner's review of deployed `045b78a`, assessed 2026-10-26.
+This extends the earlier crash-transition proposal without changing its historical
+observations. Keep ordinary groove ownership separate from the exit of a head-led fill.
+
+- Keiichi Nagata / Yamaha, DTX402 instruction pp.5 and 7: a ready position over the
+  head and right-hand hi-hat above left-hand snare motivate the default crossed
+  groove. The two-handed hi-hat example on p.18 shows why that default is not a
+  universal restriction on all sticking.
+- Mark Wessels / Wayne Salzmann II, [Zildjian Lesson 15 PDF](https://ae.zildjian.com/wp-content/uploads/Zildjian_Drum_Method_Lesson_15.pdf),
+  printed p.37: a right-hand double on the floor tom prepares a left-hand crash.
+  This directly motivates looking through the end of a fill to the next destination.
+- Their [Lesson 11 PDF](https://ae.zildjian.com/wp-content/uploads/Zildjian_Drum_Method_Lesson_11.pdf),
+  printed p.29, separately practices returning from a crash to the hi-hat within an
+  ongoing groove. It does not prescribe the same crash hand after every fill.
+- [Lesson 14 PDF](https://ae.zildjian.com/wp-content/uploads/Zildjian_Drum_Method_Lesson_14.pdf),
+  printed p.35, emphasizes reachable tom placement and relaxed wrist-led movement.
+
+Project inference: preserve the specified cymbal and event time. During a groove,
+prefer the groove hand for a replacement crash; after a head-led exit, compare both
+hands using the preceding fill and following hat. A left-hand crash with right-hand
+hat preparation is a valid candidate, not a filename-specific correction. The
+bounded phrase planner still does not prove full-path collision freedom. PAS/Vic Firth
+rudiments support candidate vocabulary, not a universal choice of crash hand.
+
+These are linked educational sources, not reusable animation/score assets. No source
+images, scores, recordings or motion data are bundled. The
+[engine contract](../../specs/architecture/engine-contract.md) owns implemented ranking;
+issues #14/#20/#23 retain remaining style and path-review acceptance.
+
 ## Generalize import guidance without guessing intent
 
 The private file has track/instrument-name text but no sequencer-specific metadata,
