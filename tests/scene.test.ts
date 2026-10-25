@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Box3, BoxGeometry, Group, Mesh, MeshStandardMaterial, PerspectiveCamera, Raycaster, Texture, Vector3 } from 'three';
+import { Box3, BoxGeometry, Group, Line, Mesh, MeshStandardMaterial, PerspectiveCamera, Raycaster, Texture, Vector3 } from 'three';
 import { cameraPresetState, createLegacyDisplayRoot, legacyPointToDisplay, PrimitiveRigAdapter, DrumScene } from '../src/scene';
 import { cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId } from '../src/model-procedural';
 import { validateSelfContainedGLB } from '../src/model-import';
 import { NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack } from '../src/hit-response';
-import { pieceInstrument, type KitPiece, type Hit } from '../src/types';
+import { pieceInstrument, type KitPiece, type Hit, type Vec3 } from '../src/types';
 import { KitHardwareLayer } from '../src/kit-hardware';
 
 const pose = () => new Float32Array([
@@ -219,17 +219,78 @@ describe('scene performance lifecycle', () => {
     const visual = { ...model, id: piece.id, instrument: pieceInstrument(piece), hits: [], response, responseTrack: createHitResponseTrack([], pieceInstrument(piece)) };
     // Exercise the production lifecycle method without constructing a WebGL renderer.
     const scene = Object.create(DrumScene.prototype) as DrumScene;
-    Object.assign(scene, { rig, plan: { hits: [] }, songTime: 1, visuals: [visual], imported: new Map(), editorMode: false, exportMode: false, reducedMotion: { matches: false }, hitResponse: { enabled: true, strength: 1 } });
+    const stickTrace=new Group();
+    Object.assign(scene, { rig, stickTrace, plan: { hits: [] }, songTime: 1, visuals: [visual], imported: new Map(), editorMode: false, exportMode: false, reducedMotion: { matches: false }, hitResponse: { enabled: true, strength: 1 } });
+    scene.setStickTrace([[[-.1,1,.3],[-.1,1.1,.4]],[[.1,1,.3],[.1,1.1,.4]]]);
+    const traceDisposals=stickTrace.children.map(child=>{
+      const line=child as Line,geometry=vi.fn(),material=vi.fn();
+      line.geometry.addEventListener('dispose',geometry);
+      (Array.isArray(line.material)?line.material:[line.material]).forEach(value=>value.addEventListener('dispose',material));
+      return {geometry,material};
+    });
     scene.clearPlan();
     expect(Reflect.get(scene, 'plan')).toBeNull(); expect(Reflect.get(scene, 'songTime')).toBe(-.5);
     expect(visual.root).toBe(model.root); expect(visual.responseTrack.anchors).toEqual([]);
     expect(response.pivot.scale.toArray()).toEqual([1, 1, 1]); expect(model.ring.visible).toBe(false);
     expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
     expect(rig.getProfile().pelvis[1]).toBeCloseTo(.60);
+    expect(stickTrace.children).toHaveLength(0);
+    for(const dispose of traceDisposals){expect(dispose.geometry).toHaveBeenCalledOnce();expect(dispose.material).toHaveBeenCalledOnce();}
     rig.dispose(); disposeModel(model.root);
+  });
+  it('replaces and hides real world-space stick paths without leaking their geometry or materials',()=>{
+    const scene=Object.create(DrumScene.prototype) as DrumScene,stickTrace=new Group();
+    Object.assign(scene,{stickTrace,editorMode:false,exportMode:false});
+    const paths:[Vec3[],Vec3[]]=[[[-.2,1,.3],[-.1,1.1,.4]],[[.2,1,.3],[.1,1.1,.4]]];
+    scene.setStickTrace(paths);
+    const originals=stickTrace.children.map(child=>{
+      const line=child as Line,geometry=vi.fn(),material=vi.fn();
+      line.geometry.addEventListener('dispose',geometry);
+      (Array.isArray(line.material)?line.material:[line.material]).forEach(value=>value.addEventListener('dispose',material));
+      return {line,geometry,material};
+    });
+    expect(originals[0].line.geometry.getAttribute('position').getX(0)).toBeCloseTo(-.2);
+    paths[0][0][0]=-9;
+    expect(originals[0].line.geometry.getAttribute('position').getX(0)).toBeCloseTo(-.2);
+    Reflect.set(scene,'exportMode',true);scene.setStickTrace(paths);
+    expect(stickTrace.visible).toBe(false);expect(stickTrace.children).toHaveLength(2);
+    for(const original of originals){expect(original.geometry).toHaveBeenCalledOnce();expect(original.material).toHaveBeenCalledOnce();expect(original.line.parent).toBeNull();}
+    const replacements=stickTrace.children.map(child=>{
+      const line=child as Line,dispose=vi.fn();line.geometry.addEventListener('dispose',dispose);return dispose;
+    });
+    scene.setStickTrace(null);scene.setStickTrace(null);
+    expect(stickTrace.children).toHaveLength(0);
+    replacements.forEach(dispose=>expect(dispose).toHaveBeenCalledOnce());
   });
 });
 
+
+describe('project drum appearance restoration',()=>{
+  it('preserves original library colors and only restores explicitly chosen tint overrides',async()=>{
+    const piece:KitPiece={id:'snare',label:'Snare',position:[-.18,.79,.4],radius:.22};
+    const source=new Group(),mesh=new Mesh(new BoxGeometry(.4,.2,.4),new MeshStandardMaterial({color:'#123456'}));
+    mesh.name='AuthoredDrum';source.add(mesh);
+    const hardware=new KitHardwareLayer(),kitGroup=new Group(),stage=new Group();stage.add(hardware.root,kitGroup);
+    const scene=Object.create(DrumScene.prototype) as DrumScene;
+    Object.assign(scene,{kit:[piece],plan:null,hardware,kitGroup,scene:stage,libraries:new Map([['library',{snare:source}]]),
+      preset:'library',overrides:new Map(),imported:new Map(),proceduralOverrides:new Set(),pieceLoadVersions:new Map(),
+      selected:null,selectionBox:null,songTime:-.5,editorMode:false,exportMode:false,reducedMotion:{matches:false},
+      hitResponse:{enabled:false,strength:0},loadGeneration:0,disposed:false});
+    const color=()=>((kitGroup.getObjectByName('AuthoredDrum') as Mesh).material as MeshStandardMaterial).color.getHexString();
+    try {
+      Reflect.get(scene,'rebuildKit').call(scene);
+      const original=scene.getPieceVisual('snare');expect(original.finishOverride).toBe(false);expect(color()).toBe('123456');
+      const prepared=await scene.prepareProjectAppearance('library',[{id:'snare',settings:original}],new Map());prepared.apply();
+      expect(color()).toBe('123456');expect(scene.getPieceVisual('snare').finishOverride).toBe(false);
+      scene.setPieceVisual('snare',{finish:'#e0c128'});const tinted=scene.getPieceVisual('snare');expect(tinted.finishOverride).toBe(true);
+      scene.setPieceVisual('snare',{finish:'#000000'});
+      const restored=await scene.prepareProjectAppearance('library',[{id:'snare',settings:tinted}],new Map());restored.apply();
+      expect(color()).toBe('e0c128');expect(scene.getPieceVisual('snare').finishOverride).toBe(true);
+      await expect(scene.prepareProjectAppearance('library',[{id:'snare',settings:{...original,source:'imported'}}],new Map())).rejects.toThrow('연결');
+      expect(color()).toBe('e0c128');
+    }finally{hardware.dispose();disposeModel(kitGroup);disposeModel(source);}
+  });
+});
 
 describe('independent physical crashes', () => {
   it('shares a library voice without coupling contacts, feedback, selection or body overrides', () => {

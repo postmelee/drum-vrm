@@ -74,7 +74,7 @@ interface Chain {
 }
 
 /** Derive a bent, reachable rest pose. This is also the initial visual before
- * MIDI preparation; the running renderer consumes Rust's 73-float pose. */
+ * MIDI preparation; the running renderer consumes Rust's 77-float pose (v3). */
 export function createRestRigPose(profile: RigProfile): Float32Array {
   const pose = new Float32Array(RIG_POSE_FLOATS);
   for (let limb = 0; limb < 4; limb++) {
@@ -97,7 +97,7 @@ export function createRestRigPose(profile: RigProfile): Float32Array {
     pose.set([...root.toArray(), ...middle.toArray(), ...end.toArray(), ...tip.toArray()], limb * 12);
     pose.set(q.toArray(), 57 + limb * 4);
   }
-  pose.set(profile.pelvis, 48); pose.set(profile.chest, 51); pose.set(profile.head, 54); return pose;
+  pose.set([0, 0, 0, 1], 73); pose.set(profile.pelvis, 48); pose.set(profile.chest, 51); pose.set(profile.head, 54); return pose;
 }
 
 /** Shared semantic solver for the built-in Bone hierarchy and VRM 1.0 models.
@@ -200,6 +200,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       roots: roots as RigProfile['roots'], lengths: lengths as RigProfile['lengths'], restTips: rests as RigProfile['restTips'], bendPoles: poles as RigProfile['bendPoles'],
       gripOffsets: grips as RigProfile['gripOffsets'], tipOffsets: tips as RigProfile['tipOffsets'], contactRotations: rotations as RigProfile['contactRotations'],
       handFrames: controlFrames as [HandControlFrame, HandControlFrame],
+      torsoPivot: legacyPositionToNative(required('spine').getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
       pelvis: legacyPositionToNative(seat.toArray()), chest: legacyPositionToNative(chest.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
       head: legacyPositionToNative(head.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
     };
@@ -257,6 +258,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     const offset: Vec3 = [0, value.seatHeight - this.baseCalibration.seatHeight, value.seatForward - this.baseCalibration.seatForward];
     const translate = (point: Vec3): Vec3 => point.map((v, i) => v + offset[i]) as Vec3;
     profile.roots = profile.roots.map(translate) as RigProfile['roots'];
+    if (profile.torsoPivot) profile.torsoPivot = translate(profile.torsoPivot);
     profile.pelvis = translate(profile.pelvis); profile.chest = translate(profile.chest); profile.head = translate(profile.head);
     profile.restTips = [translate(profile.restTips[0]), translate(profile.restTips[1]), [...pedals[0]], [...pedals[1]]];
     for (let limb = 0; limb < 2; limb++) {
@@ -282,15 +284,20 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       if (!piece.position.every(Number.isFinite)) throw new Error(`Invalid rig target: ${piece.id}`);
       targetPositions[piece.id] = [...piece.position];
     }
-    return { id: this.profile.id, coordinateSystem: '+Y-up/+Z-forward', poseFloats: 73, stickLength: .31, targetPositions };
+    return { id: this.profile.id, coordinateSystem: '+Y-up/+Z-forward', poseFloats: RIG_POSE_FLOATS, stickLength: .31, targetPositions };
   }
   applyPose(pose: Float32Array): void {
-    if (pose.length !== RIG_POSE_FLOATS || !pose.every(Number.isFinite)) throw new Error('Humanoid pose requires 73 finite floats.');
+    if (![73, RIG_POSE_FLOATS].includes(pose.length) || !pose.every(Number.isFinite)) throw new Error('Humanoid pose requires 73 or 77 finite floats.');
+    if (pose.length === 77 && Math.abs(new THREE.Quaternion().fromArray(pose, 73).lengthSq() - 1) > .001) throw new Error('Torso rotation must be a unit quaternion.');
     for (let limb = 0; limb < 4; limb++) { const q = new THREE.Quaternion().fromArray(pose, 57 + limb * 4); if (Math.abs(q.lengthSq() - 1) > .001) throw new Error('Humanoid tool rotation must be a unit quaternion.'); }
     this.hooks.beforePose?.(); this.humanoid.resetNormalizedPose();
     const hips = this.humanoid.getNormalizedBoneNode('hips')!;
     hips.position.copy(toVector(pose.subarray(48, 51))); hips.parent?.worldToLocal(hips.position);
     this.root.updateMatrixWorld(true);
+    if (pose.length === 77 && this.profile.torsoPivot) {
+      const spine = this.humanoid.getNormalizedBoneNode('spine')!;
+      this.setWorldRotation(spine, new THREE.Quaternion(...legacyQuaternionToNative(pose.subarray(73, 77))));
+    }
     for (let limb = 0; limb < 4; limb++) {
       const chain = this.chains[limb], points = [0, 3, 6].map(offset => toVector(pose.subarray(limb * 12 + offset, limb * 12 + offset + 3)));
       const tool = new THREE.Quaternion(...legacyQuaternionToNative(pose.subarray(57 + limb * 4, 61 + limb * 4))).normalize();
@@ -312,7 +319,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     }
     this.applyMatchedGrip();
     const head = this.humanoid.getNormalizedBoneNode('head')!;
-    const nod = THREE.MathUtils.clamp((pose[56] - this.profile.head[2]) * 8, -.15, .15); head.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), nod);
+    const nod = THREE.MathUtils.clamp((this.profile.head[1] - pose[55]) * 8, -.15, .15); head.quaternion.setFromAxisAngle(new THREE.Vector3(1, 0, 0), nod);
     this.root.updateMatrixWorld(true);
     if (this.hooks.afterPose) this.hooks.afterPose(); else this.humanoid.update();
     this.root.updateMatrixWorld(true); this.updateOverlay();

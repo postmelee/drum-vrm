@@ -5,7 +5,7 @@ import { createPieceHardware, pieceAnchors } from './kit-hardware';
 export type KitPresetId = 'studio' | 'vintage' | 'electronic' | 'library' | 'batoski' | 'smoj';
 export type PieceModelId = 'standard' | 'deep' | 'compact';
 export interface PieceVisualOptions { finish?: string; model?: PieceModelId; scale?: number; rotation?: number; }
-export interface PieceVisualSettings { finish: string; model: PieceModelId; scale: number; rotation: number; source?: 'procedural' | 'library' | 'imported'; customModel?: string; approximateCalibration?: boolean; }
+export interface PieceVisualSettings { finish: string; model: PieceModelId; scale: number; rotation: number; finishOverride?: boolean; source?: 'procedural' | 'library' | 'imported'; customModel?: string; approximateCalibration?: boolean; }
 export const KIT_PRESETS = [
   { id: 'studio', label: 'Studio Acoustic' }, { id: 'vintage', label: 'Vintage Maple' },
   { id: 'electronic', label: 'Electronic' }, { id: 'library', label: 'Innerscene Acoustic · CC0' },
@@ -115,7 +115,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
   ring.rotation.x = -Math.PI / 2; ring.position.set(x, y + .008, z); ring.visible = false; root.add(ring);
   if (instrument === 'kick') {
     const bass = new THREE.Group(); bass.userData.hitResponseRole = 'shell'; root.add(bass);
-    const drumRadius = electronic ? .17 * visual.scale : Math.max(.31, piece.radius) * visual.scale;
+    const drumRadius = electronic ? Math.min(.17, piece.radius) * visual.scale : piece.radius * visual.scale;
     const depth = electronic ? .075 : .4 * modelDepth;
     bass.position.set(...pieceAnchors(piece).mount); bass.rotation.x = Math.PI / 2;
     cylinder(bass, drumRadius, depth, shell);

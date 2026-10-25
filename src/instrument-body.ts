@@ -9,7 +9,7 @@ export function alignInstrumentBody(display: THREE.Group, pivot: THREE.Group, pi
   display.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(display), size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
   const kick = pieceInstrument(piece) === 'kick', anchors = pieceAnchors(piece);
-  const fit = (kick ? Math.max(.31, piece.radius) * 2 / Math.max(size.y, .0001) : piece.radius * 2 / Math.max(size.x, size.z, .0001)) * settings.scale;
+  const fit = (kick ? piece.radius * 2 / Math.max(size.y, .0001) : piece.radius * 2 / Math.max(size.x, size.z, .0001)) * settings.scale;
   display.position.set(-center.x, kick ? -center.y : 0, -center.z);
   pivot.position.set(anchors.mount[0], kick ? anchors.mount[1] : 0, anchors.mount[2]);
   pivot.scale.setScalar(fit); pivot.rotation.y = THREE.MathUtils.degToRad(settings.rotation);

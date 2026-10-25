@@ -12,6 +12,7 @@ export { KIT_PRESETS, type KitPresetId, type PieceVisualOptions, type PieceVisua
 export type { HitResponseSettings } from './hit-response';
 
 export type CameraView = 'front' | 'stage' | 'top' | 'player';
+export interface SceneViewState { view:CameraView;position:Vec3;target:Vec3;fov:number;near:number; }
 /** primitive-v1 labels have LH at -X. Display +Z-facing anatomy requires LH at +X.
  * This is a renderer-only v1 compatibility basis, never a plan/assignment mutation.
  * Future VRM adapters must convert their numeric pose basis, not reflect VRM bones. */
@@ -41,7 +42,7 @@ const isLibraryPreset = (preset: KitPresetId): preset is 'library' | 'batoski' |
 export interface RigCalibration {
   id: string;
   coordinateSystem: '+Y-up/+Z-forward';
-  poseFloats: 57 | 73;
+  poseFloats: 57 | 73 | 77;
   stickLength: number;
   targetPositions: Partial<Record<PieceId, Vec3>>;
 }
@@ -60,18 +61,18 @@ const POINT = new THREE.Vector3();
 const END = new THREE.Vector3();
 const DELTA = new THREE.Vector3();
 const MID = new THREE.Vector3();
-const DEFAULT_KIT: KitPiece[] = [
-  { id: 'kick', label: 'Kick', position: [.20, .08, .62], radius: .26 },
-  { id: 'snare', label: 'Snare', position: [-.18, .79, .40], radius: .22 },
-  { id: 'hihat', label: 'Hi-hat', position: [-.48, .96, .44], radius: .22 },
-  { id: 'openHat', label: 'Open hi-hat', position: [-.48, .96, .44], radius: .22 },
+export const DEFAULT_KIT: KitPiece[] = [
+  { id: 'kick', label: 'Kick', position: [.20, .08, .62], radius: .254 },
+  { id: 'snare', label: 'Snare', position: [-.18, .79, .36], radius: .1778 },
+  { id: 'hihat', label: 'Hi-hat', position: [-.52, .96, .35], radius: .1778 },
+  { id: 'openHat', label: 'Open hi-hat', position: [-.52, .96, .35], radius: .1778 },
   { id: 'pedalHat', label: 'Hi-hat pedal', position: [-.22, .08, .55], radius: .12 },
-  { id: 'tomHigh', label: 'High tom', position: [-.26, 1, .72], radius: .18 },
-  { id: 'tomMid', label: 'Mid tom', position: [.18, .98, .74], radius: .20 },
-  { id: 'tomLow', label: 'Floor tom', position: [.62, .80, .42], radius: .23 },
-  { id: 'crash', instrument: 'crash', label: 'Crash Left', position: [-.66, 1.26, .68], radius: .30 },
-  { id: 'crashRight', instrument: 'crash', label: 'Crash Right', position: [.58, 1.20, .64], radius: .30 },
-  { id: 'ride', label: 'Ride', position: [.70, .99, .39], radius: .28 },
+  { id: 'tomHigh', label: 'High tom', position: [-.26, 1, .72], radius: .1524 },
+  { id: 'tomMid', label: 'Mid tom', position: [.18, .98, .74], radius: .1651 },
+  { id: 'tomLow', label: 'Floor tom', position: [.62, .80, .42], radius: .2032 },
+  { id: 'crash', instrument: 'crash', label: 'Crash Left', position: [-.66, 1.26, .68], radius: .2032 },
+  { id: 'crashRight', instrument: 'crash', label: 'Crash Right', position: [.58, 1.20, .64], radius: .2286 },
+  { id: 'ride', label: 'Ride', position: [.70, .99, .39], radius: .254 },
 ];
 
 function material(color: THREE.ColorRepresentation, metalness = 0, roughness = .55): THREE.MeshStandardMaterial {
@@ -213,6 +214,7 @@ export class DrumScene {
   private readonly camera = new THREE.PerspectiveCamera(35, 1, .05, 40);
   private readonly controls: OrbitControls;
   private readonly kitGroup = new THREE.Group();
+  private readonly stickTrace = new THREE.Group();
   private readonly hardware = new KitHardwareLayer();
   private readonly grid = new THREE.GridHelper(5, 20, 0xb9bec5, 0xd9dde2);
   private readonly raycaster = new THREE.Raycaster();
@@ -257,7 +259,7 @@ export class DrumScene {
     const gridMaterial = this.grid.material as THREE.LineBasicMaterial;
     gridMaterial.transparent = true; gridMaterial.opacity = .17;
     this.grid.position.set(0, -.02, .4); this.grid.visible = false; this.scene.add(this.grid);
-    this.scene.add(this.displayRoot); this.displayRoot.add(this.kitGroup, this.hardware.root);
+    this.scene.add(this.displayRoot,this.stickTrace); this.displayRoot.add(this.kitGroup, this.hardware.root);
     this.rig = new NativeHumanoidRigAdapter(); this.scene.add(this.rig.root);
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = false;
@@ -275,16 +277,18 @@ export class DrumScene {
   }
 
   setPlan(plan: PerformancePlan): void {
+    this.setStickTrace(null);
     this.rig.calibrate(plan.kit); this.plan = plan; this.kit = plan.kit; this.rebuildKit();
   }
   clearPlan(): void {
+    this.setStickTrace(null);
     this.plan = null; this.songTime = -.5;
     for (const visual of this.visuals) { visual.hits = []; visual.responseTrack = createHitResponseTrack([], visual.instrument); }
     this.rig.applyPose(createRestRigPose(this.rig.getProfile())); this.updateHitResponses();
   }
   setRig(adapter: HumanoidRigAdapter): void {
     if (adapter === this.rig) return;
-    this.rig.dispose(); this.rig = adapter;
+    this.setStickTrace(null);this.rig.dispose(); this.rig = adapter;
     // Native VRM bone hierarchies never inherit the legacy kit reflection.
     this.scene.add(adapter.root); adapter.calibrate(this.kit);
     if (!this.plan) adapter.applyPose(createRestRigPose(adapter.getProfile()));
@@ -308,6 +312,17 @@ export class DrumScene {
     return profile;
   }
   getRigContactSamples(): RigContactSample[] { return this.rig.getContactSamples(); }
+  /** World-space trajectories measured from actual hand-local stick markers. */
+  setStickTrace(paths:readonly [readonly Vec3[],readonly Vec3[]]|null):void {
+    for(const child of [...this.stickTrace.children]){this.stickTrace.remove(child);disposeModel(child);}
+    if(paths)paths.forEach((path,index)=>{
+      if(path.length<2||path.length>121||!path.every(point=>point.length===3&&point.every(Number.isFinite)))throw new Error('스틱 궤적 표본이 잘못되었습니다.');
+      const geometry=new THREE.BufferGeometry().setFromPoints(path.map(point=>new THREE.Vector3(...point)));
+      const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:index===0?0xc47b00:0x167bd1,depthTest:false}));
+      line.renderOrder=20;this.stickTrace.add(line);
+    });
+    this.stickTrace.visible=!this.exportMode&&!this.editorMode;
+  }
   setSkeletonVisible(visible: boolean): void { this.skeletonVisible = visible; this.rig.setSkeletonVisible(visible); }
   setModelVisible(visible: boolean): void { this.modelVisible = visible; this.rig.setModelVisible(visible); }
   setCharacterVisible(visible: boolean): void {
@@ -326,7 +341,7 @@ export class DrumScene {
   getHitResponse(): HitResponseSettings { return { ...this.hitResponse }; }
   setEditorMode(enabled: boolean): void {
     if (this.editorMode === enabled || this.exportMode) return;
-    this.updateCameraTransition();
+    this.updateCameraTransition();this.stickTrace.visible=!enabled;
     const beforeEditor = this.cameraState();
     this.editorMode = enabled;
     this.rig.root.visible = this.characterVisible && !enabled;
@@ -354,11 +369,42 @@ export class DrumScene {
     const discarded = [...this.imported.values()]; this.imported.clear(); this.rebuildKit();
     discarded.forEach(model => disposeModelSource(model.root));
   }
+  /** Load all external geometry before committing a project appearance. A failed
+   * file or bundled preset leaves the currently displayed scene intact. */
+  async prepareProjectAppearance(preset:KitPresetId,pieces:readonly {id:PieceId;settings:PieceVisualSettings}[],files:ReadonlyMap<PieceId,File>) {
+    const imported=new Map<PieceId,ImportedModel>();
+    try {
+      if(isLibraryPreset(preset)&&!this.libraries.has(preset)) {
+        const library=await import('./model-library').then(module=>module.loadLibraryKit(preset));
+        if(this.disposed){this.disposeLibrary(library);throw new Error('화면이 종료되었습니다.');}
+        this.libraries.set(preset,library);
+      }
+      for(const piece of pieces) {
+        resolvePieceVisual(preset,piece.id,piece.settings);
+        if(piece.settings.source==='imported') {
+          const file=files.get(piece.id);if(!file)throw new Error('드럼 모델 파일을 다시 연결해 주세요.');
+          imported.set(piece.id,{root:await loadLocalGLB(file),name:file.name,approximate:true});
+        }
+      }
+    } catch(error){imported.forEach(model=>disposeModelSource(model.root));throw error;}
+    let consumed=false;
+    return {
+      dispose:()=>{if(!consumed){imported.forEach(model=>disposeModelSource(model.root));consumed=true;}},
+      apply:()=>{
+        if(consumed)throw new Error('프로젝트 외형은 한 번만 적용할 수 있습니다.');
+        ++this.loadGeneration;
+        const discarded=[...this.imported.values()];this.imported.clear();this.overrides.clear();this.proceduralOverrides.clear();this.preset=preset;
+        for(const piece of pieces){const {finish,finishOverride,model,scale,rotation}=piece.settings;this.overrides.set(piece.id,{...(finishOverride?{finish}:{}),model,scale,rotation});if(piece.settings.source==='procedural')this.proceduralOverrides.add(piece.id);}
+        imported.forEach((model,id)=>this.imported.set(id,model));consumed=true;
+        this.rebuildKit();discarded.forEach(model=>disposeModelSource(model.root));
+      },
+    };
+  }
   getPieceVisual(id: PieceId): PieceVisualSettings {
     const canonical = canonicalPieceId(id);
     const visual = resolvePieceVisual(this.preset, canonical, this.overrides.get(canonical));
     const imported = this.imported.get(canonical);
-    return { ...visual, source: imported ? 'imported' : isLibraryPreset(this.preset) && !this.proceduralOverrides.has(canonical) ? 'library' : 'procedural', ...(imported ? { customModel: imported.name, approximateCalibration: imported.approximate } : {}) };
+    return { ...visual,finishOverride:this.overrides.get(canonical)?.finish!==undefined, source: imported ? 'imported' : isLibraryPreset(this.preset) && !this.proceduralOverrides.has(canonical) ? 'library' : 'procedural', ...(imported ? { customModel: imported.name, approximateCalibration: imported.approximate } : {}) };
   }
   setPieceVisual(id: PieceId, options: PieceVisualOptions): void {
     const canonical = canonicalPieceId(id);
@@ -430,10 +476,20 @@ export class DrumScene {
     this.applyCameraState(state); this.rig.setFirstPerson?.(preset === 'player');
     this.controls.enabled = !this.exportMode; this.controls.update();
   }
+  getViewState():SceneViewState {
+    const state=this.editorMode&&this.savedCamera?this.savedCamera:this.cameraState();
+    return {view:state.view,position:state.position.toArray(),target:state.target.toArray(),fov:state.fov,near:state.near};
+  }
+  setViewState(state:SceneViewState):void {
+    if(!['front','stage','top','player'].includes(state.view)||state.position.length!==3||state.target.length!==3||![...state.position,...state.target,state.fov,state.near].every(Number.isFinite)||state.fov<15||state.fov>100||state.near<.005||state.near>.5)throw new Error('카메라 설정이 잘못되었습니다.');
+    this.transition=null;this.savedCamera=null;
+    this.applyCameraState({...cameraPresetState(state.view),position:new THREE.Vector3(...state.position),target:new THREE.Vector3(...state.target),fov:state.fov,near:state.near});
+    this.rig.setFirstPerson?.(state.view==='player');this.controls.enabled=!this.exportMode;this.controls.update();
+  }
   setBackground(color: string): void { this.scene.background = new THREE.Color(color); }
   setExportMode(enabled: boolean): void {
     if (enabled) this.finishCameraTransition();
-    this.exportMode = enabled; this.controls.enabled = !enabled && !this.transition;
+    this.exportMode = enabled;this.stickTrace.visible=!enabled&&!this.editorMode; this.controls.enabled = !enabled && !this.transition;
     this.pointerStart = null; this.updateSelection(); if (!enabled) this.resize();
   }
   dispose(): void {

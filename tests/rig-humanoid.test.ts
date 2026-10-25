@@ -112,7 +112,7 @@ describe('semantic humanoid and hand-local tools', () => {
     rig.applyPose(pose); expect(rig.getContactSamples()).toEqual(initial);
     const raw = rig.humanoid.getRawBoneNode('leftUpperArm')!, middle = rig.humanoid.getRawBoneNode('leftLowerArm')!;
     expect(raw.getWorldPosition(new Vector3()).distanceTo(middle.getWorldPosition(new Vector3()))).toBeCloseTo(.3, 6);
-    const before = rig.getContactSamples(); changed[3] = NaN; expect(() => rig.applyPose(changed)).toThrow('73 finite'); expect(rig.getContactSamples()).toEqual(before);
+    const before = rig.getContactSamples(); changed[3] = NaN; expect(() => rig.applyPose(changed)).toThrow('73 or 77 finite'); expect(rig.getContactSamples()).toEqual(before);
     rig.dispose();
   });
   it('converts rotations and points consistently without reflecting native bones', () => {
@@ -124,4 +124,23 @@ describe('semantic humanoid and hand-local tools', () => {
     expect(rig.root.matrixWorld.determinant()).toBeGreaterThan(0); expect(rig.getContactSamples()[0].actual[0]).toBeGreaterThan(0);
     rig.dispose();
   });
+});
+
+it('applies a coordinated spine turn before solving both arms while feet remain supported', () => {
+  const rig = new NativeHumanoidRigAdapter(), profile = rig.getProfile();
+  const pose = createRestRigPose(profile), pivot = new Vector3(...profile.torsoPivot!);
+  const turn = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), .2);
+  const point = (offset: number) => { const v = new Vector3().fromArray(pose, offset).sub(pivot).applyQuaternion(turn).add(pivot); pose.set(v.toArray(), offset); };
+  for (let offset = 0; offset < 24; offset += 3) point(offset);
+  for (const offset of [51, 54]) point(offset);
+  for (const offset of [57, 61]) { const q = new Quaternion().fromArray(pose, offset).premultiply(turn); pose.set(q.toArray(), offset); }
+  pose.set(turn.toArray(), 73);
+  rig.applyPose(pose);
+  expect(Math.max(...rig.getContactSamples().map(s => s.errorMeters))).toBeLessThan(1e-6);
+  // Facing yaw does not create an unrelated nod from a changed head Z.
+  expect(rig.humanoid.getNormalizedBoneNode('head')!.quaternion.angleTo(new Quaternion())).toBeLessThan(1e-6);
+  const repeated = rig.getContactSamples().map(s => s.actual);
+  rig.applyPose(createRestRigPose(profile)); rig.applyPose(pose);
+  expect(rig.getContactSamples().map(s => s.actual)).toEqual(repeated);
+  rig.dispose();
 });
