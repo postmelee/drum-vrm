@@ -258,6 +258,24 @@ fn crash_replacing_a_hat_beat_keeps_the_groove_hand() {
 }
 
 #[test]
+fn a_backbeat_with_a_hat_does_not_turn_the_next_crash_into_a_fill_exit() {
+    for chord in [[38, 42], [42, 38]] {
+        let mut source = authored_sequence(&[
+            (0, 42, 75),
+            (480, chord[0], 90),
+            (0, chord[1], 90),
+            (240, 49, 110),
+            (240, 42, 75),
+        ]);
+        reachable_crashes(&mut source);
+        let motion = Motion::with_profile(source, RigProfile::primitive()).unwrap();
+        for hit in &motion.plan.hits {
+            assert_eq!(hit.limb, Some(usize::from(hit.note != 38)));
+        }
+    }
+}
+
+#[test]
 fn simultaneous_hat_crash_and_dual_crash_keep_both_original_impacts() {
     let mut source = authored_sequence(&[
         (0, 42, 75),

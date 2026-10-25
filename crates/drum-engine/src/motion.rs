@@ -99,7 +99,22 @@ struct Candidate {
     states: [LimbState; 4],
     choices: Vec<Option<usize>>,
     history: sticking::History,
+    unresolved: usize,
+    role_changes: usize,
     cost: f64,
+}
+
+impl Candidate {
+    fn compare(&self, other: &Self) -> std::cmp::Ordering {
+        // A reachable/available default groove hand must not lose its role just
+        // because its cross-body route is longer. Keep all feasible events first;
+        // exceptions are still available for chords, fills and explicit edits.
+        self.unresolved
+            .cmp(&other.unresolved)
+            .then_with(|| self.role_changes.cmp(&other.role_changes))
+            .then_with(|| self.cost.total_cmp(&other.cost))
+            .then_with(|| self.choices.cmp(&other.choices))
+    }
 }
 
 fn assignment_cost(
@@ -142,7 +157,7 @@ fn assignment_cost(
 /// A two-cymbal chord has an outward ownership preference, independent of MIDI
 /// event order or kit IDs. A groove's right hand preference for a single left
 /// crash must not turn a simultaneous pair into crossed forearms. Feasibility
-/// and explicit hand overrides still take precedence over this soft cost.
+/// and explicit hand overrides still take precedence over this role preference.
 fn dual_crash_hands(plan: &PerformancePlan, profile: Option<&RigProfile>) -> Vec<Option<usize>> {
     let shoulders = profile.map_or(ARM_ROOTS, |p| [p.roots[0], p.roots[1]]);
     let right_axis = normalized(sub(shoulders[1], shoulders[0]));
@@ -234,7 +249,7 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
         })
         .collect();
     let mut history = sticking::History::default();
-    plan.planner_version = "phrase-beam-8-beat-horizon-24-v3".into();
+    plan.planner_version = "phrase-beam-8-beat-horizon-24-v4".into();
     let mut start = 0;
     while start < plan.hits.len() {
         let mut end = start + 1;
@@ -245,6 +260,8 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
             states,
             choices: Vec::new(),
             history: history.clone(),
+            unresolved: 0,
+            role_changes: 0,
             cost: 0.0,
         }];
         // Pathological chords remain audible/diagnosed, but cannot expand a beam
@@ -283,16 +300,15 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
                         context.preferred,
                     ) {
                         let mut next = candidate.clone();
+                        let role = dual_crash_hands[start + offset].or(context.role);
+                        if !plan.hand_overrides.contains_key(&hit.source_event_id)
+                            && role.is_some_and(|owner| owner != limb)
+                        {
+                            next.role_changes += 1;
+                        }
                         next.cost += cost
                             + candidate.history.cost(limb, hit, context)
-                            + if limb < 2 { clearance[limb] } else { 0.0 }
-                            + if dual_crash_hands[start + offset]
-                                .is_some_and(|outward| outward != limb)
-                            {
-                                8.0
-                            } else {
-                                0.0
-                            };
+                            + if limb < 2 { clearance[limb] } else { 0.0 };
                         next.states[limb] = LimbState {
                             time: hit.time,
                             target: hit.target,
@@ -303,23 +319,16 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
                     }
                 }
                 let mut unresolved = candidate;
+                unresolved.unresolved += 1;
                 unresolved.cost += 100.0 + hit.velocity as f64 / 127.0;
                 unresolved.choices.push(None);
                 expanded.push(unresolved);
             }
-            expanded.sort_by(|a, b| {
-                a.cost
-                    .total_cmp(&b.cost)
-                    .then_with(|| a.choices.cmp(&b.choices))
-            });
+            expanded.sort_by(Candidate::compare);
             expanded.truncate(8);
             beam = expanded;
         }
-        beam.sort_by(|a, b| {
-            a.cost
-                .total_cmp(&b.cost)
-                .then_with(|| a.choices.cmp(&b.choices))
-        });
+        beam.sort_by(Candidate::compare);
         let best = &beam[0];
         for (offset, hit) in plan.hits[start..end].iter_mut().enumerate() {
             hit.limb = best.choices.get(offset).copied().flatten();
