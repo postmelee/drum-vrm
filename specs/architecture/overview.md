@@ -5,7 +5,8 @@
 ## Boundaries
 
 The Rust engine is independent of Three.js objects and source model mesh names.
-Its versioned performance plan represents musical intent and diagnostics.
+Its versioned performance plan separates source evidence, mapping, intent and controls
+under the [MIDI interpretation contract](midi-interpretation.md).
 The browser adapter measures a body's semantic joints, supplies a numeric profile,
 and applies the evaluated pose to its own scene graph.
 
@@ -20,10 +21,11 @@ flowchart TB
   B --> A
   A --> S[Three.js scene]
   P --> Y[Synthesis worker]
-  Y --> C[PCM and audio clock]
+  Y --> C[Selected PCM and audio clock]
+  WAV[Local WAV and offset] --> C
   C --> S
   S --> X[Fixed-frame export]
-  Y --> X
+  C --> X
 ```
 
 | Area | Implementation entry | Responsibility |
@@ -33,7 +35,7 @@ flowchart TB
 | Humanoid | [rig-humanoid.ts](../../src/rig-humanoid.ts), [rig-vrm.ts](../../src/rig-vrm.ts) | Shared semantic bones, normalized/raw conversion and attached tool measurements |
 | Layout/appearance | [kit-calibration.ts](../../src/kit-calibration.ts), [hardware](../../src/kit-hardware.ts), [library](../../src/model-library.ts) | Keep contact layout separate from replaceable drum bodies |
 | Rendering/UI | [scene.ts](../../src/scene.ts), [main.ts](../../src/main.ts), [timeline.ts](../../src/timeline.ts) | Scene, controls and tempo/meter-based preview |
-| Sound/transport | [synthesis.ts](../../src/synthesis.ts), [audio.ts](../../src/audio.ts) | Deterministic PCM and playback clock |
+| Sound/transport | [synthesis.ts](../../src/synthesis.ts), [wav.ts](../../src/wav.ts), [audio.ts](../../src/audio.ts) | Synthesized or aligned WAV PCM and shared playback/export clock |
 | Encoding | [export.ts](../../src/export.ts) | Actual codec probe, fixed frame times, mux, cancellation and cleanup |
 
 ## State changes

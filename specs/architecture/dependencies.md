@@ -84,7 +84,7 @@ A library's MIT license does not authorize arbitrary avatars, textures or sound 
 | GLTFExporter / VRMA | Future motion-output work | Explicit baking, extension retention, recontact after retargeting and rights |
 | ffmpeg.wasm / extra encoders | Not bundled | Exact core build, dependency rights, memory, cancellation and measured benefit |
 | ONNX or learned/retrieved motion | Not integrated | Reproducible model/data/weights, rights, baseline failures and comparable evaluation |
-| WAV input and synchronization | Separate future feature | Offset/time contract, decoded audio behavior and combined export checks |
+| WAV input and synchronization | Implemented with browser Web Audio; no additional dependency | [Accepted formats, offset/time and output contract](audio-export-contract.md); verify each target browser |
 
 These are project dispositions, not claims that an alternative is inherently unsuitable.
 The [original dependency investigation](../../docs/research/dependencies.md)

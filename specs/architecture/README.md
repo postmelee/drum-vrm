@@ -6,7 +6,8 @@ Start with the [overview](overview.md), then read the boundary relevant to the c
 
 | Contract | Owns |
 | --- | --- |
-| [Engine](engine-contract.md) | MIDI interpretation, source events, assignment and the profile/pose API |
+| [MIDI interpretation](midi-interpretation.md) | Source event evidence, mapping profiles, performer intent and control boundaries |
+| [Engine](engine-contract.md) | Input limits, timing, assignment and the profile/pose API |
 | [Rig](rig-contract.md) | Semantic bones, coordinate conversion, calibration, rendered contacts and drum appearance |
 | [Audio and export](audio-export-contract.md) | Song/output time, PCM, playback clock and encoding |
 

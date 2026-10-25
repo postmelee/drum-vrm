@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { Hit, Instrument, KitPiece, PerformancePlan, RigProfile, Vec3 } from './types';
+import { hitPieceId, pieceInstrument, type Hit, type Instrument, type PieceId, type KitPiece, type PerformancePlan, type RigProfile, type Vec3 } from './types';
 import { createRestRigPose, NativeHumanoidRigAdapter, type HumanoidRigAdapter, type RigContactSample } from './rig-humanoid';
 import { validateKitLayout } from './kit-calibration';
 import { canonicalPieceId, cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
@@ -43,7 +43,7 @@ export interface RigCalibration {
   coordinateSystem: '+Y-up/+Z-forward';
   poseFloats: 57 | 73;
   stickLength: number;
-  targetPositions: Partial<Record<Instrument, Vec3>>;
+  targetPositions: Partial<Record<PieceId, Vec3>>;
 }
 export interface RigAdapter {
   readonly root: THREE.Group;
@@ -69,8 +69,9 @@ const DEFAULT_KIT: KitPiece[] = [
   { id: 'tomHigh', label: 'High tom', position: [-.26, 1, .72], radius: .18 },
   { id: 'tomMid', label: 'Mid tom', position: [.18, .98, .74], radius: .20 },
   { id: 'tomLow', label: 'Floor tom', position: [.62, .80, .42], radius: .23 },
-  { id: 'crash', label: 'Crash', position: [-.66, 1.26, .68], radius: .30 },
-  { id: 'ride', label: 'Ride', position: [.66, 1.15, .67], radius: .28 },
+  { id: 'crash', instrument: 'crash', label: 'Crash Left', position: [-.66, 1.26, .68], radius: .30 },
+  { id: 'crashRight', instrument: 'crash', label: 'Crash Right', position: [.58, 1.20, .64], radius: .30 },
+  { id: 'ride', label: 'Ride', position: [.70, .99, .39], radius: .28 },
 ];
 
 function material(color: THREE.ColorRepresentation, metalness = 0, roughness = .55): THREE.MeshStandardMaterial {
@@ -149,7 +150,7 @@ export class PrimitiveRigAdapter implements RigAdapter {
     };
   }
   calibrate(kit: readonly KitPiece[]): RigCalibration {
-    const targetPositions: Partial<Record<Instrument, Vec3>> = {};
+    const targetPositions: Partial<Record<PieceId, Vec3>> = {};
     kit.forEach(piece => {
       if (piece.position.length !== 3 || !piece.position.every(Number.isFinite) || !Number.isFinite(piece.radius) || piece.radius <= 0) throw new Error(`Invalid rig target: ${piece.id}`);
       targetPositions[piece.id] = [...piece.position];
@@ -198,7 +199,7 @@ function defaultPose(): Float32Array {
   ]);
 }
 
-type KitVisual = PieceModel & { id: Instrument; hits: Hit[]; response: HitResponseBinding; responseTrack: HitResponseTrack; };
+type KitVisual = PieceModel & { id: PieceId; instrument: Instrument; hits: Hit[]; response: HitResponseBinding; responseTrack: HitResponseTrack; };
 type CameraTransition = { from: CameraState; to: CameraState; started: number };
 type ImportedModel = { root: THREE.Group; name: string; approximate: boolean };
 
@@ -206,7 +207,7 @@ export class DrumScene {
   readonly canvas: HTMLCanvasElement;
   readonly renderer: THREE.WebGLRenderer;
   rig: HumanoidRigAdapter;
-  onPieceSelect: ((id: Instrument | null) => void) | null = null;
+  onPieceSelect: ((id: PieceId | null) => void) | null = null;
   private readonly scene = new THREE.Scene();
   private readonly displayRoot = createLegacyDisplayRoot();
   private readonly camera = new THREE.PerspectiveCamera(35, 1, .05, 40);
@@ -220,15 +221,15 @@ export class DrumScene {
   private plan: PerformancePlan | null = null;
   private kit: readonly KitPiece[] = DEFAULT_KIT;
   private preset: KitPresetId = 'studio';
-  private readonly overrides = new Map<Instrument, PieceVisualOptions>();
-  private readonly imported = new Map<Instrument, ImportedModel>();
-  private readonly proceduralOverrides = new Set<Instrument>();
-  private readonly pieceLoadVersions = new Map<Instrument, number>();
+  private readonly overrides = new Map<PieceId, PieceVisualOptions>();
+  private readonly imported = new Map<PieceId, ImportedModel>();
+  private readonly proceduralOverrides = new Set<PieceId>();
+  private readonly pieceLoadVersions = new Map<PieceId, number>();
   private readonly libraries = new Map<KitPresetId, Partial<Record<Instrument, THREE.Group>>>();
   private readonly libraryPromises = new Map<KitPresetId, Promise<Partial<Record<Instrument, THREE.Group>>>>();
   private loadGeneration = 0;
   private disposed = false;
-  private selected: Instrument | null = null;
+  private selected: PieceId | null = null;
   private selectionBox: THREE.BoxHelper | null = null;
   private editorMode = false;
   private characterVisible = true;
@@ -278,7 +279,7 @@ export class DrumScene {
   }
   clearPlan(): void {
     this.plan = null; this.songTime = -.5;
-    for (const visual of this.visuals) { visual.hits = []; visual.responseTrack = createHitResponseTrack([], visual.id); }
+    for (const visual of this.visuals) { visual.hits = []; visual.responseTrack = createHitResponseTrack([], visual.instrument); }
     this.rig.applyPose(createRestRigPose(this.rig.getProfile())); this.updateHitResponses();
   }
   setRig(adapter: HumanoidRigAdapter): void {
@@ -353,13 +354,13 @@ export class DrumScene {
     const discarded = [...this.imported.values()]; this.imported.clear(); this.rebuildKit();
     discarded.forEach(model => disposeModelSource(model.root));
   }
-  getPieceVisual(id: Instrument): PieceVisualSettings {
+  getPieceVisual(id: PieceId): PieceVisualSettings {
     const canonical = canonicalPieceId(id);
     const visual = resolvePieceVisual(this.preset, canonical, this.overrides.get(canonical));
     const imported = this.imported.get(canonical);
     return { ...visual, source: imported ? 'imported' : isLibraryPreset(this.preset) && !this.proceduralOverrides.has(canonical) ? 'library' : 'procedural', ...(imported ? { customModel: imported.name, approximateCalibration: imported.approximate } : {}) };
   }
-  setPieceVisual(id: Instrument, options: PieceVisualOptions): void {
+  setPieceVisual(id: PieceId, options: PieceVisualOptions): void {
     const canonical = canonicalPieceId(id);
     const updated = { ...this.overrides.get(canonical), ...options };
     resolvePieceVisual(this.preset, canonical, updated);
@@ -372,7 +373,7 @@ export class DrumScene {
     this.overrides.set(canonical, updated); this.rebuildKit();
     if (discarded) disposeModelSource(discarded.root);
   }
-  resetPieceVisual(id: Instrument): void {
+  resetPieceVisual(id: PieceId): void {
     const canonical = canonicalPieceId(id);
     this.invalidatePieceLoad(canonical);
     const imported = this.imported.get(canonical);
@@ -380,7 +381,7 @@ export class DrumScene {
     this.rebuildKit();
     if (imported) disposeModelSource(imported.root);
   }
-  async loadPieceModel(id: Instrument, file: File): Promise<{ fileName: string; approximateCalibration: true }> {
+  async loadPieceModel(id: PieceId, file: File): Promise<{ fileName: string; approximateCalibration: true }> {
     const canonical = canonicalPieceId(id), generation = this.loadGeneration;
     const version = this.invalidatePieceLoad(canonical);
     const root = await loadLocalGLB(file);
@@ -391,7 +392,7 @@ export class DrumScene {
     if (previous) disposeModelSource(previous.root);
     return { fileName: file.name, approximateCalibration: true };
   }
-  selectPiece(id: Instrument | null): void {
+  selectPiece(id: PieceId | null): void {
     const canonical = id === null ? null : canonicalPieceId(id);
     if (canonical && !this.visuals.some(visual => visual.id === canonical)) return;
     this.selected = canonical; this.updateSelection(); this.onPieceSelect?.(canonical);
@@ -459,7 +460,7 @@ export class DrumScene {
       (this.controls as unknown as Record<string, unknown>)[key] = state[key];
     }
   }
-  private invalidatePieceLoad(id: Instrument): number {
+  private invalidatePieceLoad(id: PieceId): number {
     const version = (this.pieceLoadVersions.get(id) ?? 0) + 1; this.pieceLoadVersions.set(id, version); return version;
   }
   private disposeLibrary(library: Partial<Record<Instrument, THREE.Group>>): void {
@@ -515,7 +516,7 @@ export class DrumScene {
     const hit = this.raycaster.intersectObjects([...this.visuals.map(value => value.root), this.hardware.root], true)[0];
     let object: THREE.Object3D | null = hit?.object ?? null;
     while (object && !object.userData.pieceId) object = object.parent;
-    this.selectPiece(object?.userData.pieceId as Instrument ?? null);
+    this.selectPiece(object?.userData.pieceId as PieceId ?? null);
   };
   private rebuildKit(): void {
     this.clearSelection(); this.hardware.setLayout(this.kit); disposeModel(this.kitGroup); this.visuals = [];
@@ -524,7 +525,7 @@ export class DrumScene {
       if (canonicalPieceId(piece.id) !== piece.id) continue;
       const settings = this.getPieceVisual(piece.id);
       const built = createPieceModel(piece, settings, this.preset, this.kit, false);
-      const source = this.imported.get(piece.id)?.root ?? (isLibraryPreset(this.preset) && !this.proceduralOverrides.has(piece.id) ? library?.[piece.id] : undefined);
+      const source = this.imported.get(piece.id)?.root ?? (isLibraryPreset(this.preset) && !this.proceduralOverrides.has(piece.id) ? library?.[pieceInstrument(piece)] : undefined);
       if (source) {
         built.ring.removeFromParent(); disposeModel(built.root); built.cymbal = undefined;
         const custom = this.imported.has(piece.id);
@@ -536,9 +537,11 @@ export class DrumScene {
       }
       const response = bindHitResponse(built.root, piece.position, this.imported.has(piece.id));
       built.root.userData.pieceId = piece.id; this.kitGroup.add(built.root);
-      const instruments: Instrument[] = piece.id === 'hihat' ? ['hihat', 'openHat', 'pedalHat'] : [piece.id];
-      const hits = this.plan?.hits.filter(hit => instruments.includes(hit.instrument)).sort((a, b) => a.time - b.time) ?? [];
-      this.visuals.push({ ...built, id: piece.id, hits, response, responseTrack: createHitResponseTrack(hits, piece.id) });
+      // Different physical cymbals may share a library body and sound voice, but
+      // their selection, hardware, contact and feedback are always independent.
+      const instrument = pieceInstrument(piece);
+      const hits = this.plan?.hits.filter(hit => canonicalPieceId(hitPieceId(hit)) === piece.id).sort((a, b) => a.time - b.time) ?? [];
+      this.visuals.push({ ...built, id: piece.id, instrument, hits, response, responseTrack: createHitResponseTrack(hits, instrument) });
     }
     this.updateHitResponses(); this.updateSelection();
   }

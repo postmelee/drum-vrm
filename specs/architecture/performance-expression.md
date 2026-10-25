@@ -7,6 +7,8 @@ optional visual expression. This chapter maintains that design rationale; it doe
 not announce an expression slider or complete technique profiles. The original
 [ADR 0006](../../docs/decisions/0006-technique-and-expression-foundation.md) preserves the
 proposal's scope, T01–T09 identifiers and acceptance reasoning.
+The [MIDI interpretation contract](midi-interpretation.md) owns source evidence,
+mapping and the distinction between explicit intent and inferred controls.
 
 ## Evidence and interpretation
 
@@ -38,9 +40,9 @@ flowchart TD
 | Layer | Meaning | Implementation boundary |
 | --- | --- | --- |
 | Music | Source event identity, note, velocity and time | Preserved by the engine |
-| Mapping | Musical role/articulation and intended physical piece | Fixed semantic roles exist; distinct physical-instance mapping is future work |
-| Fit | Measured body, seat, target layout, grip and sole frames | Common profile and session calibration exist |
-| Technique | How fingers, wrists, limbs and supports perform a stroke | Basic grip/ankle approximation exists; explicit style profiles are incomplete |
+| Mapping | Musical role/articulation and intended physical piece | Explicit profiles and physical-piece identity exist; full articulation mechanics remain incomplete |
+| Fit | Measured body, seat, target layout, grip and sole frames | Common profile, session calibration and explicit static kit fitting exist |
+| Technique | How fingers, wrists, limbs and supports perform a stroke | Target-dependent wrists, ready poses, velocity-dependent strokes, phrase assignment and ankle approximations exist; full styles are incomplete |
 | Expression | Additional feasible preparation, recovery, body/gaze emphasis | Proposed 0–100 control, not a current runtime feature |
 
 A louder-looking gesture does not change source velocity or audio. A palm-up option
@@ -64,9 +66,18 @@ below are design concepts, not a shipped JSON schema.
 | T08 Contact mode | Tip or shaft region with a surface point/normal | The appropriate part of the tool contacts the intended surface |
 | T09 Phrase context | Deterministic timing hints and explicit accent cues | Emphasis preserves event identity and time |
 
-Only the basic fit, generic grip, ankle-only pedal and contact/determinism foundations
-are implemented. Full support mechanics, contact-region selection and explicit style
-policies must be developed and measured before being presented as completed technique.
+The implemented subset now includes common static fit and target-dependent neutral
+wrists (T01–T02), instrument-relative ready poses and velocity-scaled lift/pitch (T03),
+explicit short open/close hi-hat control (T06), and a bounded phrase beam that can
+alternate available hands during rapid snare repetitions (T07/T09). The
+[engine](engine-contract.md), [calibration](calibration.md) and
+[MIDI interpretation](midi-interpretation.md) contracts own their precise behavior.
+
+These approximations do not establish measured heel/sole support, biomechanical
+push-pull, collision-safe crossed arms, articulation-specific rim/shaft contact or
+manual sticking styles. Velocity is an input to motion amplitude, not proof of a
+particular technique. The separate [audio path](audio-export-contract.md) can use
+synthesized drums or an aligned user WAV without changing gesture semantics.
 
 ## Meaning of 0–100
 
@@ -92,12 +103,15 @@ explicit [time/export contract](audio-export-contract.md) update across audio an
 
 ## Two-crash example
 
-The current kit has one `crash` role. Two distinct cymbals require role/articulation
-to be separated from physical-instance identity, with corresponding selection,
-calibration and diagnostic migration. Two original simultaneous crash events can
-then be assigned to two feasible hands/surfaces. A single event does not become two
-impacts merely because expression is high. Any arrangement editor must record such
-an added event explicitly without overwriting the source.
+The kit's `crash` and `crashRight` physical pieces share the `crash` musical role.
+Two original simultaneous crash events retain separate surfaces and can be assigned
+to two hands when the calibrated body and timing permit. Physical identity alone
+does not establish comfortable reach or collision-free movement. Mapping details
+belong to [MIDI interpretation](midi-interpretation.md).
+
+A single event does not become two impacts merely because expression is high.
+Any arrangement editor must record such an added event explicitly without overwriting
+the source.
 
 ## Research influence and evaluation
 
@@ -108,9 +122,9 @@ proof of equivalent naturalness. The [research register](../../docs/research/ref
 and [historical audit](../../docs/research/rig-and-studio-audit.md)
 retain the distinctions.
 
-Development should establish fitting, then natural restrained strokes, then explicit
-techniques/instances, before optional expression. Compare authored fixtures at 0/50/100
-and intermediate settings across bodies; measure actual tool/support contact, time,
+Development should establish correct mapping/instances, fitting and natural restrained
+strokes before optional expression. When expression controls exist, compare authored
+fixtures at 0/50/100 and intermediate settings across bodies; measure actual tool/support contact, time,
 posture, clearance, continuity and any reduced gesture. Test original first/last events,
 shuffled seeks and actual exported-frame boundaries. Keep numerical thresholds
 explicitly justified rather than attributing invented limits to an instructional source.

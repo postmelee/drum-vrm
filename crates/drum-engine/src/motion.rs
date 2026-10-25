@@ -1,3 +1,4 @@
+use crate::interpretation::{normalize_legacy, validate_interpretation};
 use crate::model::*;
 use crate::rig::{pitch_rotation, RigProfile, RIG_POSE_FLOATS};
 use std::f64::consts::PI;
@@ -80,7 +81,7 @@ fn pedal_contact(plan: &PerformancePlan, profile: &RigProfile, limb: usize) -> V
     };
     plan.kit
         .iter()
-        .find(|piece| piece.id == instrument)
+        .find(|piece| piece.instrument == instrument)
         .map_or(profile.rest_tips[limb], |piece| piece.position)
 }
 
@@ -88,6 +89,7 @@ fn pedal_contact(plan: &PerformancePlan, profile: &RigProfile, limb: usize) -> V
 struct LimbState {
     time: f64,
     target: Vec3,
+    instrument: Option<Instrument>,
 }
 
 #[derive(Clone)]
@@ -114,17 +116,28 @@ fn assignment_cost(
     if dt < MIN_INTERVAL - 1e-9 || dist > MAX_TIP_SPEED * dt {
         return None;
     }
-    let preference = if preferred_limb(hit.instrument) == limb {
+    let preference = if (if hit.piece_id == "crashRight" {
+        1
+    } else {
+        preferred_limb(hit.instrument)
+    }) == limb
+    {
         0.0
     } else {
         0.3
     };
     // Fast repetitions prefer alternating hands; long rests return to handedness.
-    Some(preference + dist * 0.6 + 0.02 / dt.min(2.0))
+    let repeated_snare = hit.instrument == Instrument::Snare
+        && state.instrument == Some(Instrument::Snare)
+        && dt < 0.18;
+    Some(
+        preference + dist * 0.6 + 0.02 / dt.min(2.0) + if repeated_snare { 0.08 / dt } else { 0.0 },
+    )
 }
 
-/// Beam width 8 within a simultaneous group. Two future hand hits contribute a
-/// bounded reach/travel heuristic; fixed MIDI timestamps are never modified.
+/// Receding-horizon beam search spans up to 24 events / 0.35 seconds.
+/// Future hits consume limbs in each candidate, unlike independent forecasts.
+/// Commit only the current simultaneous group; original timestamps never move.
 pub fn assign(plan: &mut PerformancePlan) {
     assign_for_profile(plan, None);
 }
@@ -132,6 +145,7 @@ pub fn assign(plan: &mut PerformancePlan) {
 fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) {
     let mut states = std::array::from_fn(|limb| LimbState {
         time: -PRE_ROLL,
+        instrument: None,
         target: profile.map_or_else(
             || rest_tip(limb),
             |p| {
@@ -143,6 +157,7 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
             },
         ),
     });
+    plan.planner_version = "phrase-beam-8-horizon-24-v1".into();
     let mut start = 0;
     while start < plan.hits.len() {
         let mut end = start + 1;
@@ -156,7 +171,14 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
         }];
         // Pathological chords remain audible/diagnosed, but cannot expand a beam
         // proportional to an arbitrarily large simultaneous group.
-        let beam_end = end.min(start + 32);
+        let mut horizon = end;
+        while horizon < plan.hits.len()
+            && horizon < start + 24
+            && plan.hits[horizon].time - plan.hits[start].time <= 0.35
+        {
+            horizon += 1;
+        }
+        let beam_end = horizon.min(start + 32);
         for hit in &plan.hits[start..beam_end] {
             let allowed: &[usize] = match hit.instrument {
                 Instrument::Kick => &[3],
@@ -173,6 +195,7 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
                         next.states[limb] = LimbState {
                             time: hit.time,
                             target: hit.target,
+                            instrument: Some(hit.instrument),
                         };
                         next.choices.push(Some(limb));
                         expanded.push(next);
@@ -191,29 +214,21 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
             expanded.truncate(8);
             beam = expanded;
         }
-        for candidate in &mut beam {
-            for future in plan.hits[end..(end + 16).min(plan.hits.len())]
-                .iter()
-                .filter(|h| !matches!(h.instrument, Instrument::Kick | Instrument::PedalHat))
-                .take(2)
-            {
-                let forecast = (0..2)
-                    .filter_map(|limb| {
-                        assignment_cost(limb, future, candidate.states[limb], profile)
-                    })
-                    .fold(2.0, f64::min);
-                candidate.cost += forecast * 0.2;
-            }
-        }
         beam.sort_by(|a, b| {
             a.cost
                 .total_cmp(&b.cost)
                 .then_with(|| a.choices.cmp(&b.choices))
         });
         let best = &beam[0];
-        states = best.states;
         for (offset, hit) in plan.hits[start..end].iter_mut().enumerate() {
             hit.limb = best.choices.get(offset).copied().flatten();
+            if let Some(limb) = hit.limb {
+                states[limb] = LimbState {
+                    time: hit.time,
+                    target: hit.target,
+                    instrument: Some(hit.instrument),
+                };
+            }
             if hit.limb.is_none() {
                 let allowed: &[usize] = match hit.instrument {
                     Instrument::Kick => &[3],
@@ -293,8 +308,9 @@ fn two_bone_lengths(root: Vec3, target: Vec3, pole: Vec3, lengths: [f64; 2]) -> 
 }
 
 fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
+    validate_interpretation(plan)?;
     let point = |v: &Vec3| v.iter().all(|x| x.is_finite() && x.abs() <= 10.0);
-    if plan.schema_version != 1
+    if !matches!(plan.schema_version, 1 | 2)
         || !plan.duration.is_finite()
         || !(0.0..=MAX_DURATION).contains(&plan.duration)
         || plan.hits.len() > MAX_HITS
@@ -324,6 +340,10 @@ fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
     {
         return Err("연주 계획의 키트·진단·템포 수치가 유효하지 않습니다.".into());
     }
+    let ids: std::collections::BTreeSet<_> = plan.kit.iter().map(|p| &p.id).collect();
+    if ids.len() != plan.kit.len() {
+        return Err("중복된 드럼 부품 ID입니다.".into());
+    }
     let mut previous = -1.0;
     for (index, hit) in plan.hits.iter().enumerate() {
         if hit.id != index
@@ -338,7 +358,12 @@ fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
             || hit.channel > 15
             || hit.velocity == 0
             || hit.velocity > 127
-            || map_note(hit.note) != Some(hit.instrument)
+            || (plan.schema_version == 1 && map_note(hit.note) != Some(hit.instrument))
+            || !plan.kit.iter().any(|piece| {
+                piece.id == hit.piece_id
+                    && piece.instrument == hit.instrument
+                    && distance(piece.position, hit.target) < 1e-9
+            })
             || hit.track >= 512
             || hit.event_index >= MAX_EVENTS
             || hit.tick > 9_007_199_254_740_991
@@ -364,7 +389,8 @@ pub struct Motion {
 }
 
 impl Motion {
-    pub fn new(plan: PerformancePlan) -> Result<Self, String> {
+    pub fn new(mut plan: PerformancePlan) -> Result<Self, String> {
+        normalize_legacy(&mut plan);
         if plan.calibration_id != "primitive-v1" {
             return Err("이 연주 계획에는 해당 리그 프로필이 필요합니다.".into());
         }
@@ -372,6 +398,7 @@ impl Motion {
     }
 
     pub fn with_profile(mut plan: PerformancePlan, profile: RigProfile) -> Result<Self, String> {
+        normalize_legacy(&mut plan);
         profile.validate()?;
         validate_plan(&plan)?;
         // Replace only planner-owned diagnostics. Parsing/mapping evidence survives
@@ -414,12 +441,29 @@ impl Motion {
     fn assemble(plan: PerformancePlan, profile: Option<RigProfile>) -> Result<Self, String> {
         validate_plan(&plan)?;
         let mut limbs: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
+        let mut states: [LimbState; 4] = std::array::from_fn(|limb| LimbState {
+            time: -PRE_ROLL,
+            instrument: None,
+            target: profile.as_ref().map_or_else(
+                || rest_tip(limb),
+                |p| {
+                    if limb >= 2 {
+                        pedal_contact(&plan, p, limb)
+                    } else {
+                        p.rest_tips[limb]
+                    }
+                },
+            ),
+        });
         for (index, hit) in plan.hits.iter().enumerate() {
             if let Some(limb) = hit.limb {
-                if !profile.as_ref().map_or_else(
-                    || reachable(limb, hit.target),
-                    |p| p.reachable(limb, hit.target),
-                ) {
+                let allowed = match hit.instrument {
+                    Instrument::Kick => limb == 3,
+                    Instrument::PedalHat => limb == 2,
+                    _ => limb < 2,
+                };
+                if !allowed || assignment_cost(limb, hit, states[limb], profile.as_ref()).is_none()
+                {
                     return Err("연주 계획의 손발 배정이 유효하지 않습니다.".into());
                 }
                 if limbs[limb]
@@ -428,6 +472,11 @@ impl Motion {
                 {
                     return Err("같은 손발에 동시 타격이 배정되어 있습니다.".into());
                 }
+                states[limb] = LimbState {
+                    time: hit.time,
+                    target: hit.target,
+                    instrument: Some(hit.instrument),
+                };
                 limbs[limb].push(index);
             }
         }
@@ -443,12 +492,34 @@ impl Motion {
         let at = hits.partition_point(|id| self.plan.hits[*id].time <= time);
         let previous = at.checked_sub(1).map(|i| &self.plan.hits[hits[i]]);
         let next = hits.get(at).map(|id| &self.plan.hits[*id]);
-        let rest = self
-            .profile
-            .as_ref()
-            .map_or_else(|| rest_tip(limb), |p| p.rest_tips[limb]);
+        let rest = self.profile.as_ref().map_or_else(
+            || rest_tip(limb),
+            |p| {
+                let home = if limb == 0 { "snare" } else { "hihat" };
+                let same_piece = previous.zip(next).filter(|(a, b)| a.piece_id == b.piece_id);
+                let target = same_piece.map(|(hit, _)| hit.target).or_else(|| {
+                    self.plan
+                        .kit
+                        .iter()
+                        .find(|piece| piece.id == home)
+                        .map(|piece| piece.position)
+                });
+                if limb < 2 {
+                    if let Some(target) = target {
+                        let ready = add(target, [0.0, 0.035, 0.0]);
+                        if p.reachable(limb, ready) {
+                            return ready;
+                        }
+                    }
+                }
+                p.rest_tips[limb]
+            },
+        );
         let foot = limb >= 2;
-        let max_height = if foot { 0.045 } else { 0.24 };
+        let max_height = if foot { 0.045 } else { 0.11 };
+        let stroke_pitch = |velocity: u8, interval: f64| {
+            (0.12 + 0.30 * velocity as f64 / 127.0) * (interval / 0.20).min(1.0)
+        };
         match (previous, next) {
             (Some(prev), _) if (time - prev.time).abs() < 1e-9 => (prev.target, 0.0),
             (Some(prev), Some(next)) if next.time - prev.time <= 0.42 => {
@@ -458,7 +529,7 @@ impl Motion {
                     * ((next.time - prev.time) / 0.15).min(1.0);
                 (
                     arc(prev.target, next.target, phase, height),
-                    (PI * phase).sin(),
+                    (PI * phase).sin() * stroke_pitch(next.velocity, next.time - prev.time),
                 )
             }
             (_, Some(next)) if next.time - time <= 0.22 => {
@@ -470,14 +541,14 @@ impl Motion {
                         phase,
                         max_height * (0.35 + 0.65 * next.velocity as f64 / 127.0),
                     ),
-                    (PI * phase).sin(),
+                    (PI * phase).sin() * stroke_pitch(next.velocity, 0.22),
                 )
             }
             (Some(prev), _) if time - prev.time < 0.18 => {
                 let phase = (time - prev.time) / 0.18;
                 (
                     arc(prev.target, rest, phase, max_height * 0.22),
-                    (PI * phase).sin() * 0.35,
+                    (PI * phase).sin() * stroke_pitch(prev.velocity, 0.18) * 0.35,
                 )
             }
             _ => (rest, 0.0),
@@ -488,6 +559,22 @@ impl Motion {
     /// immutable impact time and at rest. Squared sine keeps angular velocity
     /// continuous at the boundaries; rapid repetitions share one release arc.
     fn pedal_pitch_at(&self, limb: usize, time: f64) -> f64 {
+        if limb == 2 {
+            let control_at = self
+                .plan
+                .controls
+                .partition_point(|control| control.time_us as f64 / 1_000_000.0 < time);
+            if self
+                .plan
+                .controls
+                .get(control_at)
+                .is_some_and(|control| time >= control.release_start_time_us as f64 / 1_000_000.0)
+            {
+                // Zero at either endpoint is an authoritative closed state,
+                // not permission for another foot preparation to take over.
+                return -0.18 * crate::hihat::evaluate(&self.plan.controls, time);
+            }
+        }
         let hits = &self.limbs[limb];
         let at = hits.partition_point(|id| self.plan.hits[*id].time <= time);
         let previous = at.checked_sub(1).map(|i| &self.plan.hits[hits[i]]);
@@ -500,11 +587,25 @@ impl Motion {
         };
         let interval = previous.map_or(f64::INFINITY, |hit| next.time - hit.time);
         let window = if interval <= 0.32 { interval } else { 0.16 };
-        let until = next.time - time;
-        if until >= window {
+        let mut start = next.time - window;
+        if limb == 2 {
+            // Look relative to the next literal strike, including controls that
+            // have not started yet. Its preparation cannot cross their closure.
+            let before_next = self
+                .plan
+                .controls
+                .partition_point(|control| control.time_us <= next.time_us);
+            if let Some(control) = before_next
+                .checked_sub(1)
+                .map(|index| &self.plan.controls[index])
+            {
+                start = start.max(control.time_us as f64 / 1_000_000.0);
+            }
+        }
+        if time <= start {
             return 0.0;
         }
-        let phase = 1.0 - until / window;
+        let phase = (time - start) / (next.time - start);
         let amplitude = 0.18 * (0.35 + 0.65 * next.velocity as f64 / 127.0);
         -amplitude * (PI * phase).sin().powi(2)
     }
@@ -527,10 +628,24 @@ impl Motion {
         for (limb, rotation) in rotations.iter_mut().enumerate() {
             let (tip, pitch) = self.stroke_at(limb, time);
             if let Some(profile) = &self.profile {
+                if limb < 2 {
+                    if let Some(solution) = profile.solve_hand(limb, tip, -pitch) {
+                        *rotation = solution.rotation;
+                        for point in [
+                            profile.roots[limb],
+                            solution.middle,
+                            solution.end,
+                            solution.tip,
+                        ] {
+                            pose.extend(point.map(|x| x as f32));
+                        }
+                        continue;
+                    }
+                }
                 *rotation = pitch_rotation(
                     profile.contact_rotations[limb],
                     if limb < 2 {
-                        -pitch * 0.70
+                        -pitch
                     } else {
                         self.pedal_pitch_at(limb, time)
                     },

@@ -1,6 +1,9 @@
 //! MIDI parsing, immutable performance planning and random-access rig evaluation.
 //! Public JSON fields match src/types.ts; the pose buffer is an owned Float32Array.
 
+mod fit;
+pub mod hihat;
+pub mod interpretation;
 mod midi;
 pub mod model;
 pub mod motion;
@@ -24,11 +27,12 @@ pub fn build_plan(bytes: &[u8], selection: &Selection) -> Result<PerformancePlan
 
 /// Pure Rust boundary shared by native regression tests and the WASM exports.
 pub fn load_motion(plan_json: &str, profile_json: Option<&str>) -> Result<Motion, String> {
-    if plan_json.len() > 32 * 1024 * 1024 {
+    if plan_json.len() > 128 * 1024 * 1024 {
         return Err("연주 계획 크기가 한계를 초과합니다.".into());
     }
-    let plan: PerformancePlan =
+    let mut plan: PerformancePlan =
         serde_json::from_str(plan_json).map_err(|e| format!("연주 계획 형식 오류: {e}"))?;
+    interpretation::normalize_legacy(&mut plan);
     match profile_json {
         Some(json) => Motion::with_profile(plan, RigProfile::from_json(json)?),
         None => Motion::new(plan),
@@ -40,6 +44,11 @@ pub fn inspect_midi(bytes: &[u8]) -> Result<String, JsValue> {
     inspect(bytes)
         .and_then(|info| serde_json::to_string(&info).map_err(|e| e.to_string()))
         .map_err(|e| JsValue::from_str(&e))
+}
+
+#[wasm_bindgen]
+pub fn fit_kit(profile_json: &str, kit_json: &str) -> Result<String, JsValue> {
+    fit::fit_kit_json(profile_json, kit_json).map_err(|error| JsValue::from_str(&error))
 }
 
 #[wasm_bindgen]
@@ -88,7 +97,15 @@ impl Performance {
     pub fn evaluate_rig_at(&self, song_time: f64) -> Vec<f32> {
         self.motion.evaluate_rig(song_time)
     }
+
+    pub fn evaluate_hihat_at(&self, song_time: f64) -> f64 {
+        hihat::evaluate(&self.motion.plan.controls, song_time)
+    }
 }
 
+#[cfg(test)]
+mod interpretation_tests;
+#[cfg(test)]
+mod phrase_tests;
 #[cfg(test)]
 mod tests;

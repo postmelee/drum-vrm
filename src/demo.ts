@@ -33,3 +33,39 @@ export function makeDemo(seconds = 30): Uint8Array {
   const conductor = [0, 255, 81, 3, 7, 161, 32, ...variable(seconds * 960), 255, 47, 0];
   return new Uint8Array([...chunk('MThd', [0, 1, 0, 2, 1, 224]), ...chunk('MTrk', conductor), ...chunk('MTrk', track)]);
 }
+
+/** Original eight-second study, authored to expose interpretation changes.
+ * 0–1 s: count-in; 1 s: two crashes; 1⅓–3 s: short open/close hats;
+ * 3⅓ s: rimshot edge; 3⅔–5⅔ s: solo roll; 5⅔–7⅔ s: roll with hats.
+ * No phrase, timing sequence or performance was copied from an uploaded song. */
+export function makeInterpretationDemo(): Uint8Array {
+  const ppq = 480, endTick = 24 * ppq;
+  const events: { tick: number; note: number; velocity: number }[] = [];
+  const add = (beat: number, note: number, velocity: number) => events.push({ tick: Math.round(beat * ppq), note, velocity });
+  for (let beat = 0; beat < 3; beat++) add(beat, 75, 85);
+  for (const beat of [3, 23]) { add(beat, 49, 110); add(beat, 57, 105); add(beat, 36, 100); }
+  for (let beat = 4; beat < 10; beat++) {
+    const velocity = beat % 2 === 0 ? 88 : 55;
+    add(beat, 46, velocity); add(beat + .075, 44, velocity);
+    add(beat, beat % 2 === 0 ? 36 : 40, beat % 2 === 0 ? 95 : 100);
+  }
+  add(10, 32, 100);
+  for (let index = 0; index < 24; index++) {
+    add(11 + index / 4, 38, index % 2 === 0 ? 110 : 60);
+    add(17 + index / 4, 38, index % 2 === 0 ? 100 : 65);
+    if (index % 2 === 0) add(17 + index / 4, 42, 70);
+    if (index % 8 === 0) add(17 + index / 4, 36, 95);
+  }
+  const messages = events.flatMap(event => [
+    { tick: event.tick, bytes: [0x90, event.note, event.velocity] },
+    { tick: event.tick + 24, bytes: [0x80, event.note, 0] },
+  ]).sort((a, b) => a.tick - b.tick);
+  const name = [...new TextEncoder().encode('Interpretation Study')];
+  const track = [0, 255, 3, name.length, ...name];
+  let last = 0;
+  for (const message of messages) { track.push(...variable(message.tick - last), ...message.bytes); last = message.tick; }
+  track.push(...variable(endTick - last), 255, 47, 0);
+  // 333333 us/q is the nearest integer SMF representation of 180 BPM.
+  const conductor = [0, 255, 81, 3, 5, 22, 21, ...variable(endTick), 255, 47, 0];
+  return new Uint8Array([...chunk('MThd', [0, 1, 0, 2, 1, 224]), ...chunk('MTrk', conductor), ...chunk('MTrk', track)]);
+}

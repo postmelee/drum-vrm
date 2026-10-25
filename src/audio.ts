@@ -44,17 +44,28 @@ export function synthesizePcm(plan: PerformancePlan, sampleRate = SAMPLE_RATE): 
   const length = Math.round(duration * sampleRate);
   const left = new Float32Array(length);
   const right = new Float32Array(length);
+  const hatClosures = [...plan.hits.filter(hit=>hit.instrument==='hihat'||hit.instrument==='pedalHat').map(hit=>hit.time),...(plan.controls??[]).map(control=>control.timeUs/1e6)].sort((a,b)=>a-b);
   for (const hit of plan.hits) {
     if (!Number.isFinite(hit.time) || hit.time < 0 || hit.velocity <= 0) continue;
     const voice = voices[hit.instrument];
     if (!voice) continue;
     const start = hitSampleIndex(hit.time, sampleRate);
-    const count = Math.min(Math.ceil(voice.seconds * sampleRate), length - start);
+    let count = Math.min(Math.ceil(voice.seconds * sampleRate), length - start);
+    if(hit.instrument==='openHat'){
+      let low=0,high=hatClosures.length;
+      while(low<high){const mid=(low+high)>>>1;if(hatClosures[mid]<hit.time)low=mid+1;else high=mid;}
+      // Quantize absolute event times once, just as for strike onsets. Rounding
+      // the onset and separately ceiling a duration can leak one sample past
+      // the source close event at non-integral sample times.
+      if(low<hatClosures.length)count=Math.min(count,hitSampleIndex(hatClosures[low],sampleRate)-start);
+    }
+    count = Math.max(0,count);
     const random = noiseFor(hit);
     const velocity = Math.min(1, hit.velocity / 127);
     const level = voice.gain * Math.pow(velocity, 1.25);
-    const leftGain = Math.cos((voice.pan + 1) * Math.PI / 4) * level;
-    const rightGain = Math.sin((voice.pan + 1) * Math.PI / 4) * level;
+    const pan = hit.pieceId==='crashRight'?Math.abs(voice.pan):voice.pan;
+    const leftGain = Math.cos((pan + 1) * Math.PI / 4) * level;
+    const rightGain = Math.sin((pan + 1) * Math.PI / 4) * level;
     let previousNoise = 0;
     for (let i = 0; i < count; i++) {
       const time = i / sampleRate;

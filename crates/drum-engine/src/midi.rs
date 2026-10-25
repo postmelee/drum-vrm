@@ -1,3 +1,4 @@
+use crate::interpretation::{self, InterpretationKind, SourceEvent, SourceMessage};
 use crate::model::*;
 use midly::{Format, MetaMessage, MidiMessage, Smf, Timing, TrackEventKind};
 use std::collections::BTreeMap;
@@ -322,6 +323,12 @@ impl Parsed<'_> {
     }
 
     pub fn plan(&self, bytes: &[u8], selection: &Selection) -> Result<PerformancePlan, String> {
+        interpretation::validate_options(selection.mapping_profile, selection.count_in_note75)?;
+        crate::hihat::validate_options(
+            selection.mapping_profile,
+            selection.hihat_policy,
+            selection.hihat_openness,
+        )?;
         if selection.tracks.is_empty() {
             return Err("분석할 드럼 트랙을 한 개 이상 선택하세요.".into());
         }
@@ -344,32 +351,53 @@ impl Parsed<'_> {
         let kit = default_kit();
         let mut diagnostics = self.diagnostics.clone();
         let mut hits = Vec::new();
+        let mut source_events = Vec::new();
+        let mut interpretations = Vec::new();
         let mut unmapped: BTreeMap<(usize, u8, u8), usize> = BTreeMap::new();
         for index in selected {
             let mut tick = 0u64;
             for (event_index, event) in self.smf.tracks[index].iter().enumerate() {
                 tick += event.delta.as_int() as u64;
-                if let TrackEventKind::Midi {
-                    channel,
-                    message: MidiMessage::NoteOn { key, vel },
-                } = event.kind
-                {
-                    if vel.as_int() == 0 || selection.channel.is_some_and(|c| c != channel.as_int())
-                    {
+                if let TrackEventKind::Midi { channel, message } = event.kind {
+                    if selection.channel.is_some_and(|c| c != channel.as_int()) {
                         continue;
                     }
-                    let Some(instrument) = map_note(key.as_int()) else {
-                        *unmapped
-                            .entry((index, channel.as_int(), key.as_int()))
-                            .or_default() += 1;
-                        continue;
+                    let source = SourceEvent {
+                        id: format!("{index}:{event_index}"),
+                        track: index,
+                        event_index,
+                        tick,
+                        time_us: self.time_us(tick)?,
+                        channel: channel.as_int(),
+                        message: SourceMessage::from_midi(message),
                     };
+                    let interpreted = interpretation::interpret(
+                        &source,
+                        selection.mapping_profile,
+                        selection.count_in_note75,
+                    );
+                    if interpreted.kind == InterpretationKind::Unmapped {
+                        if let SourceMessage::NoteOn { key, .. } = source.message {
+                            *unmapped.entry((index, channel.as_int(), key)).or_default() += 1;
+                        }
+                    }
+                    let is_strike = interpreted.kind == InterpretationKind::Strike;
+                    interpretations.push(interpreted.clone());
+                    source_events.push(source.clone());
+                    if !is_strike {
+                        continue;
+                    }
+                    let SourceMessage::NoteOn { key, velocity } = source.message else {
+                        unreachable!();
+                    };
+                    let instrument = interpreted.instrument.unwrap();
+                    let piece_id = interpreted.piece_id.unwrap();
                     if hits.len() >= MAX_HITS {
                         return Err(format!(
                             "선택한 타격이 {MAX_HITS}개를 초과합니다. 트랙이나 구간을 줄여주세요."
                         ));
                     }
-                    let time_us = self.time_us(tick)?;
+                    let time_us = source.time_us;
                     hits.push(Hit {
                         id: 0,
                         time: time_us as f64 / 1_000_000.0,
@@ -378,17 +406,20 @@ impl Parsed<'_> {
                         track: index,
                         event_index,
                         channel: channel.as_int(),
-                        note: key.as_int(),
-                        velocity: vel.as_int(),
+                        note: key,
+                        velocity,
                         instrument,
+                        piece_id: piece_id.clone(),
+                        articulation: interpreted.articulation.unwrap(),
+                        source_event_id: source.id,
                         limb: None,
-                        target: kit.iter().find(|p| p.id == instrument).unwrap().position,
+                        target: kit.iter().find(|p| p.id == piece_id).unwrap().position,
                     });
                 }
             }
         }
         for ((track, channel, note), count) in unmapped {
-            diagnostics.push(Diagnostic::new("UNMAPPED_NOTE", format!("트랙 {} / 채널 {} / MIDI 음표 {note}: {count}개를 기본 키트에 매핑할 수 없어 제외했습니다.", track + 1, channel + 1)));
+            diagnostics.push(Diagnostic::new("UNMAPPED_NOTE", format!("트랙 {} / 채널 {} / MIDI 음표 {note}: {count}개의 원본 이벤트를 보존했지만 선택한 매핑으로 연주할 수 없습니다.", track + 1, channel + 1)));
         }
         if hits.is_empty() {
             return Err("선택한 트랙/채널에 지원하는 드럼 타격이 없습니다. 트랙 선택과 GM 드럼 음표를 확인하세요.".into());
@@ -397,11 +428,19 @@ impl Parsed<'_> {
         for (id, hit) in hits.iter_mut().enumerate() {
             hit.id = id;
         }
+        source_events.sort_by_key(|event| (event.time_us, event.track, event.event_index));
+        let hit_ids: BTreeMap<_, _> = hits
+            .iter()
+            .map(|hit| (hit.source_event_id.as_str(), hit.id))
+            .collect();
+        for interpreted in &mut interpretations {
+            interpreted.hit_id = hit_ids.get(interpreted.source_event_id.as_str()).copied();
+        }
         let hash = bytes.iter().fold(0xcbf29ce484222325u64, |h, b| {
             (h ^ *b as u64).wrapping_mul(0x100000001b3)
         });
-        Ok(PerformancePlan {
-            schema_version: 1,
+        let mut plan = PerformancePlan {
+            schema_version: 2,
             engine_version: env!("CARGO_PKG_VERSION").into(),
             planner_version: "beam-8-lookahead-2".into(),
             midi_hash: format!("fnv1a64:{hash:016x}"),
@@ -425,6 +464,16 @@ impl Parsed<'_> {
                 })
                 .collect(),
             time_signatures: self.time_signatures.clone(),
-        })
+            mapping_profile: selection.mapping_profile,
+            mapping_version: interpretation::MAPPING_VERSION.into(),
+            count_in_note75: selection.count_in_note75,
+            source_events,
+            interpretations,
+            hihat_policy: selection.hihat_policy,
+            hihat_openness: selection.hihat_openness,
+            controls: Vec::new(),
+        };
+        crate::hihat::apply_policy(&mut plan);
+        Ok(plan)
     }
 }

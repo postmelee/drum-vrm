@@ -5,6 +5,8 @@
 This chapter explains the adopted calibration design and its limits. Exact accepted
 input ranges and coordinate conventions belong to the [rig contract](rig-contract.md).
 The [reader guide](../../docs/calibration.md) covers operating the controls.
+The [MIDI interpretation contract](midi-interpretation.md) defines which musical
+event addresses which physical piece before body-dependent reach is evaluated.
 
 ## What must fit together
 
@@ -39,10 +41,23 @@ a shared forward reference. It does not optimize shoulder comfort, wrist limits,
 skin clearance or all drum targets. Implementation details live in
 [`getAutomaticCalibration`](../../src/rig-humanoid.ts).
 
-The general fitting principle is adopted: measure the body, position the seat and
-contacts, then re-evaluate reach. Automatic collision-free fitting and controlled
-short/tall VRoid comparisons are separate unfinished work. Different arm-to-leg
-ratios can require target layout changes even when both feet reach their pedals.
+Different arm-to-leg ratios can require target layout changes even when both feet
+reach their pedals. An explicit **Fit kit to body** operation searches a common
+transform for hand-played surfaces through [fit.rs](../../crates/drum-engine/src/fit.rs):
+
+- Scale positions around `[0, 1.235, 0.06]` metres and contact radii together, from
+  100% down to 60% in 2% steps. Kick and both pedal contacts remain unchanged.
+- Search a shared vertical shift bounded to ±0.5 m and a fore/aft shift from
+  −0.25 to +0.10 m. Keep closed/open hi-hat contacts coupled.
+- Prefer the largest complete kit, then the smallest translation. If no complete
+  candidate exists, return the best candidate with unresolved physical-piece IDs.
+
+`complete` means that designated hands can reach static targets; snare checks both
+hands. It does not prove transfer timing, joint comfort or skin/instrument clearance.
+The UI applies the proposal only on this explicit action, never silently on character
+import, then replans. A complete fitted layout is unchanged by a repeated fit.
+Automatic collision-free fitting and controlled short/tall VRoid comparisons remain
+separate unfinished work.
 
 ## Contact is a transform chain
 
@@ -57,10 +72,18 @@ the hand. Writing a correct-looking tip position after solving the skeleton woul
 hide an attachment error. The rendered endpoint is therefore an independent observed
 quantity in contact checks.
 
-The current hand mount is diagonal across the measured palm. Available finger bones
-curl around it; missing fingers use a less detailed fallback. Palm orientation is a
-calibration choice carried partly by the forearm. This corrects a reference-frame
-problem but does not provide target-dependent anatomical wrist constraints.
+The hand mount is diagonal across the measured palm. Available finger bones curl
+around it; missing fingers use a less detailed fallback. The adapter supplies measured
+forearm/palm axes and a desired palm direction in `handFrames`. The Rust solver treats
+the forearm and attached tool as a compound link, solves the elbow toward each target,
+then recovers the actual wrist and tool orientation while preserving bone lengths.
+Forearm roll follows the desired palm direction where geometry permits.
+
+This replaces a fixed world hand orientation with a target-dependent neutral wrist;
+stroke pitch is applied around that calibrated relationship. It does not implement
+per-joint anatomical limits, skin collisions or every grip style. Contact error and
+hand-forward/forearm swing are distinct observations: inspect both, including the
+rendered fingers and mesh, before claiming a natural grip.
 
 ## Calibration update transaction
 
@@ -79,7 +102,9 @@ sequenceDiagram
 ```
 
 A successful update changes kit contacts and all matching `hit.target` fields
-consistently, then applies the body-dependent evaluator. Original event IDs, ticks,
+consistently through `pieceId`, then applies the body-dependent evaluator. Two
+crashes sharing an instrument role retain independent contact entries; moving one
+does not move the other. Original event IDs, ticks,
 notes, velocity and times are preserved. Audio does not need a new musical arrangement.
 If the update fails, restore the prior calibration/layout rather than leaving a
 half-updated body and plan. The application pauses while changing calibration and
@@ -96,6 +121,11 @@ MIDI with no pedal events. The implemented stroke keeps the hip/knee/ankle chain
 fixed and rotates the foot through a small preparation/press envelope. Impossible
 idle pedals receive an explicit diagnostic rather than elongated bones.
 
+The optional short open/close interpretation drives a small time-based left-foot
+pitch instead of adding an independent foot strike for the paired close. Source and
+control semantics belong to [MIDI interpretation](midi-interpretation.md); cymbal-gap
+geometry and measured pedal pressure are not implemented.
+
 A fixed ankle is not proof that the heel is grounded. A sole socket is not an exact
 shoe mesh surface. Full heel-down/up mechanics require support regions and potentially
 ankle/knee translation, described in [performance expression](performance-expression.md).
@@ -108,17 +138,16 @@ cymbal. Presets and local body-only GLB swaps preserve common stands/pedals; int
 layout changes may reposition the associated hardware. Source-specific mesh extraction
 is an appearance adapter concern and never changes the avatar solver.
 
-Visual scale is currently an appearance control. Making a shell smaller does not
-bring its musical contact within reach. A future compact-kit fitting operation would
-need to change physical dimensions, layout, tool offsets and checks deliberately;
-it must not masquerade as a cosmetic scale change.
+The part appearance scale remains cosmetic and does not move its target. The explicit
+kit-fit operation instead updates physical positions and radii, reflected by body
+fitting and associated hardware. Neither operation scales the avatar or its bones.
 
-## Evidence and next design boundary
+## Historical evidence and remaining design
 
 Read the [calibration evidence](../../docs/verification/calibration-unreleased.md)
 and [palm follow-up](../../docs/verification/palm-orientation-unreleased.md)
-for the executed scope, including remaining wrist/skin limits. The
+for their original executed scope and observed wrist/skin limits. The
 [fit/ready-pose proposal](../../docs/research/snare-ready-and-kit-fit.md)
-separates the next design from implemented behavior. Historical details remain in
+records the design motivation; this contract defines the implemented subset. Historical details remain in
 [ADR 0005](../../docs/decisions/0005-calibration-pedals-hardware.md), without rewriting its
 original scope or test results as current universal claims.

@@ -6,7 +6,8 @@
 
 | 계약 | 책임 |
 | --- | --- |
-| [엔진](engine-contract.ko.md) | MIDI 해석, 원본 이벤트, 손발 배정과 프로필·포즈 API |
+| [MIDI 해석](midi-interpretation.ko.md) | 원본 이벤트 근거, 매핑 프로필, 연주 의도와 제어의 경계 |
+| [엔진](engine-contract.ko.md) | 입력 제한, 시간, 손발 배정과 프로필·포즈 API |
 | [리그](rig-contract.ko.md) | 의미 기반 본, 좌표 변환, 보정, 렌더링된 접촉과 드럼 외형 |
 | [오디오·출력](audio-export-contract.ko.md) | 곡·출력 시각, PCM, 재생 시계와 인코딩 |
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createTimelineGrid, songTimeToTick, tickToSongTime } from '../src/timeline';
-import type { PerformancePlan } from '../src/types';
+import { createTimelineGrid, createTimelineNotes, songTimeToTick, tickToSongTime } from '../src/timeline';
+import type { Hit, PerformancePlan, SourceEvent } from '../src/types';
 
 const plan: PerformancePlan = {
   schemaVersion: 1, duration: 6, hits: [], diagnostics: [], kit: [], tempoCount: 2,
@@ -59,5 +59,57 @@ describe('MIDI piano-roll musical time', () => {
     const grid = createTimelineGrid(legacy);
     expect(grid[0]).toEqual({ outputTime: .5, label: '0s', major: true });
     expect(grid.every(mark => mark.bar === undefined)).toBe(true);
+  });
+});
+
+describe('source note evidence in the piano roll', () => {
+  const source = (id: string, timeUs: number, key: number, velocity = 100): SourceEvent => ({
+    id, track: Number(id.split(':')[0]), eventIndex: Number(id.split(':')[1]),
+    timeUs, tick: timeUs, channel: 9, message: { kind: 'noteOn', key, velocity },
+  });
+  const strike = (id: number, sourceEventId: string, pieceId: Hit['pieceId'], instrument: Hit['instrument'], note: number): Hit => ({
+    id, sourceEventId, pieceId, instrument, note, time: .125001, tick: 60, track: 1,
+    channel: 9, velocity: 100, limb: null, target: [0, 1, 0],
+  });
+
+  it('retains every positive source note across strike, count-in, control and unmapped interpretations', () => {
+    const sources = [source('1:0', 0, 75), source('1:1', 125001, 49), source('2:0', 125001, 57),
+      source('1:2', 250003, 46), source('1:3', 280007, 44), source('1:4', 500009, 90),
+      source('1:5', 500009, 90), source('1:6', 500010, 46, 0),
+      { ...source('1:7', 500011, 44), message: { kind: 'noteOff' as const, key: 44, velocity: 64 } },
+      { ...source('1:8', 500012, 0), message: { kind: 'controller' as const, controller: 4, value: 64 } }];
+    const hits = [strike(0, '1:1', 'crash', 'crash', 49), strike(1, '2:0', 'crashRight', 'crash', 57),
+      { ...strike(2, '1:2', 'openHat', 'openHat', 46), time: .250003, limb: 1 }];
+    const input: PerformancePlan = { ...plan, schemaVersion: 2, sourceEvents: sources, hits,
+      interpretations: [{ sourceEventId: '1:0', kind: 'countIn' },
+        { sourceEventId: '1:1', kind: 'strike', hitId: 0 }, { sourceEventId: '2:0', kind: 'strike', hitId: 1 },
+        { sourceEventId: '1:2', kind: 'strike', hitId: 2 },
+        { sourceEventId: '1:3', kind: 'control', relatedSourceEventId: '1:2' },
+        { sourceEventId: '1:4', kind: 'unmapped' }] };
+    const before = JSON.stringify(input);
+    const notes = createTimelineNotes(input);
+    // Two coincident source notes and duplicate unmapped keys remain distinct.
+    expect(notes.map(note => note.id)).toEqual(['1:0', '1:1', '2:0', '1:2', '1:3', '1:4', '1:5']);
+    expect(notes.map(note => note.time)).toEqual([0, .125001, .125001, .250003, .280007, .500009, .500009]);
+    expect(notes.map(note => note.kind)).toEqual(['countIn', 'strike', 'strike', 'strike', 'control', 'unmapped', 'unmapped']);
+    expect(notes.map(note => note.name)).toEqual(['Count-in', 'Crash L', 'Crash R', 'Open hat', 'Hat close', 'Note 90', 'Note 90']);
+    expect(notes[1].hit?.limb).toBeNull(); // Unassigned motion cannot hide a source strike.
+    expect(notes[4].hit).toBeUndefined(); // A derived pedal control is still inspectable as evidence.
+    expect(notes.map(note => note.velocity)).toEqual(Array(7).fill(100));
+    expect(JSON.stringify(input)).toBe(before);
+  });
+
+  it('continues to show legacy plans without inventing source events', () => {
+    const hit = { ...strike(0, 'unused', 'crashRight', 'crash', 57), time: .321987, velocity: 33 };
+    const notes = createTimelineNotes({ ...plan, hits: [hit] });
+    expect(notes).toEqual([{ id: '0', time: .321987, note: 57, velocity: 33, name: 'Crash R', kind: 'strike', hit }]);
+  });
+
+  it('keeps ride and snare edge articulations on the correct instrument rows', () => {
+    const notes=createTimelineNotes({...plan,hits:[
+      {...strike(0,'1:0','ride','ride',52),articulation:'edge'},
+      {...strike(1,'1:1','snare','snare',34),articulation:'edge'},
+    ]});
+    expect(notes.map(note=>note.name)).toEqual(['Ride edge','Snare edge']);
   });
 });

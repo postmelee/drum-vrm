@@ -22,6 +22,17 @@ describe('physical layout recalibration',()=>{
     expect(original).toEqual(before);expect(layout[0].position).toEqual([.2,.09,.7]);
     expect(changed.diagnostics).toEqual(original.diagnostics);
   });
+
+  it('retargets distinct crashes by physical identity without changing their shared voice',()=>{
+    const layout=kit();layout.push({id:'crashRight',instrument:'crash',label:'Crash Right',position:[.6,1.1,.5],radius:.3});
+    const plan:PerformancePlan={schemaVersion:2,duration:2,tempoCount:1,kit:layout,diagnostics:[],hits:['crash','crashRight'].map((pieceId,id)=>({id,time:1,tick:480,track:0,channel:0,note:id?57:49,velocity:100,instrument:'crash',pieceId:pieceId as 'crash'|'crashRight',limb:id,target:[0,0,0]}))};
+    const changed=applyKitLayout(plan,moveKitTarget(layout,'crashRight',[.7,1.2,.6]));
+    expect(changed.hits.map(h=>h.target)).toEqual([[0,1,.5],[.7,1.2,.6]]);
+    expect(changed.hits.map(h=>h.instrument)).toEqual(['crash','crash']);
+    expect(()=>applyKitLayout(plan,kit())).toThrow('드럼 부품');
+    const mismatched=structuredClone(layout);mismatched[10].instrument='snare';
+    expect(()=>validateKitLayout(mismatched)).toThrow('역할');
+  });
   it('rejects incomplete, duplicate, nonfinite and split hi-hat contracts',()=>{
     expect(()=>validateKitLayout(kit().slice(1))).toThrow();
     const duplicate=kit();duplicate[1]=duplicate[0];expect(()=>validateKitLayout(duplicate)).toThrow();

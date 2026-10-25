@@ -43,6 +43,7 @@ fn selection(tracks: &[usize], channel: Option<u8>) -> Selection {
     Selection {
         tracks: tracks.to_vec(),
         channel,
+        ..Selection::default()
     }
 }
 fn plan_for(events: Vec<(u32, Vec<u8>)>) -> PerformancePlan {
@@ -296,8 +297,29 @@ fn too_fast_kicks_remain_at_original_times_and_are_diagnosed() {
         (479, end()),
     ]);
     assert_eq!(plan.hits.len(), 2);
+    assert_eq!(plan.hits[0].time_us, 0);
     assert_eq!(plan.hits[1].time_us, 1_042);
-    assert_eq!(plan.hits[1].limb, None);
+    assert_eq!(
+        plan.hits.iter().filter(|hit| hit.limb == Some(3)).count(),
+        1
+    );
+    assert_eq!(plan.hits.iter().filter(|hit| hit.limb.is_none()).count(), 1);
+    assert_eq!(
+        plan.diagnostics
+            .iter()
+            .filter(|d| d.code == "UNRESOLVED_HIT")
+            .count(),
+        1
+    );
+    let repeated = plan_for(vec![
+        (0, note(36, 100, 9)),
+        (1, note(36, 100, 9)),
+        (479, end()),
+    ]);
+    assert_eq!(
+        serde_json::to_value(&plan).unwrap(),
+        serde_json::to_value(&repeated).unwrap()
+    );
 }
 
 #[test]
@@ -625,6 +647,12 @@ fn profile_replanning_diagnoses_outer_and_inner_reach_without_losing_audio() {
     );
     assert!(!profile.reachable(0, inner_tip)); // |.24-.21| = .03m inner radius.
     source.hits[0].target = [9.0, 9.0, 9.0];
+    source
+        .kit
+        .iter_mut()
+        .find(|piece| piece.id == source.hits[0].piece_id)
+        .unwrap()
+        .position = source.hits[0].target;
     let unreachable = Motion::with_profile(source, profile).unwrap();
     let pose = unreachable.evaluate_rig(0.0);
     assert!(distance(pose_point(&pose, 0, 3), [9.0, 9.0, 9.0]) > 1.0);
@@ -681,7 +709,7 @@ fn parallel_bend_pole_keeps_unequal_bone_lengths_at_rest_and_contact() {
     plan.hits[0].target = [0.0, 0.0, 0.60];
     plan.kit
         .iter_mut()
-        .find(|piece| piece.id == Instrument::Kick)
+        .find(|piece| piece.instrument == Instrument::Kick)
         .unwrap()
         .position = plan.hits[0].target;
     let motion = Motion::with_profile(plan, profile.clone()).unwrap();
@@ -704,7 +732,7 @@ fn parallel_bend_pole_keeps_unequal_bone_lengths_at_rest_and_contact() {
 fn idle_feet_use_calibrated_pedals_even_without_pedal_notes() {
     let mut plan = plan_for(vec![(0, note(38, 100, 9)), (960, end())]);
     for piece in &mut plan.kit {
-        if matches!(piece.id, Instrument::Kick | Instrument::PedalHat) {
+        if matches!(piece.instrument, Instrument::Kick | Instrument::PedalHat) {
             piece.position[2] -= 0.06;
         }
     }
@@ -715,7 +743,7 @@ fn idle_feet_use_calibrated_pedals_even_without_pedal_notes() {
             let anchor = plan
                 .kit
                 .iter()
-                .find(|piece| piece.id == instrument)
+                .find(|piece| piece.instrument == instrument)
                 .unwrap();
             for time in [-PRE_ROLL, -0.1, 0.0, 0.5, 1.0] {
                 let pose = motion.evaluate_rig(time);
