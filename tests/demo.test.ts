@@ -84,8 +84,11 @@ function prepareNative(bytes: Uint8Array, selection: Selection, fitted = false) 
   const plan = JSON.parse(performance.plan_json()) as PerformancePlan;
   const sourceFacts = (hit: Hit) => [hit.sourceEventId, hit.tick, hit.timeUs, hit.time, hit.note, hit.velocity];
   expect(plan.hits.map(sourceFacts)).toEqual(original.hits.map(sourceFacts));
-  const contacts = (hit: Hit) => [hit.instrument, hit.pieceId, hit.target];
-  expect(plan.hits.map(contacts)).toEqual(input.hits.map(contacts));
+  for (const [index, hit] of plan.hits.entries()) {
+    expect([hit.instrument, hit.pieceId]).toEqual([input.hits[index].instrument, input.hits[index].pieceId]);
+    // JSON's JS/Rust float round trip can change the last representable bit.
+    hit.target.forEach((value, axis) => expect(value).toBeCloseTo(input.hits[index].target[axis], 12));
+  }
   expect(plan.sourceEvents).toEqual(original.sourceEvents);
   expect(plan.hits.filter(hit => hit.limb === null)).toHaveLength(0);
   return { rig, performance, plan, close() { performance.free(); rig.dispose(); } };
