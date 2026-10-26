@@ -141,3 +141,25 @@ describe('versioned local project',()=>{
     rejected(project=>{project.appearance.pieces.push(project.appearance.pieces[0]);});
   });
 });
+
+describe('FBX project references',()=>{
+  const mapping = () => Object.fromEntries(['hips','spine','head',...['left','right'].flatMap(side=>['UpperArm','LowerArm','Hand','UpperLeg','LowerLeg','Foot'].map(part=>side+part))].map((name,index)=>[name,`0/${index}`]));
+  const fbxProject = ():DrumProject => ({...structuredClone(fixture),rig:'fbx',fbx:{bones:mapping(),metersPerUnit:.01,textures:{'0':'body.png'}},assets:[...fixture.assets,{kind:'fbx',name:'character.fbx',sha256:'b'.repeat(64),bytes:100},{kind:'fbxTexture',name:'Body.PNG',sha256:'c'.repeat(64),bytes:200}]});
+  it('round-trips explicit bone paths, units, texture assignments and hashes without changing older projects',()=>{
+    const project=fbxProject();expect(parseProject(JSON.stringify(project))).toEqual(JSON.parse(JSON.stringify(project)));
+    expect(parseProject(JSON.stringify(fixture)).fbx).toBeUndefined();
+  });
+  it('rejects inconsistent rig/assets, missing mapped textures, duplicate basenames and invalid mapping',()=>{
+    const mutations=[
+      (p:DrumProject)=>{p.rig='native';},
+      (p:DrumProject)=>{delete p.fbx;},
+      (p:DrumProject)=>{p.assets=p.assets.filter(a=>a.kind!=='fbx');},
+      (p:DrumProject)=>{p.assets=p.assets.filter(a=>a.kind!=='fbxTexture');},
+      (p:DrumProject)=>{p.assets.push({...p.assets[2],name:'body.png'});},
+      (p:DrumProject)=>{p.fbx!.bones.leftHand=p.fbx!.bones.rightHand;},
+      (p:DrumProject)=>{p.fbx!.metersPerUnit=0;},
+      (p:DrumProject)=>{p.fbx!.textures['0']='https://example.invalid/body.png';},
+    ];
+    for(const mutate of mutations){const p=fbxProject();mutate(p);expect(()=>parseProject(JSON.stringify(p))).toThrow();}
+  });
+});

@@ -139,8 +139,8 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     Object.values(humanoid.rawHumanBones).forEach(bone => { for (let node: THREE.Object3D | null = bone.node; node; node = node.parent) boneAncestors.add(node); });
     boneAncestors.forEach(node => {
       const values = [node.scale.x, node.scale.y, node.scale.z];
-      if (!values.every(value => Number.isFinite(value) && value > 0)) throw new Error(msg("VRM bone transforms must have finite positive scales.", "유한한 양수 크기의 VRM 본 변환만 지원합니다."));
-      if (Math.max(...values) - Math.min(...values) > Math.max(...values) * 1e-5) throw new Error(msg("Nonuniform bone scales are not supported. Use a VRM with uniform scale.", "축마다 크기가 다른 비균일 본 스케일은 지원하지 않습니다. 균일한 스케일의 VRM을 사용해 주세요."));
+      if (!values.every(value => Number.isFinite(value) && value > 0)) throw new Error(msg("Humanoid bone transforms must have finite positive scales.", "유한한 양수 크기의 휴머노이드 본 변환만 지원합니다."));
+      if (Math.max(...values) - Math.min(...values) > Math.max(...values) * 1e-5) throw new Error(msg("Nonuniform bone scales are not supported. Use a humanoid with uniform scale.", "축마다 크기가 다른 비균일 본 스케일은 지원하지 않습니다. 균일한 스케일의 휴머노이드를 사용해 주세요."));
     });
     humanoid.resetNormalizedPose(); humanoid.normalizedHumanBonesRoot.updateWorldMatrix(true, true);
     const required = (name: VRMHumanBoneName) => {

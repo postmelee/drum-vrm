@@ -1,3 +1,4 @@
+import { validateFBXConfig, imageKey, type FBXConfig } from './fbx-config';
 import { msg } from './i18n';
 import { validateKitLayout } from './kit-calibration';
 import { validateHitResponse, type HitResponseSettings } from './hit-response';
@@ -9,13 +10,13 @@ import type { KitPiece, PerformancePlan, PieceId, RigProfile, Selection } from '
 
 export const PROJECT_SCHEMA_VERSION = 1;
 export const MAX_PROJECT_BYTES = 32 * 1024 * 1024;
-export interface ProjectAsset { kind:'midi'|'wav'|'vrm'|'drumPart'; name:string; sha256:string; bytes:number; pieceId?:PieceId; }
+export interface ProjectAsset { kind:'midi'|'wav'|'vrm'|'fbx'|'fbxTexture'|'drumPart'; name:string; sha256:string; bytes:number; pieceId?:PieceId; }
 export interface DrumProject {
   format:'drum-vrm-project';schemaVersion:1;
   engineModuleSha256:string;
   plan:PerformancePlan;profile:RigProfile;selection:Selection;
   calibration:HumanoidCalibration;kit:KitPiece[];
-  rig:'native'|'vrm';assets:ProjectAsset[];
+  rig:'native'|'vrm'|'fbx';fbx?:FBXConfig;assets:ProjectAsset[];
   appearance:{preset:KitPresetId;pieces:{id:PieceId;settings:PieceVisualSettings}[]};
   camera:SceneViewState;hitResponse:HitResponseSettings;
   audio:{source:'synthesized'|'wav';offsetSeconds:number;volume:number};
@@ -78,17 +79,22 @@ export function parseProject(json:string):DrumProject {
   if(mappingProfile!==plan.mappingProfile||hihatPolicy!==plan.hihatPolicy||countInNote75!==plan.countInNote75||hihatOpenness!==plan.hihatOpenness)throw new Error(msg("The saved interpretation settings differ from the performance plan.", "저장한 해석 설정과 계획이 다릅니다."));
   const channel=selection.channel===null?null:number(selection.channel,0,15);
   if(channel!==null&&!Number.isInteger(channel))throw new Error(msg("Channel numbers must be integers.", "채널 번호가 정수가 아닙니다."));
-  const rig=choice(input.rig,['native','vrm']);
-  if(!Array.isArray(input.assets)||input.assets.length>12)throw new Error(msg("Invalid project asset references.", "프로젝트 파일 참조가 잘못되었습니다."));
+  const rig=choice(input.rig,['native','vrm','fbx']);
+  if(!Array.isArray(input.assets)||input.assets.length>77)throw new Error(msg("Invalid project asset references.", "프로젝트 파일 참조가 잘못되었습니다."));
   const assetIds=new Set<string>();
   const assets=input.assets.map(value=>{
-    const a=record(value),kind=choice(a.kind,['midi','wav','vrm','drumPart']),name=text(a.name),sha256=text(a.sha256),bytes=number(a.bytes,1,100*1024*1024);
+    const a=record(value),kind=choice(a.kind,['midi','wav','vrm','fbx','fbxTexture','drumPart']),name=text(a.name),sha256=text(a.sha256),bytes=number(a.bytes,1,100*1024*1024);
     if(!/^[0-9a-f]{64}$/.test(sha256)||!Number.isInteger(bytes))throw new Error(msg("Invalid project asset hash or size.", "프로젝트 입력 해시·크기가 잘못되었습니다."));
     const pieceId=kind==='drumPart'?choice(a.pieceId,kit.map(piece=>piece.id)):undefined;
-    const id=`${kind}:${pieceId??''}`;if(assetIds.has(id))throw new Error(msg("The project contains duplicate asset references.", "프로젝트 파일 참조가 중복됩니다."));assetIds.add(id);
+    const id=`${kind}:${kind==='fbxTexture'?imageKey(name):pieceId??''}`;if(assetIds.has(id))throw new Error(msg("The project contains duplicate asset references.", "프로젝트 파일 참조가 중복됩니다."));assetIds.add(id);
     return {kind,name,sha256,bytes,...(pieceId?{pieceId}:{})};
   });
   if(!assetIds.has('midi:')||(rig==='vrm')!==assetIds.has('vrm:'))throw new Error(msg("A MIDI or VRM asset reference is missing or inconsistent.", "MIDI 또는 VRM 파일 참조가 누락되었거나 일치하지 않습니다."));
+  const fbx=rig==='fbx'?validateFBXConfig(input.fbx):undefined;
+  if((rig==='fbx')!==assetIds.has('fbx:')||(rig!=='fbx'&&(input.fbx!==undefined||assets.some(a=>a.kind==='fbxTexture'))))throw new Error(msg('FBX references or settings are inconsistent.', 'FBX 참조 또는 설정이 일치하지 않습니다.'));
+  const images=assets.filter(a=>a.kind==='fbxTexture');
+  if(images.length>64||images.reduce((n,a)=>n+a.bytes,0)>50*1024*1024||images.some(a=>! /\.(png|jpe?g)$/i.test(a.name)))throw new Error(msg('Invalid FBX texture references.', 'FBX 텍스처 참조가 올바르지 않습니다.'));
+  if(fbx&&Object.values(fbx.textures).some(name=>!images.some(a=>imageKey(a.name)===name)))throw new Error(msg('An assigned FBX texture reference is missing.', '지정한 FBX 텍스처 참조가 없습니다.'));
   const audioSource=choice(audio.source,['synthesized','wav']);
   if((audioSource==='wav')!==assetIds.has('wav:'))throw new Error(msg("A WAV asset reference is missing or inconsistent.", "WAV 파일 참조가 누락되었거나 일치하지 않습니다."));
   const preset=choice(appearance.preset,['studio','vintage','electronic','library','batoski','smoj']);
@@ -103,7 +109,7 @@ export function parseProject(json:string):DrumProject {
   });
   if(pieces.length!==kit.filter(piece=>!['openHat','pedalHat'].includes(piece.id)).length)throw new Error(msg("Drum appearance settings are missing.", "드럼 외형 설정이 누락되었습니다."));
   const engineModuleSha256=text(input.engineModuleSha256);if(!/^[0-9a-f]{64}$/.test(engineModuleSha256))throw new Error(msg("Invalid engine identifier.", "엔진 식별자가 잘못되었습니다."));
-  return {format:'drum-vrm-project',schemaVersion:1,engineModuleSha256,plan,profile:record(input.profile) as unknown as RigProfile,kit,rig,assets,
+  return {format:'drum-vrm-project',schemaVersion:1,engineModuleSha256,plan,profile:record(input.profile) as unknown as RigProfile,kit,rig,assets,...(fbx?{fbx}:{}),
     calibration:{seatHeight:number(calibration.seatHeight,.3,1.2),seatForward:number(calibration.seatForward,-.5,.5),palmOrientation:choice(calibration.palmOrientation,['up','inward','down'])},
     selection:{tracks,channel,mappingProfile,countInNote75,hihatPolicy,hihatOpenness,omittedSourceEventIds,handOverrides},appearance:{preset,pieces},camera:validateProjectView(input.camera),
     hitResponse:validateHitResponse(record(input.hitResponse) as unknown as HitResponseSettings),

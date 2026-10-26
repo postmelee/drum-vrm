@@ -1,3 +1,8 @@
+import { setupFBX } from './fbx-setup';
+import { FBXHumanoidRigAdapter } from './fbx-rig';
+import { loadLocalFBX } from './fbx-import';
+import { imageKey, type FBXConfig } from './fbx-config';
+import type { HumanoidRigAdapter } from './rig-humanoid';
 import {msg, raw, bindText, boundText, bindAttribute, bindStaticTranslations, joinMessages, getLocale, setLocale, onLocaleChange} from './i18n';
 import {engineMessage} from './engine-messages';
 import './style.css';
@@ -64,6 +69,8 @@ let reviewGeneration = 0;
 let projectBusy = false;
 const projectFiles = new Map<string,File>();
 let sourceReferences: ProjectAsset[] = [];
+let currentFBX: FBXConfig | undefined;
+const characterAssetKinds = new Set<ProjectAsset['kind']>(['vrm','fbx','fbxTexture']);
 let pendingProject: DrumProject | null = null;
 let preparedSelection: DrumProject['selection'] | null = null;
 let arrangement:Arrangement={omittedSourceEventIds:[],handOverrides:{}};
@@ -79,7 +86,7 @@ async function rememberProjectFile(kind:ProjectAsset['kind'],file:File,pieceId?:
 }
 function commitProjectFile(reference:ProjectAsset,file:File) {
   const {kind,pieceId}=reference;projectFiles.set(reference.sha256,file);
-  sourceReferences=sourceReferences.filter(old=>old.kind!==kind||(kind==='drumPart'&&old.pieceId!==pieceId));sourceReferences.push(reference);return reference;
+  sourceReferences=sourceReferences.filter(old=>old.kind!==kind||(kind==='drumPart'&&old.pieceId!==pieceId)||(kind==='fbxTexture'&&imageKey(old.name)!==imageKey(reference.name)));sourceReferences.push(reference);return reference;
 }
 type Panel = 'character' | 'drums' | 'source' | 'analysis' | 'export';
 let activePanel: Panel | null = null;
@@ -308,7 +315,7 @@ function showModelInfo(info: VRMInspection | null, preset?: CharacterPreset) {
     metadata.append(sources);
   }
 }
-async function adoptRig(adapter: NativeHumanoidRigAdapter | VRMHumanoidRigAdapter) {
+async function adoptRig(adapter: HumanoidRigAdapter) {
   const oldKit=scene.getKitLayout(),palmOrientation=scene.getCalibration().palmOrientation;
   const seat={...adapter.getAutomaticCalibration(fitBaseline),palmOrientation};
   const profile=adapter.setCalibration(seat,fitBaseline);
@@ -328,7 +335,7 @@ async function adoptRig(adapter: NativeHumanoidRigAdapter | VRMHumanoidRigAdapte
 function refreshCharacterPreset() {
   const select=get<HTMLSelectElement>('character-preset');
   select.replaceChildren(uiOption(msg('Default skeleton', '기본 스켈레톤'),'native'),...CHARACTER_PRESETS.map(preset=>uiOption(preset.label,preset.id)));
-  if(committedCharacter==='local')select.append(uiOption(msg('Local VRM', '로컬 VRM'),'local'));
+  if(committedCharacter==='local')select.append(uiOption(msg('Local character', '로컬 캐릭터'),'local'));
   select.value=committedCharacter;
 }
 refreshCharacterPreset();
@@ -349,20 +356,45 @@ async function importCharacter(fileOrPreset: File | CharacterPreset) {
     candidate=null; adapter=null;
     const matchedPreset=CHARACTER_PRESETS.find(entry=>entry.sha256===reference.sha256);
     committedCharacter=matchedPreset?.id??'local';
+    currentFBX=undefined;sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));
     commitProjectFile(reference,file);showModelInfo(info,matchedPreset);
     bindText(get('character-message'), raw(file.name));setCharacterDisplay('model');
   } catch(error) { if(adapter)adapter.dispose();else if(candidate)VRMUtils.deepDispose(candidate.vrm.scene); bindText(get('character-message'), characterDownload?.signal.aborted?msg('Character download canceled.', '캐릭터 다운로드를 취소했습니다.'):uiError(error)); }
   finally{characterDownload=null;modelBusy=false;refreshCharacterPreset();controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
 }
+function showFBXInfo(name:string) {
+  const host=get('character-info');host.replaceChildren();
+  const p=document.createElement('p');bindText(p,msg('FBX · {0} · mapped humanoid. Original model terms apply; toon shaders, physics and embedded animations are not reproduced.', 'FBX · {0} · 연결된 휴머노이드. 모델의 원본 이용 조건을 확인하세요. 툰 셰이더·물리·내장 애니메이션은 재현하지 않습니다.',raw(name)));host.append(p);
+}
+async function importFBXCharacter(file:File,images:File[]) {
+  if(busy||exporting||modelBusy)return;
+  audio?.pause();modelBusy=true;controls();
+  let candidate:Awaited<ReturnType<typeof setupFBX>>=null,adapter:FBXHumanoidRigAdapter|null=null;
+  try {
+    candidate=await setupFBX(file,images);
+    if(!candidate){bindText(get('character-message'),msg('Character import canceled.', '캐릭터 가져오기를 취소했습니다.'));return;}
+    const reference=await fileReference('fbx',file),textureReferences=await Promise.all(candidate.loaded.images.map(image=>fileReference('fbxTexture',image)));
+    await candidate.loaded.applyTextures(candidate.config);
+    adapter=new FBXHumanoidRigAdapter(candidate.loaded.scene,candidate.config,`fbx:${reference.sha256}`,candidate.loaded.release);
+    await adoptRig(adapter);
+    currentFBX=structuredClone(candidate.config);sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));commitProjectFile(reference,file);
+    textureReferences.forEach((ref,index)=>commitProjectFile(ref,candidate!.loaded.images[index]));
+    candidate=null;adapter=null;committedCharacter='local';showFBXInfo(file.name);bindText(get('character-message'),raw(file.name));setCharacterDisplay('model');
+  }catch(error){if(adapter)adapter.dispose();else candidate?.loaded.dispose();bindText(get('character-message'),uiError(error));}
+  finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg('Paused','일시정지'):msg('Idle','대기'));}
+}
 get('character-import').onclick=()=>get<HTMLInputElement>('character-file').click();
 get<HTMLInputElement>('character-file').onchange=e=>{
-  const input=e.target as HTMLInputElement,file=input.files?.[0];input.value='';if(file)void importCharacter(file);
+  const input=e.target as HTMLInputElement,files=[...input.files??[]];input.value='';
+  const models=files.filter(file=>/\.(vrm|fbx)$/i.test(file.name));
+  if(models.length!==1){if(files.length)bindText(get('character-message'),msg('Select one VRM or FBX character and optional PNG/JPEG images.', 'VRM 또는 FBX 캐릭터 하나와 선택적으로 PNG/JPEG 이미지를 선택하세요.'));return;}
+  const file=models[0];if(/\.fbx$/i.test(file.name))void importFBXCharacter(file,files.filter(f=>f!==file));else void importCharacter(file);
 };
 get('character-cancel').onclick=()=>characterDownload?.abort();
 async function resetCharacter(){
   if(busy||exporting||modelBusy)return;audio?.pause();modelBusy=true;controls();
   const adapter=new NativeHumanoidRigAdapter();let adopted=false;
-  try{await adoptRig(adapter);adopted=true;committedCharacter='native';sourceReferences=sourceReferences.filter(ref=>ref.kind!=='vrm');showModelInfo(null);bindText(get('character-message'), msg("Default skeleton", "기본 스켈레톤"));setCharacterDisplay('skeleton');}
+  try{await adoptRig(adapter);adopted=true;committedCharacter='native';currentFBX=undefined;sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));showModelInfo(null);bindText(get('character-message'), msg("Default skeleton", "기본 스켈레톤"));setCharacterDisplay('skeleton');}
   catch(error){if(!adopted)adapter.dispose();bindText(get('character-message'), uiError(error));}
   finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
 }
@@ -822,13 +854,13 @@ get('project-save').onclick=async()=>{
   busy=true;projectBusy=true;controls();
   try {
     const project:DrumProject={format:'drum-vrm-project',schemaVersion:1,engineModuleSha256:await projectEngineHash(),plan:current,profile:scene.getRigProfile(),selection,
-      calibration:scene.getCalibration(),kit:scene.getKitLayout(),rig:sourceReferences.some(ref=>ref.kind==='vrm')?'vrm':'native',assets:structuredClone(sourceReferences),
+      calibration:scene.getCalibration(),kit:scene.getKitLayout(),rig:currentFBX?'fbx':sourceReferences.some(ref=>ref.kind==='vrm')?'vrm':'native',...(currentFBX?{fbx:structuredClone(currentFBX)}:{}),assets:structuredClone(sourceReferences),
       appearance:{preset:committedPreset as KitPresetId,pieces:current.kit.filter(piece=>!['openHat','pedalHat'].includes(piece.id)).map(piece=>({id:piece.id,settings:scene.getPieceVisual(piece.id)}))},
       camera:scene.getViewState(),hitResponse:scene.getHitResponse(),audio:{source:wav?'wav':'synthesized',offsetSeconds:wavOffset,volume:Number(get<HTMLInputElement>('volume').value)},
       view:{theme,background:get<HTMLInputElement>('background').value,skeleton:get<HTMLInputElement>('skeleton-visible').checked,model:get<HTMLInputElement>('model-visible').checked,character:get<HTMLInputElement>('character-visible').checked,timelineZoom:Number(get<HTMLInputElement>('timeline-zoom').value)},outputTime};
     parseProject(JSON.stringify(project));
     downloadJson(project,`${fileName.replace(/\.(mid|midi)$/i,'')}.drumvrm.json`);
-    bindText(get('project-message'), msg("Project saved. This private file includes MIDI notes and the plan. Keep the matching app version and original WAV, VRM and GLB files.", "프로젝트를 저장했습니다. MIDI 노트·계획이 포함된 개인 파일입니다. 같은 버전의 앱과 원본 WAV·VRM·GLB를 함께 보관하세요."));
+    bindText(get('project-message'), msg("Project saved. This private file includes MIDI notes and the plan. Keep the matching app version and original WAV, VRM, FBX, texture and GLB files.", "프로젝트를 저장했습니다. MIDI 노트·계획이 포함된 개인 파일입니다. 같은 버전의 앱과 원본 WAV·VRM·FBX·텍스처·GLB를 함께 보관하세요."));
   }catch(error){bindText(get('project-message'), uiError(error));}
   finally{busy=false;projectBusy=false;controls();status(msg("Paused", "일시정지"));}
 };
@@ -842,7 +874,7 @@ async function restorePendingProject() {
   const project=pendingProject;if(!project)return;
   if(missingProjectAssets(project,projectFiles).length){showMissingProjectAssets();return;}
   const file=(kind:ProjectAsset['kind'])=>{const reference=project.assets.find(asset=>asset.kind===kind);return reference?projectFiles.get(reference.sha256)!:null;};
-  let adapter:NativeHumanoidRigAdapter|VRMHumanoidRigAdapter|null=null;
+  let adapter:HumanoidRigAdapter|null=null;
   let preparedAppearance:Awaited<ReturnType<DrumScene['prepareProjectAppearance']>>|null=null;
   let modelInfo:VRMInspection|null=null;
   try {
@@ -853,6 +885,12 @@ async function restorePendingProject() {
       const loaded=await loadLocalVRM(file('vrm')!);modelInfo=loaded.info;
       try{adapter=new VRMHumanoidRigAdapter(loaded.vrm,`vrm1:${project.assets.find(asset=>asset.kind==='vrm')!.sha256}`);}
       catch(error){VRMUtils.deepDispose(loaded.vrm.scene);throw error;}
+    }else if(project.rig==='fbx'){
+      const ref=project.assets.find(a=>a.kind==='fbx')!;
+      const original=(asset:ProjectAsset)=>new File([projectFiles.get(asset.sha256)!],asset.name);
+      const loaded=await loadLocalFBX(original(ref),project.assets.filter(a=>a.kind==='fbxTexture').map(original));
+      try{await loaded.applyTextures(project.fbx!);adapter=new FBXHumanoidRigAdapter(loaded.scene,project.fbx!,`fbx:${ref.sha256}`,loaded.release);}
+      catch(error){loaded.dispose();throw error;}
     }else adapter=new NativeHumanoidRigAdapter();
     const profile=adapter.setCalibration(project.calibration,project.kit);
     if(JSON.stringify(profile)!==JSON.stringify(project.profile))throw new Error(msg("The saved body measurements differ from the current rig. Prepare a new performance from the original MIDI.", "저장한 체형 측정값과 현재 리그가 다릅니다. 원본 MIDI로 새 연주를 준비해 주세요."));
@@ -867,7 +905,7 @@ async function restorePendingProject() {
     const restored=await engine.restorePlan(project.plan,profile,project.kit);
     audio?.pause();openPanel('source');preparedAppearance.apply(project.kit);preparedAppearance=null;scene.setRig(adapter);adapter=null;
     scene.setCalibration(project.calibration);await scene.whenEquipmentReady();
-    plan=restored;bytes=midiBytes;fileName=midiFile.name;preparedSelection=structuredClone(project.selection);arrangement=arrangementOf(restored);sourceReferences=structuredClone(project.assets);
+    plan=restored;bytes=midiBytes;fileName=midiFile.name;preparedSelection=structuredClone(project.selection);arrangement=arrangementOf(restored);sourceReferences=structuredClone(project.assets);currentFBX=project.fbx?structuredClone(project.fbx):undefined;
     wav=nextWav;wavOffset=project.audio.offsetSeconds;wavAlignmentInfo=aligned?.info;
     committedPreset=project.appearance.preset;get<HTMLSelectElement>('kit-preset').value=committedPreset;
     bindText(get('file-name'), raw(fileName));bindText(get('file-detail'), msg("{0} KiB · restored from project", "{0} KiB · 프로젝트에서 복원", (midiBytes.byteLength/1024).toFixed(1)));
@@ -886,7 +924,8 @@ async function restorePendingProject() {
     const characterPreset=CHARACTER_PRESETS.find(entry=>entry.sha256===project.assets.find(asset=>asset.kind==='vrm')?.sha256);
     committedCharacter=project.rig==='native'?'native':characterPreset?.id??'local';refreshCharacterPreset();
     scene.setPlan(plan);timeline.setPlan(plan);replaceAudio(nextBuffer,project.outputTime);showWavInfo(aligned?.info);showModelInfo(modelInfo,characterPreset);
-    bindText(get('character-message'), project.rig==='vrm'?msg("Project VRM · original file and body settings restored", "프로젝트 VRM · 같은 원본 파일과 체형 설정 복원"):msg("Default rig · project body settings restored", "기본 리그 · 프로젝트 체형 설정 복원"));
+    if(project.rig==='fbx')showFBXInfo(project.assets.find(a=>a.kind==='fbx')!.name);
+    bindText(get('character-message'), project.rig==='fbx'?msg('Project FBX · bone, texture and body settings restored', '프로젝트 FBX · 본·텍스처·체형 설정 복원'):project.rig==='vrm'?msg("Project VRM · original file and body settings restored", "프로젝트 VRM · 같은 원본 파일과 체형 설정 복원"):msg("Default rig · project body settings restored", "기본 리그 · 프로젝트 체형 설정 복원"));
     get<HTMLInputElement>('seek').max=String(outputDuration(plan));bindText(get('duration'), clockText(outputDuration(plan)));
     bindText(get('metric-duration'), clockText(plan.duration));bindText(get('metric-hits'), plan.hits.length.toLocaleString());bindText(get('metric-tempos'), String(plan.tempoCount));bindText(get('plan-label'), 'READY');get('stage-empty').hidden=true;
     fitProposal=null;preFitSetup=null;fitBaseline=structuredClone(project.kit);fitState=msg("Saved layout restored", "저장한 배치 복원");poseReview=null;refreshCalibration();refreshTarget();refreshPiece();renderDiagnostics();
