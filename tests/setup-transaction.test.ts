@@ -103,7 +103,7 @@ it('cannot commit a prepared setup after cancellation or supersession',async()=>
     const before=Array.from(engine.evaluate(.5)!);
     const staged=await engine.prepareSetup(profile,plan.kit);
     engine.cancel();
-    expect(()=>staged.commit()).toThrow('취소');
+    expect(()=>staged.commit()).toThrow('canceled');
     expect(Array.from(engine.evaluate(.5)!)).toEqual(before);
     staged.dispose();
   }finally{engine.dispose();rig.dispose();}

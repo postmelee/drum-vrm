@@ -75,6 +75,6 @@ describe('measured equipment body descriptors', () => {
   });
 
   it('rejects missing body geometry rather than manufacturing a clear proxy', () => {
-    expect(() => measureInstrumentGeometry(new THREE.Group(), DEFAULT_KIT[0], 'mesh-bounds')).toThrow('형상을 측정');
+    expect(() => measureInstrumentGeometry(new THREE.Group(), DEFAULT_KIT[0], 'mesh-bounds')).toThrow('measure the drum body geometry');
   });
 });

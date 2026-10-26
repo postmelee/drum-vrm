@@ -1,6 +1,6 @@
 # 재생·영상에 사용자 WAV 동기화하기
 
-[English](export.md) · **한국어**
+[English](export.md) · **한국어** · [앱 열기](https://postmelee.github.io/drum-vrm/?lang=ko)
 
 이 안내는 저장소 빌드를 설명합니다. 로컬 변경이 공개 사이트에도 반영되었는지는
 [버전 표](../README.ko.md#어떤-버전을-사용하고-있나요)에서 먼저 확인하세요.

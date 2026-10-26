@@ -1,15 +1,15 @@
 # Seat, contact points, and drum parts
 
-**English** · [한국어](calibration.ko.md) · [Documentation](README.md) · [Character models](models.md)
+**English** · [한국어](calibration.ko.md) · [Documentation](README.md) · [Character models](models.md) · [Open the app](https://postmelee.github.io/drum-vrm/?lang=en)
 
 Fit the performer and kit by adjusting the seat and instrument contacts, then customize the visible drum bodies. This guide describes the repository build; see [version availability](../README.md#which-version-am-i-using) for the public app. The [calibration design](../specs/architecture/calibration.md) explains the shared measurements and solver.
 
 ## Fit a character to the kit
 
-1. Load a VRM 1.0 character through **캐릭터** (Character), or use the built-in skeleton. See the [model guide](models.md) for formats and limits. Both use measured bone lengths and the same solver; the app does not select a different animation implementation by avatar name.
-2. New characters automatically prepare a pedal-aware seat and a body-fit kit candidate. A complete candidate is applied and the current MIDI is replanned. The completion message describes fitting, not guaranteed skin/clothing clearance. Inspect persistent warnings in **분석** (Analysis).
-3. **자동 맞춤** (Automatic fit) repeats fitting; **맞춤 되돌리기** (Undo fit) restores the preceding setup. **수동 보정** (Manual adjustment) exposes seat height **30–120 cm**, forward/back **−50–50 cm**, palm direction and default-layout reset. Positive forward moves the seated body toward the kit. **좌석만 자동 조정** changes the seat only. Reopening a saved project restores its recorded setup without automatic fitting.
-4. Open **드럼** (Drums), select a component in the view or selector, and adjust its **X/Y/Z contact position** under **배치 · 타점 수동 조정** (Manual layout / contacts) in centimetres. X is side-to-side (**−200–200 cm**, positive toward the player’s right), Y is height and Z is forward/back (**−50–250 cm**, positive forward). Closed/open hi-hat share the cymbal position. The hi-hat pedal is adjusted separately. Kick's contact is the foot pedal, not the kick drum's front head. Pedal contact height is limited to **4–20 cm** for the current shared hardware; other target heights allow **2–250 cm**. Press **타점 적용** (Apply target) to use the edited position.
+1. Load a VRM 1.0 character through **Character**, or use the built-in skeleton. See the [model guide](models.md) for formats and limits. Both use measured bone lengths and the same solver; the app does not select a different animation implementation by avatar name.
+2. New characters automatically prepare a pedal-aware seat and a body-fit kit candidate. A complete candidate is applied and the current MIDI is replanned. The completion message describes fitting, not guaranteed skin/clothing clearance. Inspect persistent warnings in **Analysis**.
+3. **Automatic fit** repeats fitting; **Undo fit** restores the preceding setup. **Manual adjustment** exposes seat height **30–120 cm**, forward/back **−50–50 cm**, palm direction and default-layout reset. Positive forward moves the seated body toward the kit. **Auto-adjust seat only** changes the seat only. Reopening a saved project restores its recorded setup without automatic fitting.
+4. Open **Drums**, select a component in the view or selector, and adjust its **X/Y/Z contact position** under **Manual layout / contacts** in centimetres. X is side-to-side (**−200–200 cm**, positive toward the player’s right), Y is height and Z is forward/back (**−50–250 cm**, positive forward). Closed/open hi-hat share the cymbal position. The hi-hat pedal is adjusted separately. Kick's contact is the foot pedal, not the kick drum's front head. Pedal contact height is limited to **4–20 cm** for the current shared hardware; other target heights allow **2–250 cm**. Press **Apply target** to use the edited position.
 5. Inspect both feet at rest, then play the same MIDI and check the sticks at contact. Adjust seat and targets together until the important contacts are reachable. Seat position alone may not fit an avatar with very different arm and leg proportions.
 6. Read the updated reach diagnostics. Unreachable hits keep their original audio and timing; the app does not lengthen bones or move notes to hide the problem. An unreachable pedal is reported even when the MIDI contains no pedal note. Revisit arbitrary times to inspect the calibrated pose.
 
@@ -17,33 +17,33 @@ Changes apply to the current session. Use [project save/open](projects.md) to pr
 
 ## Try a demo score
 
-In **파일 · 오디오 → 데모** (Files / Audio → Demo), choose a score under **데모 선택** (Demo selection), then press **불러오기** (Load).
+In **Files / Audio → Demo**, choose a score under **Demo selection**, then press **Load**.
 
 | Score | Purpose |
 | --- | --- |
-| Studio Groove · 30초 | A short, independently authored groove for a quick playback check. |
-| 연주 검증 패턴 · 8초 | An independently authored pattern for count-in, hi-hat control, fills and explicit event inspection. |
-| 투명소녀1 · 3분 13초 | A full-song example for comparing body fitting, fast fills and transitions with the same score. |
+| Studio Groove · 30 s | A short, independently authored groove for a quick playback check. |
+| Interpretation check · 8 s | An independently authored pattern for count-in, hi-hat control, fills and explicit event inspection. |
+| Transparent Girl 1 · 3 min 13 s | A full-song example for comparing body fitting, fast fills and transitions with the same score. |
 
-The full-song demo loads explicit Logic Drum Kit Designer GM mapping, note-75 count-in and short open/close hi-hat interpretation at 20%. Its final extra snare is excluded from the arrangement so the ending uses **both crashes and kick**. The original MIDI bytes remain unchanged; inspect the retained note and omission in **분석** (Analysis), or restore it through the note editor. The source has 1,760 positive note-ons; the configured arrangement has 1,720 strikes. This accounting does not certify natural posture or collision-free movement. No recorded WAV or VRM character is included.
+The full-song demo loads explicit Logic Drum Kit Designer GM mapping, note-75 count-in and short open/close hi-hat interpretation at 20%. Its final extra snare is excluded from the arrangement so the ending uses **both crashes and kick**. The original MIDI bytes remain unchanged; inspect the retained note and omission in **Analysis**, or restore it through the note editor. The source has 1,760 positive note-ons; the configured arrangement has 1,720 strikes. This accounting does not certify natural posture or collision-free movement. No recorded WAV or VRM character is included.
 
 The MIDI is included with permission for this project's public distribution, separately from the application's MIT license. See its [provenance](../public/demos/transparent-girl-1-provenance.json) for the exact file and permission scope, and the [MIDI contract](../specs/architecture/midi-interpretation.md#bundled-demo-selections) for the selection boundary. Other uploaded files remain local.
 
 ## Inspect a problem passage
 
-In **분석 → 자세 · 동기화 검수** (Analysis → Pose and synchronization review), enter an exact song time or move to the previous/next hit. **현재 자세 검사** (Inspect pose) shows actual tool/foot marker error and the engine's approximate torso/arm/stick clearance; a negative clearance is a possible proxy intersection, not a measured skin penetration.
+In **Analysis → Pose and synchronization review**, enter an exact song time or move to the previous/next hit. **Inspect pose** shows actual tool/foot marker error and the engine's approximate torso/arm/stick clearance; a negative clearance is a possible proxy intersection, not a measured skin penetration.
 
-**곡 검수** (Review song) compares poses evaluated in time order and in a reproducibly shuffled order, using a 30 fps grid plus exact impacts and samples 60 ms before/after. It reports the maximum pose difference and sampled proxy intersections. Sampling cannot prove clearance between every pair of samples. Use the first reported time and several camera views to inspect visible behavior.
+**Review song** compares poses evaluated in time order and in a reproducibly shuffled order, using a 30 fps grid plus exact impacts and samples 60 ms before/after. It reports the maximum pose difference and sampled proxy intersections. Sampling cannot prove clearance between every pair of samples. Use the first reported time and several camera views to inspect visible behavior.
 
-**현재 스틱 궤적** (Current stick paths) draws 37 actual hand-local tip-marker samples around the paused time, over at most 0.6 seconds. Left is orange and right is blue. The paths remain fixed until refreshed or hidden; they are inspection overlays, excluded from video export, not collision results.
+**Current stick paths** draws 37 actual hand-local tip-marker samples around the paused time, over at most 0.6 seconds. Left is orange and right is blue. The paths remain fixed until refreshed or hidden; they are inspection overlays, excluded from video export, not collision results.
 
-**검수 JSON 저장** (Save review JSON) downloads the current setup, body measurements, aggregate event counts, current pose/contact measurements and any completed review. It excludes uploaded file bytes and the source note stream. The report remains local unless you share it; check model/setup identifiers before publishing it. Changing the body/layout or preparing another performance clears the prior sampled result.
+**Save review JSON** downloads the current setup, body measurements, aggregate event counts, current pose/contact measurements and any completed review. It excludes uploaded file bytes and the source note stream. The report remains local unless you share it; check model/setup identifiers before publishing it. Changing the body/layout or preparing another performance clears the prior sampled result.
 
 ## Feet and hands
 
 Feet start on the calibrated kick and hi-hat pedal contacts. During a hit, the ankle stays in place and the foot makes a small toe-up preparation before pressing back to the contact. The same time-based evaluation is used for playback, seeking and video output. This simple ankle-only motion does not reproduce heel-up, heel-toe or double-pedal technique, and it is not a mechanical pedal simulation.
 
-In Character → Manual adjustment, **손바닥 방향** (Palm direction) selects **위** (up, the default), **안쪽 · 엄지 위** (inward / thumbs up), or **아래** (down). The setting applies to both hands and is retained while changing the seat or importing another character in this session. It pauses playback, recalibrates the grip and invalidates an older video download.
+In Character → Manual adjustment, **Palm direction** selects **Up** (the default), **Inward / thumbs up**, or **Down**. The setting applies to both hands and is retained while changing the seat or importing another character in this session. It pauses playback, recalibrates the grip and invalidates an older video download.
 
 The grip uses a diagonal hand-local stick socket and available finger bones. The solver follows each target with a neutral hand/forearm relationship and uses forearm roll for palm orientation. Hands normally wait above snare/hi-hat, or over the same piece between repetitions. Velocity affects lift and wrist motion; fast snare passages can use both available hands. These are common procedural rules, not complete push-pull, anatomical limits or collision avoidance.
 
@@ -53,7 +53,7 @@ For a short open-hi-hat/foot-close pattern, the explicit interpretation option d
 
 The planner prefers **right-hand hi-hat and left-hand snare**, but may choose another hand to handle reach or timing. A current preference and skeletal proxy clearance checks do not guarantee that the arms always cross naturally or that skin stays clear.
 
-Click a piano-roll note, or use **선택 음표의 연주 편집 → 현재 시각 음표** (Note arrangement → Notes near current time). The inspector lists all simultaneous source notes, including omitted notes. Choose **자동 / 왼손 / 오른손** (Auto / Left / Right) for a mapped hand strike, or **이 음표를 연주에서 제외** to omit it, then apply. Unchecking omission restores automatic interpretation; **모든 음표 편집 복원** clears the entire arrangement. Infeasible forced hands remain diagnosed rather than silently switching hands. Edits retain original MIDI/WAV and timing, use source-event IDs and can be saved in a [local project](projects.md). They change derived motion and synthesized preview, not an imported WAV recording.
+Click a piano-roll note, or use **Note arrangement → Notes near current time**. The inspector lists all simultaneous source notes, including omitted notes. Choose **Auto / Left / Right** for a mapped hand strike, or **Omit this note** to omit it, then apply. Unchecking omission restores automatic interpretation; **Reset all note edits** clears the entire arrangement. Infeasible forced hands remain diagnosed rather than silently switching hands. Edits retain original MIDI/WAV and timing, use source-event IDs and can be saved in a [local project](projects.md). They change derived motion and synthesized preview, not an imported WAV recording.
 
 ## Replace drum bodies while keeping hardware
 
@@ -67,7 +67,7 @@ Presets do not include every source model's original hardware. This common mount
 
 Kit presets are **Studio, Vintage and Electronic** procedural geometry, plus **Innerscene, Batoski and smoj** models. The separate standard/deep-shell/compact choices change the selected procedural part's shape. [Bundled model credits](../public/models/README.md) and [asset research](research/drum-assets.md) record the external models and terms; these choices do not add new audio samples. Crash Left and Crash Right are separate physical pieces with their own contacts; switching a preset preserves that mapping.
 
-In Drums, enable **타격 반응** (Hit response) and adjust **반응 강도** (Strength). Close drum editing to see the response during playback: editing and the operating system's reduced-motion preference suppress body movement. The effect follows hit velocity, while musical contact targets and timing remain fixed. It is visual feedback, not a physical simulation of the kit.
+In Drums, enable **Hit response** and adjust **Strength**. Close drum editing to see the response during playback: editing and the operating system's reduced-motion preference suppress body movement. The effect follows hit velocity, while musical contact targets and timing remain fixed. It is visual feedback, not a physical simulation of the kit.
 
 ## Remaining limits
 

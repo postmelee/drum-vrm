@@ -34,15 +34,15 @@ describe('VRM inspection before browser loading', () => {
     const info = inspectVRM(glb(source()));
     expect(info.required).toBe(15); expect(info.missing).toEqual([]); expect(info.fingers).toEqual({ left: 0, right: 0 });
     expect(info.metadataWarnings).toEqual([]);
-    expect(info.terms).toContainEqual(['크레딧', '미기재 (VRM 1.0 기본값: required)']);
-    expect(info.terms).toContainEqual(['모델 재배포', '미기재 (VRM 1.0 기본값: 불허)']);
+    expect(info.terms).toContainEqual(['Credit', 'Not specified (VRM 1.0 default: required)']);
+    expect(info.terms).toContainEqual(['Model redistribution', 'Not specified (VRM 1.0 default: Not allowed)']);
   });
   it('preserves supplied rights, references, additional text and incomplete metadata separately', () => {
     const json = source(); json.extensions.VRMC_vrm.meta = { name: '<script>untrusted</script>', version: 'test-v1', authors: [], references: ['https://example.invalid/original'], creditNotation: 'required', allowRedistribution: false, thirdPartyLicenses: 'Line one\nLine two', otherLicenseUrl: 'javascript:untrusted()' };
     const info = inspectVRM(glb(json));
     expect(info.name).toBe('<script>untrusted</script>'); expect(info.modelVersion).toBe('test-v1');
     expect(info.references).toEqual(['https://example.invalid/original']); expect(info.rawMeta).toEqual(json.extensions.VRMC_vrm.meta);
-    expect(info.terms).toContainEqual(['모델 재배포', '불허']); expect(info.terms).toContainEqual(['제3자 조건', 'Line one\nLine two']);
+    expect(info.terms).toContainEqual(['Model redistribution', 'Not allowed']); expect(info.terms).toContainEqual(['Third-party terms', 'Line one\nLine two']);
     expect(info.metadataWarnings.length).toBe(2);
   });
   it('rejects legacy/unknown formats with an actionable conversion message', () => {
@@ -53,11 +53,11 @@ describe('VRM inspection before browser loading', () => {
   it('flags malformed rights values without applying permissive fallback', () => {
     const json = source(); json.extensions.VRMC_vrm.meta.allowRedistribution = 'true'; json.extensions.VRMC_vrm.meta.avatarPermission = 'unrestricted';
     const info = inspectVRM(glb(json)); expect(info.metadataWarnings).toHaveLength(2);
-    expect(info.terms).toContainEqual(['아바타 사용자', 'unrestricted']); expect(info.terms).toContainEqual(['모델 재배포', 'true']);
+    expect(info.terms).toContainEqual(['Avatar users', 'unrestricted']); expect(info.terms).toContainEqual(['Model redistribution', 'true']);
   });
   it.each(['https://example.invalid/private.png', './local.png', 'blob:foreign', 'file:///private.png'])('blocks resource URI %s without requesting anything', uri => {
     const fetch = vi.spyOn(globalThis, 'fetch'); const json = source(); json.images = [{ uri }];
-    expect(() => inspectVRM(glb(json))).toThrow(/외부 파일이나 URL/); expect(fetch).not.toHaveBeenCalled(); fetch.mockRestore();
+    expect(() => inspectVRM(glb(json))).toThrow(/external files or URLs/); expect(fetch).not.toHaveBeenCalled(); fetch.mockRestore();
   });
   it('rejects malformed headers, oversized files, hierarchy cycles and invalid bone references', () => {
     expect(() => inspectVRM(new ArrayBuffer(12))).toThrow(/GLB/);
@@ -79,11 +79,11 @@ describe('VRM inspection before browser loading', () => {
   });
   it('rejects dimensions, aggregate pixels, image count and corrupt image ranges before decoding', () => {
     for (const [width, height, count] of [[4097, 1, 1], [0, 10, 1], [4096, 4096, 5], [8, 8, MAX_VRM_IMAGES + 1]]) {
-      const [json, bytes] = imageSource(width, height, count); expect(() => inspectVRM(glb(json, bytes))).toThrow(/VRM 이미지/);
+      const [json, bytes] = imageSource(width, height, count); expect(() => inspectVRM(glb(json, bytes))).toThrow(/VRM (?:image|models)/);
     }
     const [json, bytes] = imageSource(1024, 1024); json.bufferViews[0].byteLength = 1000;
-    expect(() => inspectVRM(glb(json, bytes))).toThrow(/범위/);
+    expect(() => inspectVRM(glb(json, bytes))).toThrow(/range/);
     json.bufferViews[0].byteLength = 24; bytes[0] = 0;
-    expect(() => inspectVRM(glb(json, bytes))).toThrow(/PNG 또는 JPEG/);
+    expect(() => inspectVRM(glb(json, bytes))).toThrow(/PNG or JPEG/);
   });
 });

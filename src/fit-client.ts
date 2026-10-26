@@ -1,3 +1,5 @@
+import { engineMessage } from './engine-messages';
+import { msg } from './i18n';
 import type { KitFitProposal, KitPiece, RigProfile } from './types';
 
 export interface FitRequest { requestId: number; profileJson: string; kitJson: string }
@@ -29,7 +31,7 @@ export class FitClient {
   cancel() {
     this.worker?.terminate(); this.worker = null;
     const pending = this.pending; this.pending = null;
-    pending?.reject(new DOMException('자동 맞춤을 취소했습니다.', 'AbortError'));
+    pending?.reject(new DOMException(msg("Automatic fitting canceled.", "자동 맞춤을 취소했습니다."), 'AbortError'));
   }
 
   dispose() { this.disposed = true; this.cancel(); }
@@ -39,17 +41,17 @@ export class FitClient {
     worker.onmessage = ({ data }: MessageEvent<FitResponse>) => {
       const pending = this.pending;
       if (this.worker !== worker || !pending) return;
-      if (!data || typeof data.requestId !== 'number') { this.fail(worker, new Error('자동 맞춤 응답을 읽을 수 없습니다. 다시 시도해 주세요.')); return; }
+      if (!data || typeof data.requestId !== 'number') { this.fail(worker, new Error(msg("The automatic-fit response could not be read. Try again.", "자동 맞춤 응답을 읽을 수 없습니다. 다시 시도해 주세요."))); return; }
       if (data.requestId !== pending.id) return;
       this.pending = null;
       try {
         if (data.ok === true && typeof data.json === 'string') pending.resolve(JSON.parse(data.json));
-        else if (data.ok === false && typeof data.error === 'string') pending.reject(new Error(data.error));
-        else throw new Error('자동 맞춤 응답을 읽을 수 없습니다. 다시 시도해 주세요.');
+        else if (data.ok === false && typeof data.error === 'string') pending.reject(new Error(engineMessage(data.error)));
+        else throw new Error(msg("The automatic-fit response could not be read. Try again.", "자동 맞춤 응답을 읽을 수 없습니다. 다시 시도해 주세요."));
       } catch (error) { pending.reject(error instanceof Error ? error : new Error(String(error))); }
     };
-    worker.onerror = () => this.fail(worker, new Error('자동 맞춤 엔진을 시작하거나 실행하지 못했습니다. 다시 시도해 주세요.'));
-    worker.onmessageerror = () => this.fail(worker, new Error('자동 맞춤 응답을 전달하지 못했습니다. 다시 시도해 주세요.'));
+    worker.onerror = () => this.fail(worker, new Error(msg("The automatic-fit engine could not start or run. Try again.", "자동 맞춤 엔진을 시작하거나 실행하지 못했습니다. 다시 시도해 주세요.")));
+    worker.onmessageerror = () => this.fail(worker, new Error(msg("The automatic-fit response could not be transferred. Try again.", "자동 맞춤 응답을 전달하지 못했습니다. 다시 시도해 주세요.")));
     return worker;
   }
 

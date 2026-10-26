@@ -20,7 +20,7 @@ describe('import evidence', () => {
     expect(importGuidance(input)).toMatchObject({ open: 1, foot: 0, paired: 1, hasHihatChoice: true });
   });
   it('warns about ambiguous profile semantics even when both profiles support a note', () => {
-    expect(importGuidance(plan([event(52)])).evidence.join(' ')).toContain('차이나');
-    expect(importGuidance(plan([event(52)])).evidence.join(' ')).toContain('라이드');
+    expect(importGuidance(plan([event(52)])).evidence.join(' ')).toContain('china');
+    expect(importGuidance(plan([event(52)])).evidence.join(' ')).toContain('ride');
   });
 });

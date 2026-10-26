@@ -1,3 +1,4 @@
+import { msg } from './i18n';
 import * as THREE from 'three';
 import type { VRM } from '@pixiv/three-vrm';
 import { NormalizedHumanoidRigAdapter } from './rig-humanoid';
@@ -11,7 +12,7 @@ export class VRMHumanoidRigAdapter extends NormalizedHumanoidRigAdapter {
   readonly vrm: VRM;
   private readonly eyeOffset: THREE.Vector3;
   constructor(vrm: VRM, id: string) {
-    if (vrm.meta?.metaVersion !== '1') throw new Error('VRM 1.0 휴머노이드만 지원합니다.');
+    if (vrm.meta?.metaVersion !== '1') throw new Error(msg("Only VRM 1.0 humanoids are supported.", "VRM 1.0 휴머노이드만 지원합니다."));
     const restHead = vrm.humanoid.getRawBoneNode('head');
     const eyeOffset = vrm.lookAt?.offsetFromHeadBone.clone() ?? new THREE.Vector3(0, .06, 0);
     if (restHead) eyeOffset.multiply(restHead.getWorldScale(new THREE.Vector3())).applyQuaternion(restHead.getWorldQuaternion(new THREE.Quaternion()));

@@ -1,3 +1,4 @@
+import { msg, raw } from './i18n';
 import * as THREE from 'three';
 import { pieceInstrument, type KitPiece, type PieceGeometry, type Vec3 } from './types';
 import { cloneModel, createPieceModel, disposeModel, type KitPresetId, type PieceModel, type PieceVisualSettings } from './model-procedural';
@@ -100,11 +101,11 @@ export function measureInstrumentGeometry(root: THREE.Object3D, piece: KitPiece,
     const start = Math.max(0, node.geometry.drawRange.start), end = Math.min(count, start + node.geometry.drawRange.count);
     for (let i = start; i < end; i++) {
       point.fromBufferAttribute(position, index ? index.getX(i) : i).applyMatrix4(transform);
-      if (![point.x, point.y, point.z].every(Number.isFinite)) throw new Error('드럼 모델의 형상 좌표가 잘못되었습니다.');
+      if (![point.x, point.y, point.z].every(Number.isFinite)) throw new Error(msg("Invalid drum model geometry coordinates.", "드럼 모델의 형상 좌표가 잘못되었습니다."));
       bounds.expandByPoint(point); if (surface) surfaceBounds.expandByPoint(point);
     }
   });
-  if (bounds.isEmpty()) throw new Error(`드럼 본체 형상을 측정하지 못했습니다: ${piece.label}`);
+  if (bounds.isEmpty()) throw new Error(msg('Could not measure the drum body geometry: {0}', '드럼 본체 형상을 측정하지 못했습니다: {0}', raw(piece.label)));
   const referenceRadius = piece.geometry?.referenceRadius ?? piece.radius, ratio = piece.radius / referenceRadius;
   const origin = new THREE.Vector3(...piece.position);
   const offset = (value: THREE.Vector3): Vec3 => value.sub(origin).divideScalar(ratio).toArray() as Vec3;

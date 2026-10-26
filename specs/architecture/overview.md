@@ -35,6 +35,7 @@ flowchart TB
 | Humanoid | [rig-humanoid.ts](../../src/rig-humanoid.ts), [rig-vrm.ts](../../src/rig-vrm.ts) | Shared semantic bones, normalized/raw conversion and attached tool measurements |
 | Layout/appearance | [kit-calibration.ts](../../src/kit-calibration.ts), [hardware](../../src/kit-hardware.ts), [library](../../src/model-library.ts) | Keep contact layout separate from replaceable drum bodies |
 | Rendering/UI | [scene.ts](../../src/scene.ts), [main.ts](../../src/main.ts), [timeline.ts](../../src/timeline.ts) | Scene, controls and tempo/meter-based preview |
+| Interface language | [i18n.ts](../../src/i18n.ts) | English/Korean labels and explicit language selection; separate from performance data |
 | Sound/transport | [synthesis.ts](../../src/synthesis.ts), [wav.ts](../../src/wav.ts), [audio.ts](../../src/audio.ts) | Synthesized or aligned WAV PCM and shared playback/export clock |
 | Encoding | [export.ts](../../src/export.ts) | Actual codec probe, fixed frame times, mux, cancellation and cleanup |
 
@@ -49,6 +50,16 @@ Appearance replacement does not change original hit timing, target positions or
 synthesized sound. Intentional layout calibration changes kit contacts and the
 corresponding event targets together. The [rig contract](rig-contract.md) defines
 that boundary.
+
+## Interface language
+
+The interface defaults to English and stores the selected language as the optional
+`drum-language` browser preference. `?lang=en` and `?lang=ko` take precedence over
+that preference. The toolbar switch updates the interface and the URL without reloading
+the app, reimporting files, replanning motion or changing the playback position.
+Language affects interface text and accessibility labels; it does not translate
+user-supplied file names, track names or model metadata. MIDI source events,
+performance timing, numeric settings and asset provenance stay unchanged.
 
 ## Compatibility paths
 

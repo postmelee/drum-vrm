@@ -29,17 +29,17 @@ describe('physical layout recalibration',()=>{
     const changed=applyKitLayout(plan,moveKitTarget(layout,'crashRight',[.7,1.2,.6]));
     expect(changed.hits.map(h=>h.target)).toEqual([[0,1,.5],[.7,1.2,.6]]);
     expect(changed.hits.map(h=>h.instrument)).toEqual(['crash','crash']);
-    expect(()=>applyKitLayout(plan,kit())).toThrow('드럼 부품');
+    expect(()=>applyKitLayout(plan,kit())).toThrow('drum piece');
     const mismatched=structuredClone(layout);mismatched[10].instrument='snare';
-    expect(()=>validateKitLayout(mismatched)).toThrow('역할');
+    expect(()=>validateKitLayout(mismatched)).toThrow('instrument role');
   });
   it('rejects incomplete, duplicate, nonfinite and split hi-hat contracts',()=>{
     expect(()=>validateKitLayout(kit().slice(1))).toThrow();
     const duplicate=kit();duplicate[1]=duplicate[0];expect(()=>validateKitLayout(duplicate)).toThrow();
     expect(()=>moveKitTarget(kit(),'snare',[NaN,1,.5])).toThrow();
     expect(()=>moveKitTarget(kit(),'snare',[0,-1,.5])).toThrow();
-    expect(()=>moveKitTarget(kit(),'kick',[0,.03,.5])).toThrow(/페달/);
-    expect(()=>moveKitTarget(kit(),'pedalHat',[0,.21,.5])).toThrow(/페달/);
+    expect(()=>moveKitTarget(kit(),'kick',[0,.03,.5])).toThrow(/Pedal/);
+    expect(()=>moveKitTarget(kit(),'pedalHat',[0,.21,.5])).toThrow(/Pedal/);
     const split=kit();split[3].position[1]=1.1;expect(()=>validateKitLayout(split)).toThrow();
   });
 });

@@ -4,7 +4,7 @@
 
 Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser. Rust/WASM plans the performance; Three.js renders the drummer and kit.
 
-**[Try the app](https://postmelee.github.io/drum-vrm/) · [Documentation](docs/README.md) · [Technical design](specs/README.md)**
+**[Try the app](https://postmelee.github.io/drum-vrm/?lang=en) · [Documentation](docs/README.md) · [Technical design](specs/README.md)**
 
 ## Features
 
@@ -32,12 +32,14 @@ The guides describe this repository build. Check the deployed commit before assu
 
 ## Use the app
 
-1. Open **파일 · 오디오** (Files / Audio) and choose a `.mid`/`.midi` file, or expand **데모** (Demo), choose a [demo score](docs/calibration.md#try-a-demo-score), and press **불러오기** (Load). The initial **데모 재생 준비** (Prepare demo) button uses Studio Groove.
-2. Review tracks, channels and mapping under **MIDI 설정** (MIDI settings); diagnostics are in **분석** (Analysis). Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **설정 적용** (Apply settings) after changes.
-3. Press **재생** (Play). Seek on the timeline and use the viewpoint buttons or drag/scroll to adjust the camera. **연주자** (Player) view locks rotation, panning and zoom; closing drum editing restores the previous view.
+The interface defaults to English and remembers your language choice when browser storage is available. Use **EN / 한국어** in the toolbar to switch languages without reloading your files or losing the current playback position. Direct links: [English](https://postmelee.github.io/drum-vrm/?lang=en) · [한국어](https://postmelee.github.io/drum-vrm/?lang=ko).
+
+1. Open **Files / Audio** and choose a `.mid`/`.midi` file, or expand **Demo**, choose a [demo score](docs/calibration.md#try-a-demo-score), and press **Load**. The initial **Prepare demo** button uses Studio Groove.
+2. Review tracks, channels and mapping under **MIDI settings**; diagnostics are in **Analysis**. Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **Apply settings** after changes.
+3. Press **Play**. Seek on the timeline and use the viewpoint buttons or drag/scroll to adjust the camera. **Player** view locks rotation, panning and zoom; closing drum editing restores the previous view.
 4. Optionally [load a character](docs/models.md) and [fit the seat, contact points or drum parts](docs/calibration.md).
-5. In **파일 · 오디오 → 연주 오디오** (Files / Audio → Performance audio), [load a WAV and adjust its start offset](docs/export.md). Play and seek to review its synchronization.
-6. [Save a local project](docs/projects.md) to retain settings and explicit note edits. **내보내기** (Export) remains available for video; the selected audio is included unless **오디오 없이 내보내기** (Export without audio) is selected.
+5. In **Files / Audio → Performance audio**, [load a WAV and adjust its start offset](docs/export.md). Play and seek to review its synchronization.
+6. [Save a local project](docs/projects.md) to retain settings and explicit note edits. **Export** remains available for video; the selected audio is included unless **Export without audio** is selected.
 
 Drum appearance changes do not change the sound, and the app does not reproduce the source DAW's instruments. Export adds 0.5 seconds of preparation and a 0.25-second tail: an exactly 30-second song produces 923 frames, approximately 30.7667 seconds.
 
@@ -67,7 +69,7 @@ npm run build:wasm
 npm run dev
 ```
 
-Open `/drum-vrm/` on the local URL printed by the server. `src/wasm/` is generated; rebuild it after Rust changes with `npm run build:wasm`.
+Open `/drum-vrm/` on the local URL printed by the server; use `/drum-vrm/?lang=ko` for Korean. `src/wasm/` is generated; rebuild it after Rust changes with `npm run build:wasm`.
 
 ```sh
 cargo fmt --check

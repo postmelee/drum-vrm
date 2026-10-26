@@ -43,8 +43,8 @@ describe('local performance review', () => {
     const sample: PoseInspection={scope:'skeletal-proxies',torsoClearanceMeters:.02,armClearanceMeters:.03,stickClearanceMeters:.01,boneLengthErrorMeters:1e-7,poseFloats:77};
     const result=summarizeProxyReview([0,.1,.2],[sample,{...sample,armClearanceMeters:-.01},{...sample,stickClearanceMeters:-.02}]);
     expect(result).toMatchObject({ firstIntersectionSeconds:.1,intersectingSamples:2,armsMinimumMeters:-.01,sticksMinimumMeters:-.02 });
-    expect(()=>summarizeProxyReview([0],[{...sample,torsoClearanceMeters:NaN}])).toThrow(/유효하지/);
+    expect(()=>summarizeProxyReview([0],[{...sample,torsoClearanceMeters:NaN}])).toThrow(/Invalid/);
     expect(summarizeProxyReview([0],[{...sample,equipmentClearanceMeters:-.008,crossClearanceMeters:.02}])).toMatchObject({intersectingSamples:1,equipmentMinimumMeters:-.008,crossMinimumMeters:.02});
-    expect(()=>summarizeProxyReview([0],[{...sample,crossClearanceMeters:NaN}])).toThrow(/유효하지/);
+    expect(()=>summarizeProxyReview([0],[{...sample,crossClearanceMeters:NaN}])).toThrow(/Invalid/);
   });
 });

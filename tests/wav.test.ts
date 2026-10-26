@@ -35,21 +35,21 @@ describe('bounded WAV preflight', () => {
   it('rejects disguised, truncated and malformed files before decoding', () => {
     const wrong = wav(); new Uint8Array(wrong)[0] = 0;
     expect(() => inspectWav(wrong)).toThrow(/RIFF/);
-    expect(() => inspectWav(wav().slice(0, -1))).toThrow(/크기/);
+    expect(() => inspectWav(wav().slice(0, -1))).toThrow(/size/);
     const overrun = wav(); new DataView(overrun).setUint32(40, 9999, true);
-    expect(() => inspectWav(overrun)).toThrow(/청크/);
+    expect(() => inspectWav(overrun)).toThrow(/chunk/);
     const badAlign = wav(); new DataView(badAlign).setUint16(32, 1, true);
-    expect(() => inspectWav(badAlign)).toThrow(/프레임/);
+    expect(() => inspectWav(badAlign)).toThrow(/frame/);
     const badGuid = wav({ extensible: true }); new Uint8Array(badGuid)[48] = 1;
-    expect(() => inspectWav(badGuid)).toThrow(/확장/);
+    expect(() => inspectWav(badGuid)).toThrow(/extended/);
   });
 
   it('rejects compressed/multichannel/out-of-range and empty sources', () => {
     expect(() => inspectWav(wav({ tag: 2 }))).toThrow(/PCM/);
-    expect(() => inspectWav(wav({ channels: 3 }))).toThrow(/모노/);
-    expect(() => inspectWav(wav({ rate: 4000 }))).toThrow(/레이트/);
-    expect(() => inspectWav(wav({ frames: 0 }))).toThrow(/프레임/);
-    expect(() => inspectWav(wav({ rate: 8000, bits: 8, frames: 8000 * 301 }))).toThrow(/300초/);
+    expect(() => inspectWav(wav({ channels: 3 }))).toThrow(/mono/);
+    expect(() => inspectWav(wav({ rate: 4000 }))).toThrow(/rate/);
+    expect(() => inspectWav(wav({ frames: 0 }))).toThrow(/frame/);
+    expect(() => inspectWav(wav({ rate: 8000, bits: 8, frames: 8000 * 301 }))).toThrow(/300 seconds/);
   });
 
   it('rejects nonfinite source float samples before the browser can sanitize them', () => {
@@ -119,11 +119,11 @@ describe('WAV time alignment', () => {
   });
 
   it('rejects invalid offsets, plans, PCM rates, channel lengths and nonfinite samples', () => {
-    for (const offset of [NaN, Infinity, -Infinity, 300.001, -300.001]) expect(() => alignWavPcm(pcm([1]), plan(), offset)).toThrow(/오프셋/);
+    for (const offset of [NaN, Infinity, -Infinity, 300.001, -300.001]) expect(() => alignWavPcm(pcm([1]), plan(), offset)).toThrow(/offset/);
     for (const duration of [NaN, Infinity, -1, 0, 301]) expect(() => alignWavPcm(pcm([1]), plan(duration), 0)).toThrow(/MIDI/);
     expect(() => alignWavPcm({ sampleRate: 44100, channels: [Float32Array.of(1)] }, plan(), 0)).toThrow(/48 kHz/);
-    expect(() => alignWavPcm(pcm([1], [1, 2]), plan(), 0)).toThrow(/길이/);
-    expect(() => alignWavPcm(pcm([NaN]), plan(), 0)).toThrow(/샘플/);
+    expect(() => alignWavPcm(pcm([1], [1, 2]), plan(), 0)).toThrow(/length/);
+    expect(() => alignWavPcm(pcm([NaN]), plan(), 0)).toThrow(/sample/);
   });
 });
 
@@ -156,7 +156,7 @@ describe('browser WAV boundary', () => {
     const close = vi.fn().mockResolvedValue(undefined), decode = vi.fn().mockRejectedValue(new Error('decoder'));
     const Context = vi.fn(function () { return { sampleRate: 48000, decodeAudioData: decode, close }; });
     vi.stubGlobal('AudioContext', Context);
-    await expect(loadLocalWav(new File([wav()], 'authored.wav'))).rejects.toThrow(/디코딩/);
+    await expect(loadLocalWav(new File([wav()], 'authored.wav'))).rejects.toThrow(/decode/);
     expect(close).toHaveBeenCalledOnce();
     await expect(loadLocalWav(new File(['not a WAV'], 'bad.wav'))).rejects.toThrow(/RIFF/);
     const oversized = { size: MAX_WAV_BYTES + 1, arrayBuffer: vi.fn() } as unknown as File;
@@ -168,9 +168,9 @@ describe('browser WAV boundary', () => {
     const decoded = new TestAudioBuffer({ sampleRate: 48000, length: 12, numberOfChannels: 1 });
     const close = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('AudioContext', class { sampleRate = 48000; decodeAudioData = vi.fn().mockResolvedValue(decoded); close = close; });
-    await expect(loadLocalWav(new File([wav()], 'authored.wav'))).rejects.toThrow(/파일 정보/);
+    await expect(loadLocalWav(new File([wav()], 'authored.wav'))).rejects.toThrow(/file information/);
     decoded.channels[0][0] = NaN;
-    await expect(loadLocalWav(new File([wav()], 'authored.wav'))).rejects.toThrow(/샘플/);
+    await expect(loadLocalWav(new File([wav()], 'authored.wav'))).rejects.toThrow(/sample/);
     expect(close).toHaveBeenCalledTimes(2);
   });
 

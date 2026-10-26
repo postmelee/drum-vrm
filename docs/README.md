@@ -4,6 +4,8 @@
 
 Start with the [app workflow and local setup](../README.md#use-the-app). These guides describe the repository build; the [version table](../README.md#which-version-am-i-using) identifies differences from the public app.
 
+[Open the English app](https://postmelee.github.io/drum-vrm/?lang=en). Use **EN / 한국어** in the toolbar to change the interface language during a session.
+
 ## Use and customize
 
 | Goal | Guide |

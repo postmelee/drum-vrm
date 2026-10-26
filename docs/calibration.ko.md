@@ -1,6 +1,6 @@
 # 좌석·타점·드럼 부품 조절
 
-[English](calibration.md) · **한국어** · [문서 안내](README.ko.md) · [캐릭터 모델 안내](models.ko.md)
+[English](calibration.md) · **한국어** · [문서 안내](README.ko.md) · [캐릭터 모델 안내](models.ko.md) · [앱 열기](https://postmelee.github.io/drum-vrm/?lang=ko)
 
 좌석과 악기 접촉 위치를 조절해 연주자와 키트를 맞춘 뒤 드럼 몸체의 외형을 바꿉니다. 이 안내는 저장소 빌드를 설명하며 공개 앱의 범위는 [버전별 제공 범위](../README.ko.md#어떤-버전을-사용하고-있나요)에서 확인하세요. 공통 측정값과 동작 계산은 [보정 설계](../specs/architecture/calibration.ko.md)에서 설명합니다.
 

@@ -1,3 +1,4 @@
+import { msg } from './i18n';
 import * as THREE from 'three';
 import { VRMHumanoid, VRMHumanBoneParentMap, type VRMHumanBoneName, type VRMHumanBones } from '@pixiv/three-vrm';
 import type { RigAdapter, RigCalibration } from './scene';
@@ -132,19 +133,19 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
 
   constructor(humanoid: VRMHumanoid, source: THREE.Object3D, id: string, hooks: AdapterHooks = {}) {
     this.humanoid = humanoid; this.source = source; this.hooks = hooks;
-    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id) || id === 'primitive-v1') throw new Error('유효하지 않은 리그 ID입니다.');
+    if (!/^[A-Za-z0-9._:-]{1,128}$/.test(id) || id === 'primitive-v1') throw new Error(msg("Invalid rig ID.", "유효하지 않은 리그 ID입니다."));
     source.updateMatrixWorld(true);
     const boneAncestors = new Set<THREE.Object3D>();
     Object.values(humanoid.rawHumanBones).forEach(bone => { for (let node: THREE.Object3D | null = bone.node; node; node = node.parent) boneAncestors.add(node); });
     boneAncestors.forEach(node => {
       const values = [node.scale.x, node.scale.y, node.scale.z];
-      if (!values.every(value => Number.isFinite(value) && value > 0)) throw new Error('유한한 양수 크기의 VRM 본 변환만 지원합니다.');
-      if (Math.max(...values) - Math.min(...values) > Math.max(...values) * 1e-5) throw new Error('축마다 크기가 다른 비균일 본 스케일은 지원하지 않습니다. 균일한 스케일의 VRM을 사용해 주세요.');
+      if (!values.every(value => Number.isFinite(value) && value > 0)) throw new Error(msg("VRM bone transforms must have finite positive scales.", "유한한 양수 크기의 VRM 본 변환만 지원합니다."));
+      if (Math.max(...values) - Math.min(...values) > Math.max(...values) * 1e-5) throw new Error(msg("Nonuniform bone scales are not supported. Use a VRM with uniform scale.", "축마다 크기가 다른 비균일 본 스케일은 지원하지 않습니다. 균일한 스케일의 VRM을 사용해 주세요."));
     });
     humanoid.resetNormalizedPose(); humanoid.normalizedHumanBonesRoot.updateWorldMatrix(true, true);
     const required = (name: VRMHumanBoneName) => {
       const node = humanoid.getNormalizedBoneNode(name);
-      if (!node || !humanoid.getRawBoneNode(name)) throw new Error(`필수 휴머노이드 본이 없습니다: ${name}`);
+      if (!node || !humanoid.getRawBoneNode(name)) throw new Error(msg('Required humanoid bone missing: {0}', '필수 휴머노이드 본이 없습니다: {0}', name));
       return node;
     };
     const hips = required('hips'), head = required('head'); required('spine');
@@ -174,7 +175,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       const points = nodes.map(node => node.getWorldPosition(new THREE.Vector3()));
       const axes: [THREE.Vector3, THREE.Vector3] = [points[1].clone().sub(points[0]), points[2].clone().sub(points[1])];
       const measures: [number, number] = [axes[0].length(), axes[1].length()];
-      if (measures.some(length => !Number.isFinite(length) || length < .03 || length > 2)) throw new Error('리그 팔·다리의 실제 길이가 지원 범위를 벗어납니다.');
+      if (measures.some(length => !Number.isFinite(length) || length < .03 || length > 2)) throw new Error(msg("The rig's measured arm or leg length is outside the supported range.", "리그 팔·다리의 실제 길이가 지원 범위를 벗어납니다."));
       const root = points[0].clone().add(translation), arm = limb < 2;
       let nativeQ = new THREE.Quaternion();
       const side = limb === 0 || limb === 2 ? 'left' : 'right';
@@ -257,7 +258,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
   }
   setCalibration(value: HumanoidCalibration, kit?: readonly KitPiece[]): RigProfile {
     if (!Number.isFinite(value.seatHeight) || value.seatHeight < .3 || value.seatHeight > 1.2 || !Number.isFinite(value.seatForward) || Math.abs(value.seatForward) > .5) {
-      throw new Error('좌석 높이는 0.3–1.2m, 앞뒤 위치는 −0.5–0.5m 범위여야 합니다.');
+      throw new Error(msg("Seat height must be 0.3–1.2 m and forward offset must be −0.5–0.5 m.", "좌석 높이는 0.3–1.2m, 앞뒤 위치는 −0.5–0.5m 범위여야 합니다."));
     }
     const palmOrientation = value.palmOrientation ?? this.calibration.palmOrientation ?? 'up';
     if (!['up', 'inward', 'down'].includes(palmOrientation)) throw new Error('Invalid palm orientation.');

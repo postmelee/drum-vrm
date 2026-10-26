@@ -43,8 +43,8 @@ describe('semantic humanoid and hand-local tools', () => {
     rig.setCalibration({seatHeight: .54, seatForward: -.1});
     expect(rig.setCalibration(adjusted, kit)).toEqual(profile);
     const read = rig.getCalibration(); read.seatHeight = 1; expect(rig.getCalibration()).toEqual({...adjusted, palmOrientation: 'up'});
-    expect(() => rig.setCalibration({seatHeight: NaN, seatForward: 0})).toThrow('좌석');
-    expect(() => rig.setCalibration({seatHeight: .6, seatForward: .51})).toThrow('좌석');
+    expect(() => rig.setCalibration({seatHeight: NaN, seatForward: 0})).toThrow('Seat');
+    expect(() => rig.setCalibration({seatHeight: .6, seatForward: .51})).toThrow('Seat');
     expect(rig.getProfile()).toEqual(profile);
     const auto = rig.getAutomaticCalibration(kit); expect(auto.seatHeight).toBeGreaterThanOrEqual(.3); expect(auto.seatForward).toBe(.06);
     rig.dispose();

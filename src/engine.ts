@@ -1,3 +1,5 @@
+import { engineMessage } from './engine-messages';
+import { msg } from './i18n';
 import { Performance, ready_pose } from './wasm/drum_engine';
 import { initializeWasm } from './wasm-runtime';
 import type { PoseInspection, KitPiece, KitFitProposal, MidiInfo, PerformancePlan, RigProfile, Selection } from './types';
@@ -29,11 +31,11 @@ export class EngineClient {
   }
   setProfile(profile: RigProfile) { return this.setSetup(profile,this.layout); }
   private assertCurrent(generation:number) {
-    if(generation!==this.generation)throw new DOMException('준비를 취소했습니다.','AbortError');
+    if(generation!==this.generation)throw new DOMException(msg("Preparation canceled.", "준비를 취소했습니다."),'AbortError');
   }
   private stopWorker() {
     this.worker?.terminate();this.worker=null;
-    const reject=this.reject;this.reject=null;reject?.(new DOMException('준비를 취소했습니다.','AbortError'));
+    const reject=this.reject;this.reject=null;reject?.(new DOMException(msg("Preparation canceled.", "준비를 취소했습니다."),'AbortError'));
   }
   private begin() { this.stopWorker();return ++this.generation; }
   cancel() { ++this.generation;this.stopWorker();this.cache=null; }
@@ -48,10 +50,10 @@ export class EngineClient {
         if(this.worker!==worker||generation!==this.generation)return;
         if(!data||data.requestId!==requestId)return;
         done();
-        try{if(data.ok)resolve(JSON.parse(data.json));else reject(new Error(data.error));}catch(error){reject(error);}
+        try{if(data.ok)resolve(JSON.parse(data.json));else reject(new Error(engineMessage(data.error)));}catch(error){reject(error);}
       };
-      worker.onerror=()=>fail(new Error('분석 엔진을 실행하지 못했습니다. 다시 시도해 주세요.'));
-      worker.onmessageerror=()=>fail(new Error('분석 엔진 응답을 읽지 못했습니다. 다시 시도해 주세요.'));
+      worker.onerror=()=>fail(new Error(msg("The analysis engine could not run. Try again.", "분석 엔진을 실행하지 못했습니다. 다시 시도해 주세요.")));
+      worker.onmessageerror=()=>fail(new Error(msg("The analysis engine response could not be read. Try again.", "분석 엔진 응답을 읽지 못했습니다. 다시 시도해 주세요.")));
       try{worker.postMessage({...payload,requestId});}catch(error){fail(error instanceof Error?error:new Error(String(error)));}
     });
   }
@@ -59,7 +61,7 @@ export class EngineClient {
   async validateProjectSource(bytes:Uint8Array,selection:Selection,stored:PerformancePlan):Promise<void> {
     const generation=this.begin(),parsed=await this.request<PerformancePlan>({kind:'source',bytes,selection},generation);this.assertCurrent(generation);
     for(const key of ['midiHash','sourceEvents','tempoMap','timeSignatures','duration','ppq','mappingProfile','mappingVersion','countInNote75','hihatPolicy','hihatOpenness','controls','interpretations','omittedSourceEventIds','handOverrides'] as const){
-      if(JSON.stringify(parsed[key])!==JSON.stringify(stored[key]))throw new Error('프로젝트의 원본·해석과 다시 연결한 MIDI가 일치하지 않습니다.');
+      if(JSON.stringify(parsed[key])!==JSON.stringify(stored[key]))throw new Error(msg("The relinked MIDI does not match the project's source and interpretation.", "프로젝트의 원본·해석과 다시 연결한 MIDI가 일치하지 않습니다."));
     }
   }
   private key(plan:PerformancePlan,profile:RigProfile|null){return JSON.stringify([plan,profile]);}
@@ -115,7 +117,7 @@ export class EngineClient {
     const {candidate,plan:restored}=await this.prepareEvaluator(source,nextProfile,generation);
     try{
       this.assertCurrent(generation);
-      if(plan.engineVersion!==restored.engineVersion||plan.plannerVersion!==restored.plannerVersion)throw new Error('프로젝트 엔진 버전이 다릅니다. 원본 MIDI를 다시 준비해 주세요.');
+      if(plan.engineVersion!==restored.engineVersion||plan.plannerVersion!==restored.plannerVersion)throw new Error(msg("The project uses a different engine version. Prepare the original MIDI again.", "프로젝트 엔진 버전이 다릅니다. 원본 MIDI를 다시 준비해 주세요."));
       if(commit){this.performance?.free();this.performance=candidate;this.sourcePlan=structuredClone(source);this.profile=nextProfile;this.layout=kit;}else candidate.free();
       return restored;
     }catch(error){candidate.free();throw error;}

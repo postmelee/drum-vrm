@@ -1,3 +1,6 @@
+import './worker-messages';
+import { engineMessage } from './engine-messages';
+import { msg } from './i18n';
 import type { SynthPcm } from './audio';
 import type { PerformancePlan } from './types';
 /** Terminating this worker makes even a dense five-minute synthesis cancellable. */
@@ -6,7 +9,7 @@ export class SynthesisClient {
   private reject: ((error: Error) => void) | null = null;
   cancel() {
     this.worker?.terminate(); this.worker = null;
-    this.reject?.(new DOMException('준비를 취소했습니다.', 'AbortError')); this.reject = null;
+    this.reject?.(new DOMException(msg("Preparation canceled.", "준비를 취소했습니다."), 'AbortError')); this.reject = null;
   }
   run(plan: PerformancePlan): Promise<AudioBuffer> {
     this.cancel();
@@ -17,14 +20,14 @@ export class SynthesisClient {
       worker.onmessage = ({data}) => {
         done();
         try {
-          if (!data.ok) throw new Error(data.error);
+          if (!data.ok) throw new Error(engineMessage(data.error));
           const pcm = data.pcm as SynthPcm;
           const buffer = new AudioBuffer({length: pcm.channels[0].length, sampleRate: pcm.sampleRate, numberOfChannels: 2});
           pcm.channels.forEach((channel, i) => buffer.copyToChannel(channel, i));
           resolve(buffer);
         } catch (error) { reject(error); }
       };
-      worker.onerror = () => { done(); reject(new Error('오디오 준비 중 오류가 발생했습니다.')); };
+      worker.onerror = () => { done(); reject(new Error(msg("Audio preparation failed.", "오디오 준비 중 오류가 발생했습니다."))); };
       worker.postMessage(plan);
     });
   }
