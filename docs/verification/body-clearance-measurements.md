@@ -254,3 +254,40 @@ unit-test timeouts remain unchanged. This is not a performance pass. Repository
 test discovery is explicitly limited to `tests/**/*.test.ts`; the earlier local
 174-test count included four checks in two ignored private experiment files.
 The reproducible public suite contains 170 tests in 23 files.
+
+## Pages publication
+
+The owner-authorized batch was merged through [PR #45](https://github.com/postmelee/drum-vrm/pull/45)
+and published at [Drum VRM](https://postmelee.github.io/drum-vrm/) from
+`dc581d203f7416b34388bca309f496c07e8d241d`. Its tree equals reviewed head
+`63ba9abc3429e55e5f7c6f582ddf4a97e6215e04`.
+[PR CI](https://github.com/postmelee/drum-vrm/actions/runs/40261058226)
+and the independent [Pages build/deploy](https://github.com/postmelee/drum-vrm/actions/runs/40261433421)
+both passed, including 93 Rust and 170 repository web tests. No version bump,
+release tag or GitHub Release was created. Random strike variation is excluded.
+
+The public HTML and all seven emitted JS/CSS/WASM assets match the downloaded
+Pages workflow artifact byte-for-byte, including both planning Workers. Public
+WASM SHA-256 is `f045000720e486c1d66fc6ce30c795d7979acd1110cd61d189308b45ce01235c`.
+It differs from local C: the builds contain different macOS/Linux dependency
+paths and wasm-bindgen metadata. Publication integrity is checked against the
+actual CI artifact; a matching local binary is not claimed.
+
+A fresh public IAB session at 1280 × 720 completed automatic native fitting,
+prepared all 193 Studio strikes, played/paused, sought with the timeline, and
+opened the simplified Character and Analysis panels. The deployed fit summary
+and separate path-inspection wording were visible. No browser console errors
+were observed during this public smoke check. The broader VRM/WAV/project
+workflow evidence above remains explicitly local.
+
+Independent WASM instances compared local C and the deployed Linux binary across
+all 12 cases. Source-plan JSON, full fit-proposal JSON and final plan JSON were
+byte-identical. There were zero primary-pose or numeric-inspection differences
+across 56,000 60 Hz frames, 7,980 assigned-hit probes and 940 shuffled seeks;
+18,256 rendered attachment-marker comparisons also had zero difference. The
+public binary's prepared-runtime restore matched as well. Posed-triangle probes
+were not repeated because the evaluated poses were identical; C's residual
+crossing limits therefore remain applicable. This is bounded numerical
+equivalence, not byte-identical builds. Saved projects still require their exact
+WASM hash and cannot treat the two builds as interchangeable merely from this
+measurement. Private evidence remains outside the repository.

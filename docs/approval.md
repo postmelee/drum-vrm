@@ -66,3 +66,8 @@ Pages workflow in [batch evidence](verification/body-clearance-measurements.md).
 It does not authorize randomized strike variation, version changes, release tags
 or GitHub Releases. Remaining fast-transfer and skin/clothing limits stay open;
 this is not continuing deployment approval for later features.
+
+The approved batch was merged as `dc581d203f7416b34388bca309f496c07e8d241d` through PR #45
+and published by [Pages run 40261433421](https://github.com/postmelee/drum-vrm/actions/runs/40261433421).
+The tested head and merge tree match; [publication verification](verification/body-clearance-measurements.md#pages-publication)
+records actual artifact and browser checks. No tag or GitHub Release was created.
