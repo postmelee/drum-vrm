@@ -31,7 +31,8 @@ describe('primitive-v1 display conversion and player view', () => {
     const rig = new PrimitiveRigAdapter(), display = createLegacyDisplayRoot(), input = pose(), before = Array.from(input);
     display.add(rig.root); rig.applyPose(input); display.updateMatrixWorld(true);
     for (const [name, offset, sign] of [['leftStick', 9, -1], ['rightStick', 21, 1]] as const) {
-      const actual = rig.root.getObjectByName(name)!.localToWorld(new Vector3(0, .5, 0));
+      const stick = rig.root.getObjectByName(name)!;
+      const actual = stick.localToWorld(new Vector3(0, 0, stick.userData.tipLength));
       const expected = new Vector3(...legacyPointToDisplay(input.slice(offset, offset + 3)));
       expect(actual.distanceTo(expected)).toBeLessThan(1e-6);
       expect(Math.sign(actual.project(camera).x)).toBe(sign);
@@ -65,7 +66,8 @@ describe('PrimitiveRigAdapter canonical pose contract', () => {
     rig.applyPose(input);
     rig.root.updateMatrixWorld(true);
     for (const [name, offset] of [['leftStick', 9], ['rightStick', 21]] as const) {
-      const tip = rig.root.getObjectByName(name)!.localToWorld(new Vector3(0, .5, 0));
+      const stick = rig.root.getObjectByName(name)!;
+      const tip = stick.localToWorld(new Vector3(0, 0, stick.userData.tipLength));
       expect(tip.distanceTo(new Vector3().fromArray(input, offset))).toBeLessThan(1e-6);
     }
     expect(rig.root.getObjectByName('head')!.position.toArray()).toEqual(Array.from(input.slice(54)));
@@ -153,17 +155,19 @@ describe('editable procedural models preserve playing contacts', () => {
       built.root.updateMatrixWorld(true);
       const head = new Box3().setFromObject(built.root.getObjectByName('contactSurface')!);
       const body = new Box3().setFromObject(built.root.getObjectByName('contactSurface')!.parent!);
+      const origin = new Vector3(...piece.position);
+      const contact = new Raycaster(origin.clone().add(new Vector3(0,1,0)),new Vector3(0,-1,0)).intersectObject(built.root.getObjectByName('contactSurface')!)[0].point;
       disposeModel(built.root);
-      return { head, body };
+      return { head, body, contact };
     };
     const standard = bounds('standard', 1), deep = bounds('deep', 1.4), compact = bounds('compact', .65);
     expect(deep.body.getSize(new Vector3()).y).toBeGreaterThan(standard.body.getSize(new Vector3()).y);
     expect(compact.body.getSize(new Vector3()).y).toBeLessThan(standard.body.getSize(new Vector3()).y);
     expect(deep.head.getSize(new Vector3()).x).toBeGreaterThan(standard.head.getSize(new Vector3()).x);
     for (const variant of [standard, deep, compact]) {
-      expect(variant.head.max.y).toBeCloseTo(piece.position[1], 6);
-      expect(variant.head.getCenter(new Vector3()).x).toBeCloseTo(piece.position[0], 6);
-      expect(variant.head.getCenter(new Vector3()).z).toBeCloseTo(piece.position[2], 6);
+      // Tilted heads have a raised far rim; the actual playing contact remains
+      // at the same anchor rather than the highest point of an AABB.
+      expect(variant.contact.distanceTo(new Vector3(...piece.position))).toBeLessThan(1e-6);
     }
   });
   it('rejects unsafe or nonfinite editor inputs before building geometry', () => {
@@ -270,7 +274,7 @@ describe('scene performance lifecycle', () => {
 
 
 describe('project drum appearance restoration',()=>{
-  it('rejects mismatched saved body depth before commit and restores the same fitted geometry', async () => {
+  it('rejects mismatched saved depth and restores fitted geometry with saved flat and tilted surfaces', async () => {
     const hardware = new KitHardwareLayer(), kitGroup = new Group(), stage = new Group(); stage.add(hardware.root, kitGroup);
     const scene = Object.create(DrumScene.prototype) as DrumScene;
     Object.assign(scene, { kit: structuredClone(DEFAULT_KIT), plan: null, hardware, kitGroup, scene: stage, libraries: new Map(),
@@ -278,7 +282,10 @@ describe('project drum appearance restoration',()=>{
       selected: null, selectionBox: null, songTime: -.5, editorMode: false, exportMode: false, reducedMotion: { matches: false },
       hitResponse: { enabled: false, strength: 0 }, loadGeneration: 0, disposed: false });
     try {
-      Reflect.get(scene, 'rebuildKit').call(scene); await scene.whenEquipmentReady();
+      Reflect.get(scene, 'rebuildKit').call(scene);
+      scene.setPieceVisual('snare', { tilt: 0 }); // Explicit flat legacy appearance, not the new preset default.
+      scene.setPieceVisual('crash', { tilt: 23 });
+      await scene.whenEquipmentReady();
       const saved = scene.getKitLayout(), appearance = saved.filter(piece => !['openHat', 'pedalHat'].includes(piece.id)).map(piece => ({ id: piece.id, settings: scene.getPieceVisual(piece.id) }));
       const prepared = await scene.prepareProjectAppearance('studio', appearance, new Map()), shown = kitGroup.children[0];
       const corrupted = structuredClone(saved); corrupted.find(piece => piece.id === 'snare')!.geometry!.body.halfExtents[1] += .05;
@@ -290,6 +297,8 @@ describe('project drum appearance restoration',()=>{
       expect(kitGroup.children[0]).toBe(shown);
       prepared.apply(fitted); await scene.whenEquipmentReady();
       expect(scene.getKitLayout()).toEqual(fitted);
+      expect(scene.getPieceVisual('snare').tilt).toBe(0);
+      expect(scene.getPieceVisual('crash').tilt).toBe(23);
       expect(() => prepared.measureLayout(saved)).toThrow('already been applied');
       const rollback = await scene.prepareProjectAppearance('studio', appearance, new Map());
       scene.setPieceVisual('snare', { model: 'deep', scale: 1.1 }); await scene.whenEquipmentReady();

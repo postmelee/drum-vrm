@@ -15,13 +15,32 @@
 | --- | --- | --- |
 | [AvatarSample_B](../public/characters/avatar-sample-b-provenance.json) | VRoid Project, VRM Public License와 추가 VRoid 샘플 조건 | 일반 캐릭터 검사. 고정된 ChatVRM 파일은 VRM 1.0입니다. |
 | [Seed-san](../public/characters/seed-san-provenance.json) | VirtualCast, Inc., VRM Public License, **크레딧 필수** | 다른 체형과 본 제약 구성 검사. |
-| [Twist 샘플](../public/characters/twist-provenance.json) | pixiv Inc., VRM Public License | 제약 검사. **자동 배치에는 여전히 제한이 있습니다.** |
+| [Twist 샘플](../public/characters/twist-provenance.json) | pixiv Inc., VRM Public License | 제약과 보조 리그. 맞춤·동작 진단을 함께 확인하세요. |
 
 연결된 출처 기록에 수정하지 않은 정확한 파일·원본 출처·이용 조건이 있습니다.
 이 모델들은 MIT나 CC0가 아닙니다. 선택만으로 자연스러운 접촉이나 충돌 없는 동작이
 보장되지는 않습니다. 배치·동작 경고는 **분석**에서 확인하세요. Seed-san 영상에는
 제작자 크레딧을 표시해야 하며, 프리셋을 선택해도 내보낸 영상에 크레딧이 자동으로
 삽입되지는 않습니다. 앱은 아바타 파일을 내보내지 않습니다.
+
+## 같은 연주로 모델 비교하기
+
+**파일 · 오디오 → 데모 → 자세 검증 패턴 · 12초 → 불러오기**를 선택하고,
+**캐릭터**에서 AvatarSample_B·Seed-san·Twist를 차례로 바꿉니다. 각 모델에 같은
+실측 체형 규칙으로 자동 맞춤을 적용합니다. **분석 → 자세 · 동기화 검수 → 검수 시점**에서
+준비·그루브·탐 이동·라이드·양쪽 크래시·종료로 이동할 수 있습니다. 정면과 측면을
+함께 확인하고, 무대를 드래그하면 카메라를 회전할 수 있습니다. **이전 / 다음 타격**은
+정확한 타격 시각으로 이동합니다.
+
+**현재 자세 검사**는 부착 기준점 오차, 자세 각도, 근사 충돌 간격을 구분합니다.
+타격 계측은 실제 스틱·발바닥·비터 기준점을 공통 계획 표면점과 비교합니다. 기준점
+오차가 작아도 피부나 스틱 전체가 장비를 피한다는 뜻은 아닙니다. **검수 JSON 저장**으로
+설정과 수치 관측을 보관해 재현 가능한 보고서를 만들 수 있으며 파일을 업로드하지 않습니다.
+
+개발자는 WASM 빌드 후 `node scripts/public-posture-review.mjs`로 포함된 세 모델의
+형상·기준점·탐색 검사를 반복할 수 있습니다. 원본 모델 해시를 확인하고 결과를
+`.local/public-posture-review/`에 저장합니다. 텍스처를 제외한 수치 검사이므로 브라우저
+화면 검수를 보완하며, 의상이나 연주 전체의 충돌 없음을 검증하지 않습니다.
 
 ## 지원 파일
 

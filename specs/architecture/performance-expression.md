@@ -42,7 +42,7 @@ flowchart TD
 | Music | Source event identity, note, velocity and time | Preserved by the engine |
 | Mapping | Musical role/articulation and intended physical piece | Explicit profiles and physical-piece identity exist; full articulation mechanics remain incomplete |
 | Fit | Measured body, seat, target layout, grip and sole frames | Common profile, session calibration and explicit static kit fitting exist |
-| Technique | How fingers, wrists, limbs and supports perform a stroke | Target-dependent wrists, ready poses, velocity-dependent strokes, phrase assignment and ankle approximations exist; full styles are incomplete |
+| Technique | How fingers, wrists, limbs and supports perform a stroke | Target-dependent wrists, ready poses, velocity-dependent strokes, phrase assignment and shared kinematic footboard/hi-hat motion exist; full styles are incomplete |
 | Expression | Additional feasible preparation, recovery, body/gaze emphasis | Proposed 0–100 control, not a current runtime feature |
 
 A louder-looking gesture does not change source velocity or audio. A palm-up option

@@ -1,6 +1,6 @@
 import { msg } from './i18n';
 import * as THREE from 'three';
-import type { Hit, Instrument, Vec3 } from './types';
+import type { ContactEvent, Hit, Instrument, Vec3 } from './types';
 
 export interface HitResponseSettings { enabled: boolean; strength: number; }
 export interface ResponseSample { scale: number; tiltX: number; tiltZ: number; }
@@ -17,7 +17,7 @@ export function validateHitResponse(settings: HitResponseSettings): HitResponseS
 }
 
 /** Bake damped impulse sums once. Evaluation is O(log N), including dense rolls. */
-export function createHitResponseTrack(hits: readonly Hit[], instrument: Instrument): HitResponseTrack {
+export function createHitResponseTrack(hits: readonly Pick<Hit, 'id' | 'time' | 'velocity'>[], instrument: Instrument): HitResponseTrack {
   const grouped: { time: number; velocity: number }[] = [];
   for (const hit of [...hits].sort((a, b) => a.time - b.time || a.id - b.id)) {
     const velocity = Math.max(0, Math.min(1, hit.velocity / 127));
@@ -38,6 +38,27 @@ export function createHitResponseTrack(hits: readonly Hit[], instrument: Instrum
   return { anchors, cymbal: ['hihat', 'openHat', 'crash', 'ride'].includes(instrument) };
 }
 
+/** Semantic events have already separated stick/beater contacts from pedal
+ * controls. Unassigned events cannot make an instrument appear to be struck. */
+export function createContactResponseTrack(events: readonly ContactEvent[], instrument: Instrument): HitResponseTrack {
+  const hits = events.filter(event => event.status === 'planned' && event.limb !== null && event.toolPart !== 'sole' && event.role !== 'pairedTool')
+    .map((event, id) => ({ id, time: event.time, velocity: event.velocity }));
+  return createHitResponseTrack(hits, instrument);
+}
+
+/** Marker is parented in the same planning frame as the resolved contact. It
+ * must not inherit an appearance scale/pivot left over from model construction. */
+export function placeContactMarker(marker: THREE.Mesh<THREE.RingGeometry>, parent: THREE.Object3D, point: Vec3, normal: Vec3): void {
+  if (marker.parent !== parent) parent.add(marker);
+  if (marker.geometry.parameters.outerRadius !== .026) {
+    marker.geometry.dispose(); marker.geometry = new THREE.RingGeometry(.018, .026, 40);
+  }
+  marker.scale.setScalar(1);
+  const axis = new THREE.Vector3(...normal).normalize();
+  marker.position.set(...point).addScaledVector(axis, .003);
+  marker.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), axis);
+}
+
 /** Absolute-time display feedback, never a physics accumulator or a new hit target. */
 export function evaluateHitResponse(track: HitResponseTrack, songTime: number, settings: HitResponseSettings, reducedMotion = false, fallback = false): ResponseSample {
   if (!settings.enabled || !settings.strength || reducedMotion || !Number.isFinite(songTime)) return REST;
@@ -54,7 +75,10 @@ export function evaluateHitResponse(track: HitResponseTrack, songTime: number, s
   return { scale: 1 + .02 * pulse * amount, tiltX: 0, tiltZ: 0 };
 }
 
-export interface HitResponseBinding { pivot: THREE.Group; fallback: boolean; }
+export interface HitResponseBinding {
+  pivot: THREE.Group; fallback: boolean; origin: THREE.Vector3;
+  restPositions: { node: THREE.Object3D; position: THREE.Vector3 }[];
+}
 /** Reparent known moving parts while retaining their authored transform and static hardware. */
 export function bindHitResponse(root: THREE.Group, contact: Vec3, imported = false): HitResponseBinding {
   const moving: THREE.Object3D[] = [];
@@ -70,9 +94,13 @@ export function bindHitResponse(root: THREE.Group, contact: Vec3, imported = fal
   const pivot = new THREE.Group(); pivot.name = 'ContactResponsePivot'; pivot.position.set(...contact);
   root.add(pivot); root.updateMatrixWorld(true);
   moving.forEach(node => pivot.attach(node));
-  return { pivot, fallback };
+  return { pivot, fallback, origin: pivot.position.clone(), restPositions: moving.map(node => ({ node, position: node.position.clone() })) };
 }
-export function applyHitResponse(binding: HitResponseBinding, sample: ResponseSample): void {
+export function applyHitResponse(binding: HitResponseBinding, sample: ResponseSample, contact?: Vec3): void {
+  const origin = contact ? new THREE.Vector3(...contact) : binding.origin;
+  binding.pivot.position.copy(origin);
+  const delta = binding.origin.clone().sub(origin);
+  for (const rest of binding.restPositions) rest.node.position.copy(rest.position).add(delta);
   binding.pivot.scale.setScalar(sample.scale);
   binding.pivot.rotation.set(sample.tiltX, 0, sample.tiltZ);
 }

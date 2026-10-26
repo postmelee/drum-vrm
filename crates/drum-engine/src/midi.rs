@@ -464,6 +464,8 @@ impl Parsed<'_> {
             tail: TAIL,
             duration,
             hits,
+            contact_events: Vec::new(),
+            hihat_motion: crate::hihat_motion::HihatMotionTrack::default(),
             diagnostics,
             kit,
             tempo_count: self.tempo_count,

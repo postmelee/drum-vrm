@@ -3,6 +3,20 @@
 Use the relevant issue for current scope and review status. This page routes the
 next worker; contracts own behavior and evidence reports own measured results.
 
+- The natural-posture/contact increment for #18/#20/#23 is prepared on
+  `codex/natural-posture-review`, stacked on the VRM 0.0 import work below.
+  It shares physical kit geometry, contact records, posture feasibility and
+  deterministic pedal mechanics; the 12-second posture study and Analysis
+  checkpoints support review on all three public samples. See the
+  [candidate evidence and remaining limits](verification/natural-contact.md).
+  All three public models fit and assign the 53-hit posture study, but full-song
+  verification still leaves one hit unassigned per model: a simultaneous tom pair
+  or fill-ending crash/floor-tom chord. Next, incorporate observed score combinations
+  and nearby transfers into bounded fit/planner validation, then preserve those
+  witnesses through the full trajectory. The final result-preserving optimization
+  reduced observed full-song preparation from 78–95 to 46–54 seconds on a shared
+  machine; profile stage costs before calling responsiveness complete.
+  Review the candidate locally before deciding on merge or publication.
 - [#54](https://github.com/postmelee/drum-vrm/issues/54) adds VRM 0.0 local imports
   alongside 1.0, with source-basis normalization and original legacy model terms.
   Review the [verification](verification/vrm-0-support.md) and PR before any merge or publication; the Pages
@@ -29,8 +43,8 @@ next worker; contracts own behavior and evidence reports own measured results.
   [contract](../specs/architecture/equipment-contact.md) and
   [verification](verification/equipment-contact.md). The owner explicitly defers
   the remaining tom/cymbal approach contacts and Twist bounded-fit failure until
-  after this publication. These remain the next motion work before strike
-  variation. Do not shrink proxies, stretch bones or shift MIDI times to remove
+  after that publication. The natural-posture increment above revisits these
+  limits before strike variation. Do not shrink proxies, stretch bones or shift MIDI times to remove
   warnings; inspect posed skin/clothing as well as numeric clearance.
 - Merged [PR #47](https://github.com/postmelee/drum-vrm/pull/47) supplies the
   selectable full-song demo. [Provenance](../public/demos/transparent-girl-1-provenance.json)
@@ -49,7 +63,8 @@ next worker; contracts own behavior and evidence reports own measured results.
   same importer/automatic-fit transaction as local VRM files. Each reviewed public
   file has `public/characters/*-provenance.json`; generated notices preserve model
   conditions and Seed-san credit. [Model guidance](models.md) describes selection
-  and limits. Preset availability does not resolve Twist fitting or approach contacts.
+  and limits. That publication did not resolve Twist fitting or approach contacts;
+  consult the newer candidate evidence above for subsequent measurements.
 - [Outcome sequence](plan.md#outcome-sequence) routes M3 browser quality, M4 advanced
   expression/platforms and M5 production outputs. WAV preview remains the audio
   priority; expanded video/interchange output stays deferred.

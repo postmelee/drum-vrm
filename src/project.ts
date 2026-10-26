@@ -99,12 +99,12 @@ export function parseProject(json:string):DrumProject {
     if(id==='openHat'||id==='pedalHat'||ids.has(id))throw new Error(msg("The drum appearance list contains duplicates.", "드럼 외형이 중복됩니다."));ids.add(id);
     const settings=record(p.settings),source=choice(settings.source,['procedural','library','imported']);
     if((source==='imported')!==assetIds.has(`drumPart:${id}`))throw new Error(msg("A drum model asset reference is missing or inconsistent.", "드럼 모델 파일 참조가 누락되었거나 일치하지 않습니다."));
-    return {id,settings:{...resolvePieceVisual(preset,id,{finish:color(settings.finish),model:choice(settings.model,['standard','deep','compact']),scale:number(settings.scale,.65,1.4),rotation:number(settings.rotation,-360,360)}),finishOverride:bool(settings.finishOverride??false),source}};
+    return {id,settings:{...resolvePieceVisual(preset,id,{finish:color(settings.finish),model:choice(settings.model,['standard','deep','compact']),scale:number(settings.scale,.65,1.4),rotation:number(settings.rotation,-360,360),tilt:number(settings.tilt??0,-30,30)}),finishOverride:bool(settings.finishOverride??false),source}};
   });
   if(pieces.length!==kit.filter(piece=>!['openHat','pedalHat'].includes(piece.id)).length)throw new Error(msg("Drum appearance settings are missing.", "드럼 외형 설정이 누락되었습니다."));
   const engineModuleSha256=text(input.engineModuleSha256);if(!/^[0-9a-f]{64}$/.test(engineModuleSha256))throw new Error(msg("Invalid engine identifier.", "엔진 식별자가 잘못되었습니다."));
   return {format:'drum-vrm-project',schemaVersion:1,engineModuleSha256,plan,profile:record(input.profile) as unknown as RigProfile,kit,rig,assets,
-    calibration:{seatHeight:number(calibration.seatHeight,.3,1.2),seatForward:number(calibration.seatForward,-.5,.5),palmOrientation:choice(calibration.palmOrientation,['up','inward','down'])},
+    calibration:{seatHeight:number(calibration.seatHeight,.3,1.2),seatForward:number(calibration.seatForward,-.5,.5),palmOrientation:choice(calibration.palmOrientation,['natural','up','inward','down'])},
     selection:{tracks,channel,mappingProfile,countInNote75,hihatPolicy,hihatOpenness,omittedSourceEventIds,handOverrides},appearance:{preset,pieces},camera:validateProjectView(input.camera),
     hitResponse:validateHitResponse(record(input.hitResponse) as unknown as HitResponseSettings),
     audio:{source:audioSource,offsetSeconds:number(audio.offsetSeconds,-300,300),volume:number(audio.volume,0,1)},

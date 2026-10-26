@@ -69,3 +69,30 @@ export function makeInterpretationDemo(): Uint8Array {
   const conductor = [0, 255, 81, 3, 5, 22, 21, ...variable(endTick), 255, 47, 0];
   return new Uint8Array([...chunk('MThd', [0, 1, 0, 2, 1, 224]), ...chunk('MTrk', conductor), ...chunk('MTrk', track)]);
 }
+
+/** Independently authored regression score: count-in, sustained groove, tom
+ * transfer, ride and dual crash, followed by a one-second release. */
+export function makePostureDemo(): Uint8Array {
+  const events: { tick: number; note: number; velocity: number }[] = [];
+  const add = (seconds: number, note: number, velocity: number) => events.push({ tick: Math.round(seconds * 960), note, velocity });
+  for (const time of [0, .5, 1]) add(time, 75, 80);
+  for (let index = 0; index < 16; index++) {
+    const time = 2 + index * .25;
+    add(time, 42, index % 2 ? 55 : 90);
+    if (index % 4 === 0) add(time, 36, 95);
+    if (index % 4 === 2) add(time, 38, 100);
+  }
+  for (let index = 0; index < 16; index++) add(6 + index * .125, [38, 48, 45, 43][Math.floor(index / 4)], index % 2 ? 65 : 100);
+  for (let index = 0; index < 8; index++) {
+    add(8 + index * .25, index % 4 === 0 ? 53 : 51, index % 2 ? 60 : 88);
+    if (index % 4 === 2) add(8 + index * .25, 38, 95);
+  }
+  add(10.5, 49, 110); add(10.5, 57, 110); add(10.5, 36, 105);
+  const messages = events.flatMap(e => [{ tick: e.tick, bytes: [0x90, e.note, e.velocity] }, { tick: e.tick + 24, bytes: [0x80, e.note, 0] }]).sort((a, b) => a.tick - b.tick);
+  const name = [...new TextEncoder().encode('Posture Study')], track = [0, 255, 3, name.length, ...name];
+  let last = 0;
+  for (const message of messages) { track.push(...variable(message.tick - last), ...message.bytes); last = message.tick; }
+  track.push(...variable(12 * 960 - last), 255, 47, 0);
+  const conductor = [0, 255, 81, 3, 7, 161, 32, ...variable(12 * 960), 255, 47, 0];
+  return new Uint8Array([...chunk('MThd', [0, 1, 0, 2, 1, 224]), ...chunk('MTrk', conductor), ...chunk('MTrk', track)]);
+}

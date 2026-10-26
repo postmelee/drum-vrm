@@ -1,4 +1,7 @@
 import { msg } from './i18n';
+import { fitThumbToShaft } from './shaft-grip';
+import { createStickGeometry } from './stick-geometry';
+import { DEFAULT_PEDALS } from './kit-default';
 import * as THREE from 'three';
 import { VRMHumanoid, VRMHumanBoneParentMap, type VRMHumanBoneName, type VRMHumanBones } from '@pixiv/three-vrm';
 import type { RigAdapter, RigCalibration } from './scene';
@@ -22,6 +25,8 @@ export interface RigContactSample {
   source: 'hand-local-stick-tip' | 'foot-local-sole-contact';
   /** Angle between the measured hand-forward axis and the actual raw forearm. */
   wristSwingDegrees?: number;
+  upperArmElevationDegrees?: number;
+  elbowInteriorDegrees?: number;
 }
 export interface HumanoidRigAdapter extends RigAdapter {
   getProfile(): RigProfile;
@@ -34,7 +39,7 @@ export interface HumanoidRigAdapter extends RigAdapter {
   getPlayerPosition(): Vec3;
 }
 /** Absolute pelvis height and forward position in metres. Bone lengths never change. */
-export type PalmOrientation = 'up' | 'inward' | 'down';
+export type PalmOrientation = 'natural' | 'up' | 'inward' | 'down';
 export interface HumanoidCalibration { seatHeight: number; seatForward: number; palmOrientation?: PalmOrientation; }
 interface HandFrame { forward: THREE.Vector3; palm: THREE.Vector3; shaft: THREE.Vector3; grip: THREE.Vector3; }
 /** Map two semantic directions without assuming the model's raw bone axes. */
@@ -52,7 +57,6 @@ function referenceElbow(root: THREE.Vector3, end: THREE.Vector3, lengths: [numbe
   const bend = pole.clone().addScaledVector(direction, -pole.dot(direction)).normalize();
   return root.clone().addScaledVector(direction, along).addScaledVector(bend, Math.sqrt(Math.max(0, lengths[0] ** 2 - along ** 2)));
 }
-const DEFAULT_PEDALS: [Vec3, Vec3] = [[-.22, .08, .55], [.20, .08, .62]];
 const pedalTargets = (kit?: readonly KitPiece[]): [Vec3, Vec3] => {
   return ['pedalHat', 'kick'].map((id, index) => {
     const point = kit?.find(piece => piece.id === id)?.position ?? DEFAULT_PEDALS[index];
@@ -155,7 +159,8 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     // Keep a small bend reserve rather than forcing shorter avatars' knees to
     // full extension, and retain all torso/limb rest distances unchanged.
     let seatHeight = .73;
-    for (const [side, target] of [['left', [.22, .08, .55]], ['right', [-.20, .08, .62]]] as const) {
+    for (const [limb, side] of (['left', 'right'] as const).entries()) {
+      const target = legacyPositionToNative(DEFAULT_PEDALS[limb]);
       const upper = required(`${side}UpperLeg`).getWorldPosition(new THREE.Vector3()), lower = required(`${side}LowerLeg`).getWorldPosition(new THREE.Vector3()), foot = required(`${side}Foot`).getWorldPosition(new THREE.Vector3());
       const toe = humanoid.getNormalizedBoneNode(`${side}Toes`);
       const footLength = toe ? THREE.MathUtils.clamp(toe.getWorldPosition(new THREE.Vector3()).distanceTo(foot), .07, .25) : .14;
@@ -164,7 +169,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       if (horizontalSq < reach * reach) seatHeight = Math.min(seatHeight, target[1] + .025 + Math.sqrt(reach * reach - horizontalSq) - relative.y);
     }
     const seat = new THREE.Vector3(0, Math.max(.3, seatHeight), .06), translation = seat.clone().sub(restPelvis);
-    this.calibration = { seatHeight: seat.y, seatForward: seat.z, palmOrientation: 'up' };
+    this.calibration = { seatHeight: seat.y, seatForward: seat.z, palmOrientation: 'natural' };
     this.baseCalibration = { ...this.calibration };
     this.handFrames = this.prepareMatchedGrip();
     const roots: Vec3[] = [], lengths: [number, number][] = [], rests: Vec3[] = [], grips: Vec3[] = [], tips: Vec3[] = [], rotations: Quat[] = [];
@@ -189,7 +194,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       const end = root.clone().add(new THREE.Vector3(arm ? (limb === 0 ? .07 : -.07) : 0, arm ? -.48 : -.68, arm ? .36 : .48).normalize().multiplyScalar(restReach));
       if (arm) {
         this.referenceWrists.push(end.clone());
-        const orientation = this.handOrientation(limb, root, end, measures, toVector(poles[limb]), 'up');
+        const orientation = this.handOrientation(limb, root, end, measures, toVector(poles[limb]), 'natural');
         nativeQ = orientation.rotation; grip = tuple(orientation.grip); this.handMounts[limb] = orientation.mount; controlFrames.push(orientation.controlFrame);
       }
       const restTip = arm ? end.clone().add(new THREE.Vector3(...grip).add(new THREE.Vector3(...tip)).applyQuaternion(nativeQ)) : toVector(this.pedals[limb - 2]);
@@ -232,9 +237,9 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       contact.position.copy(grip).add(tip); socket.add(contact);
       let stick: THREE.Mesh | undefined;
       if (limb < 2) {
-        stick = new THREE.Mesh(new THREE.CylinderGeometry(.0045, .006, tip.length() + .105, 12), new THREE.MeshStandardMaterial({ color: 0xb98d53, roughness: .6 }));
+        stick = new THREE.Mesh(createStickGeometry(tip.length()), new THREE.MeshStandardMaterial({ color: 0xb98d53, roughness: .6 }));
         stick.userData.rigTool = true; stick.name = limb === 0 ? 'leftStick' : 'rightStick';
-        stick.rotation.x = Math.PI / 2; stick.position.copy(grip).addScaledVector(tip.clone().normalize(), (tip.length() - .105) / 2); socket.add(stick);
+        stick.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), tip.clone().normalize()); stick.position.copy(grip); socket.add(stick);
       }
       this.chains.push({ ...chainData[limb], handToTool, contact, socket, rawRestInverse: restWorld.clone().invert(), stick });
     }
@@ -260,8 +265,8 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     if (!Number.isFinite(value.seatHeight) || value.seatHeight < .3 || value.seatHeight > 1.2 || !Number.isFinite(value.seatForward) || Math.abs(value.seatForward) > .5) {
       throw new Error(msg("Seat height must be 0.3–1.2 m and forward offset must be −0.5–0.5 m.", "좌석 높이는 0.3–1.2m, 앞뒤 위치는 −0.5–0.5m 범위여야 합니다."));
     }
-    const palmOrientation = value.palmOrientation ?? this.calibration.palmOrientation ?? 'up';
-    if (!['up', 'inward', 'down'].includes(palmOrientation)) throw new Error('Invalid palm orientation.');
+    const palmOrientation = value.palmOrientation ?? this.calibration.palmOrientation ?? 'natural';
+    if (!['natural', 'up', 'inward', 'down'].includes(palmOrientation)) throw new Error('Invalid palm orientation.');
     const pedals = kit ? pedalTargets(kit) : this.pedals;
     const profile = structuredClone(this.baseProfile);
     const offset: Vec3 = [0, value.seatHeight - this.baseCalibration.seatHeight, value.seatForward - this.baseCalibration.seatForward];
@@ -290,7 +295,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       const chain = this.chains[limb]; chain.handToTool.copy(orientation.mount);
       chain.socket.quaternion.copy(chain.rawRestInverse).multiply(orientation.mount);
       chain.contact.position.copy(toolOffset);
-      const tip = toVector(profile.tipOffsets[limb]); chain.stick!.position.copy(orientation.grip).addScaledVector(tip.clone().normalize(), (tip.length() - .105) / 2);
+      chain.stick!.position.copy(orientation.grip);
     }
     Object.assign(this.profile, profile); this.pedals = pedals; this.calibration = { ...value, palmOrientation };
     return this.getProfile();
@@ -346,17 +351,21 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     this.root.updateMatrixWorld(true);
     return this.chains.map((chain, limb) => {
       const actual = chain.contact.getWorldPosition(new THREE.Vector3());
-      let wristSwingDegrees: number | undefined;
+      let wristSwingDegrees: number | undefined, upperArmElevationDegrees: number | undefined, elbowInteriorDegrees: number | undefined;
       if (limb < 2) {
         const hand = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][2])!;
         const lower = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][1])!;
+        const upper = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][0])!;
+        const downArm = lower.getWorldPosition(new THREE.Vector3()).sub(upper.getWorldPosition(new THREE.Vector3())).normalize();
+        upperArmElevationDegrees = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(-downArm.y, -1, 1)));
         const forearm = hand.getWorldPosition(new THREE.Vector3()).sub(lower.getWorldPosition(new THREE.Vector3())).normalize();
+        elbowInteriorDegrees = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(-downArm.dot(forearm), -1, 1)));
         const forward = this.handFrames[limb].forward.clone().applyQuaternion(chain.rawRestInverse).applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion()));
         wristSwingDegrees = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(forward.dot(forearm), -1, 1)));
       }
       return { limb, expected: tuple(this.expected[limb]), actual: tuple(actual), errorMeters: actual.distanceTo(this.expected[limb]),
         source: limb < 2 ? 'hand-local-stick-tip' as const : 'foot-local-sole-contact' as const,
-        ...(wristSwingDegrees === undefined ? {} : { wristSwingDegrees }),
+        ...(wristSwingDegrees === undefined ? {} : { wristSwingDegrees, upperArmElevationDegrees, elbowInteriorDegrees }),
       };
     });
   }
@@ -383,7 +392,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
   }
   private handOrientation(limb: number, root: THREE.Vector3, wrist: THREE.Vector3, lengths: [number, number], pole: THREE.Vector3, mode: PalmOrientation) {
     const frame = this.handFrames[limb], forward = wrist.clone().sub(referenceElbow(root, wrist, lengths, pole)).normalize();
-    const palm = mode === 'up' ? new THREE.Vector3(0, 1, 0) : mode === 'down' ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(limb === 0 ? -1 : 1, 0, 0);
+    const palm = mode === 'natural' ? new THREE.Vector3(limb === 0 ? -1 : 1, -1, 0).normalize() : mode === 'up' ? new THREE.Vector3(0, 1, 0) : mode === 'down' ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(limb === 0 ? -1 : 1, 0, 0);
     const hand = directionFrame(forward, palm).multiply(directionFrame(frame.forward, frame.palm).invert());
     const shaft = frame.shaft.clone().applyQuaternion(hand), y = new THREE.Vector3(0, 1, 0).addScaledVector(shaft, -shaft.y).normalize();
     if (y.lengthSq() < 1e-10) y.set(0, 0, 1).addScaledVector(shaft, -shaft.z).normalize();
@@ -449,19 +458,12 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       if (thumb.every(node => node !== null)) {
         const joints = thumb as THREE.Object3D[], end = new THREE.Object3D();
         const distal = joints[2], axis = distal.getWorldPosition(new THREE.Vector3()).sub(joints[1].getWorldPosition(new THREE.Vector3()));
-        axis.setLength(THREE.MathUtils.clamp(axis.length() * .7, .008, .03));
-        end.position.copy(axis); distal.add(end);
+        const length = THREE.MathUtils.clamp(axis.length() * .7, .008, .03);
+        axis.normalize().applyQuaternion(distal.getWorldQuaternion(new THREE.Quaternion()).invert());
+        end.position.copy(axis.multiplyScalar(length)); distal.add(end);
         const target = hand.localToWorld(grip.clone().addScaledVector(palm, -.009).addScaledVector(shaft, .004));
-        // Bounded CCD opposes the thumb to the shaft. The resulting local pose
-        // is cached, so playback/seek/export never integrate solver state.
-        for (let step = 0; step < 12; step++) for (let i = joints.length - 1; i >= 0; i--) {
-          const node = joints[i]; node.updateWorldMatrix(true, true);
-          const pivot = node.getWorldPosition(new THREE.Vector3()), from = end.getWorldPosition(new THREE.Vector3()).sub(pivot), to = target.clone().sub(pivot);
-          if (from.lengthSq() < 1e-12 || to.lengthSq() < 1e-12) continue;
-          const world = new THREE.Quaternion().setFromUnitVectors(from.normalize(), to.normalize()).multiply(node.getWorldQuaternion(new THREE.Quaternion()));
-          const local = node.parent!.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(world);
-          node.quaternion.copy(new THREE.Quaternion().rotateTowards(local, [1.1, 1.3, 1.3][i]));
-        }
+        const shaftWorld = shaft.clone().applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion()));
+        fitThumbToShaft(joints, end, target, shaftWorld);
         end.removeFromParent();
       }
       for (const bone of Object.entries(this.humanoid.normalizedHumanBones)) {

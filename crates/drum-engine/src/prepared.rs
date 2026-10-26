@@ -298,9 +298,11 @@ impl Motion {
         if let Some(profile) = &p.profile {
             for hit in &p.plan.hits {
                 if let Some(limb) = hit.limb.filter(|&limb| limb < 2) {
+                    let pitch =
+                        crate::equipment_motion::sample(&p.equipment_path, hit.time, limb).1;
                     if !profile
                         .turned(body_motion::at(&p.body_turns, hit.time))
-                        .reachable(limb, hit.target)
+                        .reachable_at_pitch(limb, hit.target, pitch)
                     {
                         return Err(
                             "준비된 연주의 몸통 회전이 원본 타격 접촉을 보존하지 않습니다.".into(),

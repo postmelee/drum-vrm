@@ -8,6 +8,8 @@ use std::collections::BTreeSet;
 
 pub const CLEARANCE: f64 = 0.005;
 pub const APPROACH_HEIGHT: f64 = 0.12;
+pub const HIHAT_MAX_OPENING: f64 = 0.025;
+pub const HIHAT_PEDAL_TO_AXIS: f64 = 0.12;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -17,10 +19,30 @@ pub struct LocalBox {
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct RadialSurfaceProfile {
+    pub origin: Vec3,
+    pub rotation: [f64; 4],
+    /// Increasing radii and their surface heights in the local +Y frame.
+    pub points: Vec<[f64; 2]>,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SurfaceMotion {
+    pub kind: String,
+    pub axis: Vec3,
+    /// Mechanical travel is absolute metres, independent of fitted shell scale.
+    pub travel_meters: f64,
+}
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Surface {
     pub center: Vec3,
     pub normal: Vec3,
     pub radius: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub radial_profile: Option<RadialSurfaceProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub motion: Option<SurfaceMotion>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,11 +71,26 @@ pub struct EquipmentCapsule {
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct EquipmentMechanism {
+    pub piece_id: String,
+    pub kind: &'static str,
+    /// Rear footboard hinge, transverse beater axle, and physical surface contact.
+    pub pivot: Vec3,
+    pub axle: Vec3,
+    pub contact: Vec3,
+    pub normal: Vec3,
+    pub rest_angle: f64,
+    pub max_opening: f64,
+    pub motion_axis: Vec3,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct EquipmentGeometry {
     pub version: u32,
     pub bodies: Vec<EquipmentBox>,
     pub supports: Vec<EquipmentCapsule>,
     pub pedals: Vec<EquipmentBox>,
+    pub mechanisms: Vec<EquipmentMechanism>,
     pub unresolved_piece_ids: Vec<String>,
 }
 
@@ -74,6 +111,26 @@ pub fn valid_piece_geometry(piece: &KitPiece) -> bool {
             && (distance(g.surface.normal, [0.0; 3]) - 1.0).abs() < 1e-5
             && g.surface.radius.is_finite()
             && (0.01..=1.0).contains(&g.surface.radius)
+            && g.surface.motion.as_ref().is_none_or(|motion| {
+                motion.kind == "translation"
+                    && finite(motion.axis, 1.0)
+                    && (distance(motion.axis, [0.0; 3]) - 1.0).abs() < 1e-5
+                    && motion.travel_meters.is_finite()
+                    && (0.0..=HIHAT_MAX_OPENING).contains(&motion.travel_meters)
+            })
+            && g.surface.radial_profile.as_ref().is_none_or(|profile| {
+                finite(profile.origin, 3.0)
+                    && profile.rotation.iter().all(|v| v.is_finite())
+                    && (profile.rotation.iter().map(|v| v * v).sum::<f64>() - 1.0).abs() < 1e-5
+                    && (2..=32).contains(&profile.points.len())
+                    && profile.points.iter().all(|point| {
+                        point[0].is_finite()
+                            && point[1].is_finite()
+                            && (0.0..=1.0).contains(&point[0])
+                            && point[1].abs() <= 1.0
+                    })
+                    && profile.points.windows(2).all(|p| p[0][0] < p[1][0])
+            })
             && (0.05..=5.0).contains(&(piece.radius / g.reference_radius))
     })
 }
@@ -122,6 +179,8 @@ pub fn local_geometry(piece: &KitPiece) -> PieceGeometry {
             half_extents,
         },
         surface: Surface {
+            radial_profile: None,
+            motion: None,
             center: if cymbal {
                 [0.0, 0.0, r * 0.5]
             } else if matches!(piece.instrument, Kick | PedalHat) {
@@ -142,6 +201,20 @@ pub fn surface(piece: &KitPiece) -> Surface {
     let g = local_geometry(piece);
     let scale = piece.radius / g.reference_radius;
     Surface {
+        motion: g.surface.motion.clone(),
+        radial_profile: g
+            .surface
+            .radial_profile
+            .as_ref()
+            .map(|profile| RadialSurfaceProfile {
+                origin: add(piece.position, profile.origin.map(|v| v * scale)),
+                rotation: profile.rotation,
+                points: profile
+                    .points
+                    .iter()
+                    .map(|point| [point[0] * scale, point[1] * scale])
+                    .collect(),
+            }),
         center: add(piece.position, g.surface.center.map(|v| v * scale)),
         normal: g.surface.normal,
         radius: g.surface.radius * scale,
@@ -336,6 +409,96 @@ fn stand(piece: &KitPiece, base: Vec3, top: Vec3, rotation: f64) -> Vec<Equipmen
     }
     rods
 }
+/// Keep a direct-drive hi-hat above the pedal's toe-side mechanism. The
+/// contact anchor may differ from its actual measured central mast axis.
+pub fn anchored_hihat_position(piece: &KitPiece, kit: &[KitPiece]) -> Vec3 {
+    let Some(pedal) = kit.iter().find(|p| p.instrument == Instrument::PedalHat) else {
+        return piece.position;
+    };
+    let Some(bounds) = body(piece) else {
+        return piece.position;
+    };
+    [
+        pedal.position[0] - (bounds.center[0] - piece.position[0]),
+        piece.position[1],
+        pedal.position[2] + HIHAT_PEDAL_TO_AXIS - (bounds.center[2] - piece.position[2]),
+    ]
+}
+
+/// Sole contact follows the same rear footboard hinge as the visible board.
+/// Zero pitch is the original immutable strike contact, not a shifted MIDI hit.
+pub fn pedal_contact(piece: &KitPiece, pitch: f64) -> Vec3 {
+    let [x, y, z] = piece.position;
+    let (sin, cos) = pitch.sin_cos();
+    [
+        x,
+        y - 0.012 + 0.012 * cos - 0.13 * sin,
+        z - 0.13 + 0.012 * sin + 0.13 * cos,
+    ]
+}
+
+/// Physical bass-drum batter contact, distinct from the foot's pedal anchor.
+/// The front/back plane is approximate for arbitrary imported body meshes.
+pub fn beater_contact(piece: &KitPiece) -> (Vec3, Vec3) {
+    let bounds = body(piece).expect("kick has a physical body");
+    (
+        [
+            bounds.center[0],
+            bounds.center[1],
+            bounds.center[2] - bounds.half_extents[2],
+        ],
+        [0.0, 0.0, -1.0],
+    )
+}
+fn beater_center(piece: &KitPiece) -> Vec3 {
+    let (point, normal) = beater_contact(piece);
+    add(point, normal.map(|v| v * 0.028))
+}
+fn mechanisms(kit: &[KitPiece]) -> Vec<EquipmentMechanism> {
+    kit.iter()
+        .filter_map(|piece| {
+            let [x, y, z] = piece.position;
+            if piece.instrument == Instrument::Kick {
+                let (contact, normal) = beater_contact(piece);
+                Some(EquipmentMechanism {
+                    piece_id: piece.id.clone(),
+                    kind: "kick",
+                    pivot: [x, y - 0.012, z - 0.13],
+                    axle: [x, y + 0.04, z + 0.08],
+                    contact,
+                    normal,
+                    rest_angle: 0.45,
+                    max_opening: 0.0,
+                    motion_axis: [0.0, 1.0, 0.0],
+                })
+            } else if piece.instrument == Instrument::Hihat {
+                let pedal = kit.iter().find(|p| p.instrument == Instrument::PedalHat)?;
+                let [px, py, pz] = pedal.position;
+                let s = surface(piece);
+                Some(EquipmentMechanism {
+                    piece_id: piece.id.clone(),
+                    kind: "hihat",
+                    pivot: [px, py - 0.012, pz - 0.13],
+                    axle: [px, py + 0.04, pz + HIHAT_PEDAL_TO_AXIS],
+                    contact: s.center,
+                    normal: s.normal,
+                    rest_angle: 0.10,
+                    max_opening: piece.geometry.as_ref().map_or(HIHAT_MAX_OPENING, |g| {
+                        g.surface.motion.as_ref().map_or(0.0, |m| m.travel_meters)
+                    }),
+                    motion_axis: piece
+                        .geometry
+                        .as_ref()
+                        .and_then(|g| g.surface.motion.as_ref())
+                        .map_or([0.0, 1.0, 0.0], |m| m.axis),
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 fn pedals(kit: &[KitPiece]) -> Vec<EquipmentBox> {
     kit.iter()
         .filter(|p| matches!(p.instrument, Instrument::Kick | Instrument::PedalHat))
@@ -379,13 +542,13 @@ fn pedal_hardware(piece: &KitPiece) -> Vec<EquipmentCapsule> {
         rods.push(capsule(
             piece,
             [x, y + 0.04, z + 0.08],
-            [x, 0.28, z + 0.14],
+            beater_center(piece),
             0.008,
         ));
         rods.push(capsule(
             piece,
-            [x, 0.28, z + 0.15],
-            [x, 0.28, z + 0.15],
+            beater_center(piece),
+            beater_center(piece),
             0.028,
         ));
         for sign in [-1.0, 1.0] {
@@ -440,7 +603,7 @@ fn route(
     let mount = if cymbal {
         [
             physical.center[0],
-            piece.position[1] + 0.065,
+            physical.center[1] + physical.half_extents[1] + 0.012,
             physical.center[2],
         ]
     } else {
@@ -450,9 +613,73 @@ fn route(
             physical.center[2],
         ]
     };
+    if piece.instrument == Instrument::TomLow {
+        let mut rods = Vec::new();
+        for leg in 0..3 {
+            let angle = leg as f64 * std::f64::consts::TAU / 3.0 + 0.4;
+            let radial = [angle.sin(), 0.0, angle.cos()];
+            let r = physical.half_extents[0].max(physical.half_extents[2]) + 0.012;
+            let start = [
+                physical.center[0] + radial[0] * r,
+                (physical.center[1] - physical.half_extents[1] * 0.3).max(0.08),
+                physical.center[2] + radial[2] * r,
+            ];
+            let bend = [start[0], (start[1] * 0.42).max(0.04), start[2]];
+            let foot = [
+                start[0] + radial[0] * 0.07,
+                0.012,
+                start[2] + radial[2] * 0.07,
+            ];
+            rods.push(capsule(piece, start, bend, 0.011));
+            rods.push(capsule(piece, bend, foot, 0.011));
+        }
+        let clear = rods_clear(&rods, bodies, boards, kit);
+        return (rods, clear);
+    }
+    if matches!(piece.instrument, Instrument::TomHigh | Instrument::TomMid) {
+        if let Some(kick) = kit.iter().find(|p| p.instrument == Instrument::Kick) {
+            let bass = body(kick).expect("kick body");
+            let start = [
+                bass.center[0],
+                bass.center[1] + bass.half_extents[1] + 0.017,
+                bass.center[2],
+            ];
+            // Shared central holder with independent L-arms. Never add a separate
+            // tripod below each rack tom or pass a post through another shell.
+            // Both branches share a holder below the lowest rack shell. Raising
+            // each holder to its own tom's underside made the higher branch
+            // cross a neighbouring lower shell, despite a valid tom layout.
+            let lowest_mount = kit
+                .iter()
+                .filter(|p| matches!(p.instrument, Instrument::TomHigh | Instrument::TomMid))
+                .filter_map(body)
+                .map(|b| b.center[1] - b.half_extents[1] - 0.014)
+                .fold(mount[1], f64::min);
+            let holder_height = (start[1] + 0.12).min(lowest_mount - 0.03).max(start[1]);
+            let elbow = [start[0], holder_height, start[2]];
+            let rods = vec![
+                capsule(piece, start, elbow, 0.011),
+                capsule(piece, elbow, mount, 0.010),
+            ];
+            let clear = rods_clear(&rods, bodies, boards, kit);
+            return (rods, clear);
+        }
+        // A standalone rack tom may use a dedicated stand when no bass assembly
+        // exists; this is a semantic attachment fallback, never an avatar rule.
+    }
     let build = |dx: f64, dz: f64, rotation: f64| {
         let base = [mount[0] + dx, 0.025, mount[2] + dz];
-        let top = [base[0], mount[1].max(0.09), base[2]];
+        let top = [
+            base[0],
+            (mount[1]
+                - if cymbal && piece.instrument != Instrument::Hihat && dx.hypot(dz) > 0.01 {
+                    0.12
+                } else {
+                    0.0
+                })
+            .max(0.09),
+            base[2],
+        ];
         let mut rods = stand(piece, base, top, rotation);
         if distance(top, mount) > 1e-9 {
             rods.push(capsule(piece, top, mount, 0.011));
@@ -485,15 +712,23 @@ fn route(
             if let Some(pedal) = kit.iter().find(|p| p.instrument == Instrument::PedalHat) {
                 rods.push(capsule(
                     piece,
-                    [mount[0], 0.04, mount[2]],
-                    [pedal.position[0], 0.04, pedal.position[2]],
+                    [
+                        pedal.position[0],
+                        0.04,
+                        pedal.position[2] + HIHAT_PEDAL_TO_AXIS,
+                    ],
+                    [pedal.position[0], 0.04, pedal.position[2] + 0.08],
                     0.011,
                 ));
             }
         }
         rods
     };
-    let original = build(0.0, 0.0, 0.4);
+    let original = if cymbal && piece.instrument != Instrument::Hihat {
+        build(if mount[0] < 0.0 { -0.16 } else { 0.16 }, 0.10, 0.4)
+    } else {
+        build(0.0, 0.0, 0.4)
+    };
     if rods_clear(&original, bodies, boards, kit) {
         return (original, true);
     }
@@ -525,8 +760,17 @@ fn route(
 pub fn kit_geometry(kit: &[KitPiece]) -> EquipmentGeometry {
     let bodies: Vec<_> = kit.iter().filter_map(body).collect();
     let pedals = pedals(kit);
+    let mechanisms = mechanisms(kit);
     let mut supports = Vec::new();
     let mut unresolved = BTreeSet::new();
+    // A direct hi-hat cannot be disconnected from its pedal. Report mismatches;
+    // the common fitting transaction is responsible for moving the body anchor.
+    for hat in kit.iter().filter(|p| p.instrument == Instrument::Hihat) {
+        let aligned = anchored_hihat_position(hat, kit);
+        if (aligned[0] - hat.position[0]).hypot(aligned[2] - hat.position[2]) > 0.003 {
+            unresolved.insert(hat.id.clone());
+        }
+    }
     for body in &bodies {
         for pedal in &pedals {
             if !same_owner(&body.piece_id, &pedal.piece_id, kit) && !boxes_clear(body, pedal) {
@@ -589,6 +833,7 @@ pub fn kit_geometry(kit: &[KitPiece]) -> EquipmentGeometry {
         bodies,
         supports,
         pedals,
+        mechanisms,
         unresolved_piece_ids: unresolved.into_iter().collect(),
     }
 }

@@ -183,7 +183,7 @@ export async function loadLibraryKit(preset: LibraryPreset = 'library'): Promise
 export function buildLibraryKit(scene: THREE.Object3D, preset: LibraryPreset = 'library'): LibraryKit {
   scene.updateMatrixWorld(true);
   const groups: LibraryKit = {};
-  const batches = new Map<LibraryPiece, Map<ResponseRole, Map<THREE.Material, THREE.BufferGeometry[]>>>();
+  const batches = new Map<LibraryPiece, Map<ResponseRole | 'upperSurface', Map<THREE.Material, THREE.BufferGeometry[]>>>();
   const originals = new Set<THREE.BufferGeometry>(), sourceMaterials = new Set<THREE.Material>();
   const transform = new THREE.Matrix4().makeScale(...(preset === 'smoj' ? [-1.4, 1.4, 1.4] : preset === 'batoski' ? [.42, .42, -.42] : [1, 1, -1]) as Vec3);
   if (preset === 'smoj') transform.setPosition(0, .504, 0);
@@ -193,7 +193,10 @@ export function buildLibraryKit(scene: THREE.Object3D, preset: LibraryPreset = '
     group.userData.sourceNames ??= []; if (!group.userData.sourceNames.includes(name)) group.userData.sourceNames.push(name);
     group.userData.asset = preset;
     const byRole = batches.get(instrument) ?? new Map(); batches.set(instrument, byRole);
-    const byMaterial = byRole.get(role) ?? new Map(); byRole.set(role, byMaterial);
+    // Preserve the existing semantic upper contact across every source adapter;
+    // otherwise material batching welds the two hats into one immovable surface.
+    const batchRole = instrument === 'hihat' && contact && role === 'surface' ? 'upperSurface' : role;
+    const byMaterial = byRole.get(batchRole) ?? new Map(); byRole.set(batchRole, byMaterial);
     const geometries = byMaterial.get(material) ?? []; geometries.push(geometry); byMaterial.set(material, geometries);
     if (contact) {
       const surface = new THREE.Mesh(geometry, material); surface.name = name;
@@ -229,7 +232,9 @@ export function buildLibraryKit(scene: THREE.Object3D, preset: LibraryPreset = '
       for (const [role, byMaterial] of byRole) for (const [material, geometries] of byMaterial) {
         const merged = mergeGeometries(geometries, false); if (!merged) throw new Error(`Cannot merge drum library: ${preset}/${instrument}/${role}`);
         const mesh = new THREE.Mesh(merged, material.clone()); mesh.castShadow = mesh.receiveShadow = true;
-        mesh.name = `${instrument}/${role}/${material.name}`; mesh.userData.hitResponseRole = role; group.add(mesh);
+        mesh.name = `${instrument}/${role}/${material.name}`; mesh.userData.hitResponseRole = role === 'upperSurface' ? 'surface' : role;
+        if (role === 'upperSurface') mesh.userData.mechanismRole = 'hihatTop';
+        group.add(mesh);
       }
     }
     if (Object.keys(groups).length !== Object.keys(CONTACT_MESH).length) throw new Error('Incomplete drum library asset.');

@@ -68,7 +68,7 @@ describe('semantic sampled body geometry', () => {
     skin.mesh.bind(new Skeleton([source.humanoid.getRawBoneNode('spine')!, source.humanoid.getRawBoneNode('head')!, source.humanoid.getRawBoneNode('leftIndexDistal')!] as Bone[]));
     source.root.add(skin.mesh);
     const rig = new NormalizedHumanoidRigAdapter(source.humanoid, source.root, 'authored-skinned-hand');
-    for (const palmOrientation of ['up', 'inward', 'down'] as const) {
+    for (const palmOrientation of ['natural', 'up', 'inward', 'down'] as const) {
       const profile = rig.setCalibration({ ...rig.getCalibration(), palmOrientation });
       rig.applyPose(createRestRigPose(profile));
       // The source includes earlier sockets; select the newly appended ones.

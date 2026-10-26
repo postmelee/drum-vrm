@@ -15,9 +15,9 @@ beforeAll(() => {
 });
 
 describe('selectable MIDI demos', () => {
-  it('keeps all three demos discoverable with distinct IDs and filenames', () => {
-    expect(DEMO_CATALOG.map(demo => demo.id)).toEqual(['studio', 'interpretation', 'transparent-girl']);
-    expect(new Set(DEMO_CATALOG.map(demo => demo.filename)).size).toBe(3);
+  it('keeps all four demos discoverable with distinct IDs and filenames', () => {
+    expect(DEMO_CATALOG.map(demo => demo.id)).toEqual(['posture', 'studio', 'interpretation', 'transparent-girl']);
+    expect(new Set(DEMO_CATALOG.map(demo => demo.filename)).size).toBe(4);
     expect(DEMO_CATALOG.every(demo => demo.label.trim() && demo.filename.endsWith('.mid'))).toBe(true);
   });
 

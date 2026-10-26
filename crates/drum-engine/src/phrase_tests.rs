@@ -186,9 +186,14 @@ fn rapid_toms_and_mixed_fills_use_available_hands_without_retiming() {
             .map(|(index, &note)| (if index == 0 { 0 } else { 80 }, note, 95))
             .collect();
         let mut source = authored_sequence(&events);
+        // Authored compact target fixture isolates sticking from the physical
+        // default kit. Each tom is intentionally reachable by either hand.
         for piece in &mut source.kit {
-            if piece.id == "tomLow" {
-                piece.position[0] = 0.36;
+            match piece.id.as_str() {
+                "tomHigh" => piece.position = [-0.20, 0.95, 0.65],
+                "tomMid" => piece.position = [0.20, 0.93, 0.65],
+                "tomLow" => piece.position = [0.36, 0.80, 0.42],
+                _ => {}
             }
         }
         for hit in &mut source.hits {

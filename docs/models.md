@@ -15,13 +15,34 @@ import checks, measured-body solver and automatic fitting as a local VRM. Use
 | --- | --- | --- |
 | [AvatarSample_B](../public/characters/avatar-sample-b-provenance.json) | VRoid Project; VRM Public License and additional VRoid sample conditions | General character test; the pinned ChatVRM file is VRM 1.0. |
 | [Seed-san](../public/characters/seed-san-provenance.json) | VirtualCast, Inc.; VRM Public License; **credit required** | A different body and bone-constraint configuration. |
-| [Twist sample](../public/characters/twist-provenance.json) | pixiv Inc.; VRM Public License | Constraint test; **automatic fitting remains limited**. |
+| [Twist sample](../public/characters/twist-provenance.json) | pixiv Inc.; VRM Public License | Constraints and auxiliary rig; inspect fit and motion diagnostics. |
 
 The linked provenance records identify the exact unchanged files, original sources
 and conditions. These models are not MIT or CC0. Selection does not certify natural
 contact or collision-free motion. Check **Analysis** for fitting and motion warnings.
 For Seed-san videos, include the required creator credit; choosing a preset does not
 automatically insert credit into exported video. The app does not export avatar files.
+
+## Compare the same performance across models
+
+Choose **Files / Audio → Demo → Posture study · 12 s → Load**, then switch the
+**Character** preset between AvatarSample_B, Seed-san and Twist. Automatic fitting
+uses the same measured-body rules for each. Open **Analysis → Pose and
+synchronization review → Review checkpoint** for ready, groove, tom transfer,
+ride, both crashes and ending. Check both front and side views; drag the stage to
+orbit the camera. **Previous / Next hit** selects exact impacts.
+
+**Inspect pose** separates attached-marker error, posture angles and proxy
+clearance. Impact measurements compare the actual stick/sole/beater marker with
+the shared planned surface point. Small marker error alone does not prove that
+skin or the whole stick clears equipment. **Save review JSON** retains the setup
+and numeric observations for a reproducible report, without uploading your files.
+
+Developers can run `node scripts/public-posture-review.mjs` after building WASM
+to repeat the three bundled models' geometry/marker/seek checks. It verifies the
+original model hashes and writes results under `.local/public-posture-review/`.
+This texture-free numeric audit complements the browser views; it does not verify
+visible clothing or certify a collision-free performance.
 
 ## Supported files
 
