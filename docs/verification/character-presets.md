@@ -54,3 +54,37 @@ Twist automatic fitting, remaining tom/cymbal approach contacts and visible
 skin/clothing interference retain their existing evidence and follow-up scope.
 See [equipment contact evidence](equipment-contact.md), [model guidance](../models.md)
 and [rig contract](../../specs/architecture/rig-contract.md).
+
+
+## Pages publication
+
+[PR #52](https://github.com/postmelee/drum-vrm/pull/52) merged the tested head
+`e16fee1a700cc851a18786cf415722239b108ac6` as
+`d23a9400abc9461633f26a9b805659026626a633`; the trees are identical.
+[PR CI](https://github.com/postmelee/drum-vrm/actions/runs/40286637305) and
+[Pages run 40287177636](https://github.com/postmelee/drum-vrm/actions/runs/40287177636)
+passed. Pages repeated the complete Rust/WASM/browser/build/license/doc pipeline.
+No tag or GitHub Release was created.
+
+All 35 served non-source-map files matched that CI artifact byte-for-byte,
+including all three VRMs, provenance and legal notices. Artifact ID:
+`12635065942`; archive digest:
+`sha256:950eca15998fc7261fa1092e6eacfcb78a3812d3ab857d083efb1c3893b861f3`.
+The deployed WASM hash remains
+`688482e465bd9c2e18d6124caf6b8b776a678cfd44c42db95c6cceeac4d73a37`.
+
+[English](https://postmelee.github.io/drum-vrm/?lang=en) ·
+[한국어](https://postmelee.github.io/drum-vrm/?lang=ko).
+
+In the actual public browser, Seed-san, Twist and AvatarSample_B each downloaded
+and loaded from the selector. Seed-san and AvatarSample_B applied automatic fits;
+Twist retained its explicit failure. AvatarSample_B prepared the Studio demo
+(193 source notes/193 hits), played, paused and sought to 12.5 s. Switching to
+Korean retained the model and time. No console errors were observed.
+
+An existing fit-message issue was also recorded on #17: after switching from a
+failed Twist fit to a successful preset before loading MIDI, Character shows the
+new successful result but the bottom prior-fit warning remains until score
+preparation. The current model result and prior footer must not be conflated;
+message clearing remains a follow-up with fit UX. Returning to the native rig
+was verified locally with the score and 12.5 s position retained.
