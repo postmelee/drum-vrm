@@ -5,14 +5,15 @@ import { NormalizedHumanoidRigAdapter } from './rig-humanoid';
 import { disposeModelSource } from './model-procedural';
 import type { Vec3 } from './types';
 
-/** VRM 1.0 normalized retargeting with a stateless secondary-motion policy.
+/** VRM 0.0/1.0 normalized retargeting with a stateless secondary-motion policy.
+ * The importer aligns v0 source roots before normalized rest capture.
  * Spring state is reset before each pose; update(0) applies humanoid, node
  * constraints, expressions and material updates without spring integration. */
 export class VRMHumanoidRigAdapter extends NormalizedHumanoidRigAdapter {
   readonly vrm: VRM;
   private readonly eyeOffset: THREE.Vector3;
   constructor(vrm: VRM, id: string) {
-    if (vrm.meta?.metaVersion !== '1') throw new Error(msg("Only VRM 1.0 humanoids are supported.", "VRM 1.0 휴머노이드만 지원합니다."));
+    if (vrm.meta?.metaVersion !== '1' && vrm.meta?.metaVersion !== '0') throw new Error(msg("Only VRM 0.0 and 1.0 humanoids are supported.", "VRM 0.0과 1.0 휴머노이드만 지원합니다."));
     const restHead = vrm.humanoid.getRawBoneNode('head');
     const eyeOffset = vrm.lookAt?.offsetFromHeadBone.clone() ?? new THREE.Vector3(0, .06, 0);
     if (restHead) eyeOffset.multiply(restHead.getWorldScale(new THREE.Vector3())).applyQuaternion(restHead.getWorldQuaternion(new THREE.Quaternion()));

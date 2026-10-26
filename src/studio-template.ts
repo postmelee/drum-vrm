@@ -32,8 +32,8 @@ export const studioTemplate = `  <header class="toolbar">
         <label class="field">${msg("Display", "표시")}<select id="character-display"><option value="model">${msg("Model", "모델")}</option><option value="skeleton" selected>${msg("Skeleton", "뼈대")}</option><option value="both">${msg("Model + skeleton", "모델 + 뼈대")}</option><option value="hidden">${msg("Hidden", "숨김")}</option></select></label>
         <div hidden><input id="character-visible" type="checkbox" checked/><input id="skeleton-visible" type="checkbox" checked/><input id="model-visible" type="checkbox"/></div>
         <div class="button-row"><button id="character-import">${msg("Import VRM…", "VRM 불러오기…")}</button><button id="character-cancel" hidden>${msg("Cancel download", "다운로드 취소")}</button></div><input id="character-file" type="file" accept=".vrm" hidden/>
-        <p id="character-message" class="hint" role="status">${msg("VRM 1.0 humanoid bones · Default skeleton", "VRM 1.0 표준 본 · 기본 스켈레톤")}</p>
-        <p class="hint">${msg("VRM 1.0 · Up to 50 MiB", "VRM 1.0 · 최대 50 MiB")}</p>
+        <p id="character-message" class="hint" role="status">${msg("VRM 0.0 / 1.0 humanoid bones · Default skeleton", "VRM 0.0 / 1.0 표준 본 · 기본 스켈레톤")}</p>
+        <p class="hint">${msg("VRM 0.0 / 1.0 · Up to 50 MiB", "VRM 0.0 / 1.0 · 최대 50 MiB")}</p>
         <div id="character-info"></div>
         <div class="button-row"><button id="kit-fit">${msg("Automatic fit", "자동 맞춤")}</button><button id="kit-fit-restore" disabled>${msg("Undo fit", "맞춤 되돌리기")}</button></div>
         <p id="fit-state" class="hint" role="status">${msg("Default layout", "기본 배치")}</p>
@@ -48,7 +48,7 @@ export const studioTemplate = `  <header class="toolbar">
         <div class="button-row"><button id="seat-apply">${msg("Apply seat", "좌석 적용")}</button><button id="seat-auto">${msg("Auto-adjust seat only", "좌석만 자동 조정")}</button></div>
         <button id="kit-layout-reset">${msg("Reset drum layout", "드럼을 기본 배치로")}</button>
         </details>
-        <details><summary>${msg("File and model guidance", "파일 · 모델 안내")}</summary><p class="hint">${msg("Export .vroid editing files as VRM 1.0. Hair and clothing physics are held still to keep playback and seeking consistent.", ".vroid 편집 파일은 VRM 1.0으로 내보내세요. 머리카락·옷 물리는 재생과 탐색의 일치를 위해 정지합니다.")}</p><a href="${msg('https://github.com/postmelee/drum-vrm/blob/main/docs/models.md', 'https://github.com/postmelee/drum-vrm/blob/main/docs/models.ko.md')}" target="_blank" rel="noreferrer">${msg("Finding and importing models", "모델 확보 · 업로드 안내")}</a></details>
+        <details><summary>${msg("File and model guidance", "파일 · 모델 안내")}</summary><p class="hint">${msg("Export .vroid editing files as VRM 0.0 or 1.0. Hair and clothing physics are held still to keep playback and seeking consistent.", ".vroid 편집 파일은 VRM 0.0 또는 1.0으로 내보내세요. 머리카락·옷 물리는 재생과 탐색의 일치를 위해 정지합니다.")}</p><a href="${msg('https://github.com/postmelee/drum-vrm/blob/main/docs/models.md', 'https://github.com/postmelee/drum-vrm/blob/main/docs/models.ko.md')}" target="_blank" rel="noreferrer">${msg("Finding and importing models", "모델 확보 · 업로드 안내")}</a></details>
       </section>
       <section id="panel-drums" class="panel" hidden>
         <label class="field">${msg("Drum kit", "드럼 세트")}<select id="kit-preset"><option value="studio">${msg("Built-in · Studio", "기본 · Studio")}</option><option value="vintage">${msg("Built-in · Vintage", "기본 · Vintage")}</option><option value="electronic">${msg("Built-in · Electronic", "기본 · Electronic")}</option><option value="library">${msg("Acoustic · Innerscene", "어쿠스틱 · Innerscene")}</option><option value="batoski">${msg("Acoustic · Batoski", "어쿠스틱 · Batoski")}</option><option value="smoj">${msg("Low poly · smoj", "로우 폴리 · smoj")}</option></select></label>

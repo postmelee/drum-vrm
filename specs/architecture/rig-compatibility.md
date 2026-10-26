@@ -9,7 +9,7 @@ the latter. Exact importer budgets and coordinate conversions live in the
 
 ## What the standard provides
 
-VRM 1.0 maps semantic humanoid names to glTF nodes with hierarchy requirements.
+VRM 0.0 and 1.0 map semantic humanoid names to glTF nodes with hierarchy requirements.
 Required hips/spine/head and principal arm/leg chains provide a shared reference;
 optional fingers, toes, shoulders or torso joints may be absent. A valid body can
 therefore lack the finger detail needed for an articulated stick grip. The

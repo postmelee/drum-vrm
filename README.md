@@ -24,7 +24,7 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 
 | Version | Availability |
 | --- | --- |
-| Repository / local build | Includes the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. See the separate Pages row for the public build. |
+| Repository / local build | Includes VRM 0.0/1.0 local import and the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. See the separate Pages row for the public build. |
 | [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed batch [`d23a940`](https://github.com/postmelee/drum-vrm/commit/d23a9400abc9461633f26a9b805659026626a633): Selectable official VRM samples, English/Korean interface, full-song demo, measured equipment/contact planning and two-stick count-in, plus automatic fitting, MIDI/WAV preview and local projects. [Deployment verification and known limits](docs/verification/character-presets.md#pages-publication). |
 | [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
@@ -49,7 +49,7 @@ Drum appearance changes do not change the sound, and the app does not reproduce 
 | --- | --- |
 | MIDI | `.mid` / `.midi`, SMF 0/1 with PPQ timing; 10 MiB; 300 seconds across selected tracks; 512 tracks; 200,000 events; 50,000 selected supported hits. |
 | WAV | PCM or float, mono/stereo; up to 100 MiB and 300 seconds. Start offset ±300 seconds. [Formats and trimming](docs/export.md). |
-| Character | Self-contained VRM 1.0 `.vrm`, up to 50 MiB. [Bone, image and format limits](docs/models.md#supported-files). |
+| Character | Self-contained VRM 0.0 or 1.0 `.vrm`, up to 50 MiB. [Bone, image and format limits](docs/models.md#supported-files). |
 | Drum appearance | Self-contained static GLB 2.0 `.glb`, up to 25 MiB; embedded resources, no skinned models. [Preparation and fitting](docs/calibration.md#replace-drum-bodies-while-keeping-hardware). |
 
 Humanoid motion preparation has a separate [6,000-control-time budget](specs/architecture/engine-contract.md#preparation-and-worker-boundary); dense scores may reach it before the MIDI input limits. Setup replanning can be cancelled without losing the current setup.

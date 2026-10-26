@@ -24,7 +24,7 @@ DAW에서 만든 드럼 MIDI를 브라우저에서 3D 드러머의 연주 영상
 
 | 버전 | 제공 범위 |
 | --- | --- |
-| 저장소 / 로컬 빌드 | 이 문서의 MIDI 해석·프레이즈 계획·체형과 키트 맞춤·동작 검수·WAV·로컬 프로젝트 기능을 포함합니다. 공개 버전은 별도의 Pages 행에서 확인하세요. |
+| 저장소 / 로컬 빌드 | VRM 0.0/1.0 로컬 불러오기와 이 문서의 MIDI 해석·프레이즈 계획·체형과 키트 맞춤·동작 검수·WAV·로컬 프로젝트 기능을 포함합니다. 공개 버전은 별도의 Pages 행에서 확인하세요. |
 | [Pages 빌드](https://postmelee.github.io/drum-vrm/) | 배포된 배치 [`d23a940`](https://github.com/postmelee/drum-vrm/commit/d23a9400abc9461633f26a9b805659026626a633): 선택 가능한 공식 VRM 샘플, 영어·한국어 UI, 전체 곡 데모, 측정 장비·접촉 계획과 양 스틱 카운트인, 자동 맞춤·MIDI/WAV 미리보기·로컬 프로젝트. [배포 검증과 남은 제한](docs/verification/character-presets.md#pages-publication). |
 | [태그 v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | 과거 릴리스: MIDI 재생·출력, 기본 스켈레톤, 자체 도형/Innerscene 키트와 정적 드럼 GLB 교체. [당시 검증](docs/verification/studio-0.2.md). |
 
@@ -49,7 +49,7 @@ DAW에서 만든 드럼 MIDI를 브라우저에서 3D 드러머의 연주 영상
 | --- | --- |
 | MIDI | `.mid` / `.midi`, SMF 0/1·PPQ 시간축. 10 MiB, 선택 트랙 기준 300초, 512트랙, 200,000이벤트, 선택한 지원 타격 50,000개까지. |
 | WAV | PCM 또는 float, 모노·스테레오, 최대 100 MiB·300초. 시작 위치 ±300초. [형식과 자르기](docs/export.ko.md). |
-| 캐릭터 | 리소스를 포함한 VRM 1.0 단일 `.vrm`, 최대 50 MiB. [본·이미지·형식 제한](docs/models.ko.md#지원-파일). |
+| 캐릭터 | 리소스를 포함한 VRM 0.0 또는 1.0 단일 `.vrm`, 최대 50 MiB. [본·이미지·형식 제한](docs/models.ko.md#지원-파일). |
 | 드럼 외형 | 리소스를 포함한 정적 GLB 2.0 단일 `.glb`, 최대 25 MiB. 스킨 모델 제외. [파일 준비와 맞춤](docs/calibration.ko.md#받침대페달을-유지하며-드럼-몸체-교체하기). |
 
 휴머노이드 동작 준비에는 별도의 [제어 시각 6,000개 예산](specs/architecture/engine-contract.ko.md#준비와-worker-경계)이 있어 밀집된 악보는 MIDI 입력 상한보다 먼저 도달할 수 있습니다. 설정 재계획을 취소해도 기존 설정을 유지합니다.

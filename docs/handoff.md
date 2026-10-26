@@ -3,6 +3,11 @@
 Use the relevant issue for current scope and review status. This page routes the
 next worker; contracts own behavior and evidence reports own measured results.
 
+- [#54](https://github.com/postmelee/drum-vrm/issues/54) adds VRM 0.0 local imports
+  alongside 1.0, with source-basis normalization and original legacy model terms.
+  Review this branch and its PR checks before any merge or publication; the Pages
+  commit below is unchanged. [Import contract](../specs/architecture/rig-contract.md#model-import)
+  owns the accepted versions and conversion boundary.
 - The approved body-clearance batch adds automatic character/kit fitting, focused
   menus with Analysis, measured skin-weight geometry, common static target-pair
   checks, and coordinated temporal torso/elbow planning. Fitting and planning run
