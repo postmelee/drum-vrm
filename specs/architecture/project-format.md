@@ -44,6 +44,9 @@ limb assignments, velocities or controls merely because the JSON parser succeede
 The source/mapping/intent boundary remains in [MIDI interpretation](midi-interpretation.md);
 WAV alignment remains in [audio/export](audio-export-contract.md).
 
+
+Saved profiles include optional numeric body envelopes, not mesh vertices. The browser validates their bounds and compares the restored measured profile; reopening does not rerun automatic layout fitting. Old files without geometry retain their original schema interpretation, but exact engine-hash compatibility is still required.
+
 ## Compatibility and evidence
 
 Schema 1 requires the exact stored WASM SHA-256 and matching planner version. A mismatch

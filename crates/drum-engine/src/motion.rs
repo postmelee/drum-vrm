@@ -3,8 +3,11 @@ use crate::model::*;
 use crate::rig::{pitch_rotation, RigProfile, RIG_POSE_FLOATS};
 use std::f64::consts::PI;
 
+#[path = "prepared.rs"]
+mod prepared;
 #[path = "sticking.rs"]
 mod sticking;
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-body-v7";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -249,7 +252,7 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
         })
         .collect();
     let mut history = sticking::History::default();
-    plan.planner_version = "phrase-beam-8-beat-horizon-24-v4".into();
+    plan.planner_version = PLANNER_VERSION.into();
     let mut start = 0;
     while start < plan.hits.len() {
         let mut end = start + 1;
@@ -392,7 +395,12 @@ fn two_bone(root: Vec3, target: Vec3, pole: Vec3) -> (Vec3, Vec3) {
 
 /// Unequal segment lengths use the law of cosines, including the inner reach
 /// limit. No endpoint is overwritten with an unreachable desired contact.
-fn two_bone_lengths(root: Vec3, target: Vec3, pole: Vec3, lengths: [f64; 2]) -> (Vec3, Vec3) {
+pub(crate) fn two_bone_lengths(
+    root: Vec3,
+    target: Vec3,
+    pole: Vec3,
+    lengths: [f64; 2],
+) -> (Vec3, Vec3) {
     let delta = sub(target, root);
     let direction = normalized(delta);
     let [a, b] = lengths;
@@ -523,6 +531,7 @@ impl Motion {
                     | "RIG_UNREACHABLE_HIT"
                     | "RIG_UNREACHABLE_PEDAL"
                     | "HAND_OVERRIDE_INFEASIBLE"
+                    | "BODY_PATH_CLEARANCE"
             )
         });
         for limb in 2..4 {
@@ -555,6 +564,13 @@ impl Motion {
     }
 
     fn assemble(plan: PerformancePlan, profile: Option<RigProfile>) -> Result<Self, String> {
+        Self::assemble_with_tracks(plan, profile, None)
+    }
+    fn assemble_with_tracks(
+        plan: PerformancePlan,
+        profile: Option<RigProfile>,
+        tracks: Option<(Vec<f64>, Vec<crate::hand_coordination::SwivelSample>)>,
+    ) -> Result<Self, String> {
         validate_plan(&plan)?;
         let mut limbs: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
         let mut states: [LimbState; 4] = std::array::from_fn(|limb| LimbState {
@@ -612,6 +628,11 @@ impl Motion {
             body_turns: Vec::new(),
             hand_swivels: Vec::new(),
         };
+        if let Some((body_turns, hand_swivels)) = tracks {
+            motion.body_turns = body_turns;
+            motion.hand_swivels = hand_swivels;
+            return Ok(motion);
+        }
         if let Some(profile) = &motion.profile {
             if profile.torso_pivot.is_some() {
                 let count = ((motion.plan.duration + PRE_ROLL + TAIL) / crate::body_motion::STEP)
@@ -629,54 +650,75 @@ impl Motion {
                     );
                     motion.body_turns.push(yaw);
                 }
-                // Facing is optional. Attenuate the entire C1 curve if any exact
-                // source contact (including between grid knots) loses reach.
-                // A per-frame fallback would introduce a pose discontinuity.
-                let original = motion.body_turns.clone();
-                let mut scale = 1.0;
-                while motion.plan.hits.iter().any(|hit| {
-                    hit.limb.is_some_and(|limb| {
-                        limb < 2
-                            && !profile
-                                .turned(crate::body_motion::at(&motion.body_turns, hit.time))
-                                .reachable(limb, hit.target)
+                let contacts: Vec<_> = motion
+                    .plan
+                    .hits
+                    .iter()
+                    .filter_map(|hit| {
+                        hit.limb
+                            .filter(|&limb| limb < 2)
+                            .map(|limb| (hit.time, limb, hit.target))
                     })
-                }) {
-                    scale *= 0.5;
-                    if scale < 1.0 / 1024.0 {
-                        motion.body_turns.fill(0.0);
-                        break;
-                    }
-                    motion.body_turns = original.iter().map(|yaw| yaw * scale).collect();
-                }
+                    .collect();
+                crate::body_motion::preserve_contacts(&mut motion.body_turns, profile, &contacts);
             }
         }
         if let Some(profile) = &motion.profile {
             if profile.hand_frames.is_some() {
-                let count = ((motion.plan.duration + PRE_ROLL + TAIL)
-                    / crate::hand_coordination::STEP)
-                    .ceil() as usize
-                    + 1;
-                let mut times: Vec<_> = (0..count)
-                    .map(|i| i as f64 * crate::hand_coordination::STEP - PRE_ROLL)
+                let make_input = |time| {
+                    let samples = [motion.stroke_at(0, time), motion.stroke_at(1, time)];
+                    crate::hand_coordination::HandCoordinationInput {
+                        time,
+                        profile: profile.turned(crate::body_motion::at(&motion.body_turns, time)),
+                        tips: samples.map(|s| s.0),
+                        pitches: samples.map(|s| -s.1),
+                    }
+                };
+                let control_times = prepared::control_times(&motion.plan)?;
+                let inputs: Vec<_> = control_times.into_iter().map(make_input).collect();
+                let check_count =
+                    ((motion.plan.duration + PRE_ROLL + TAIL) * 30.0).ceil() as usize + 1;
+                let mut times: Vec<_> = (0..check_count)
+                    .map(|i| i as f64 / 30.0 - PRE_ROLL)
                     .collect();
                 times.extend(motion.plan.hits.iter().map(|hit| hit.time));
                 times.sort_by(f64::total_cmp);
                 times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
-                let inputs: Vec<_> = times
-                    .into_iter()
-                    .map(|time| {
-                        let samples = [motion.stroke_at(0, time), motion.stroke_at(1, time)];
-                        crate::hand_coordination::HandCoordinationInput {
-                            time,
-                            profile: profile
-                                .turned(crate::body_motion::at(&motion.body_turns, time)),
-                            tips: samples.map(|s| s.0),
-                            pitches: samples.map(|s| -s.1),
-                        }
-                    })
+                let checks: Vec<_> = times.into_iter().map(make_input).collect();
+                motion.hand_swivels = crate::hand_coordination::plan_with_checks(&inputs, &checks)?;
+            }
+        }
+        // Assignment/reach success does not certify collision-free motion.
+        // Aggregate remaining actual impact-pose proxy failures without changing
+        // source notes or flooding the plan with one warning per mesh segment.
+        if let Some(profile) = &motion.profile {
+            if profile.hand_frames.is_some() {
+                let mut times: Vec<_> = motion
+                    .plan
+                    .hits
+                    .iter()
+                    .filter(|h| h.limb.is_some_and(|limb| limb < 2))
+                    .map(|h| h.time)
                     .collect();
-                motion.hand_swivels = crate::hand_coordination::plan(&inputs);
+                times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+                let (mut failures, mut worst) = (0usize, 0.0f64);
+                for time in times {
+                    let pose = motion.evaluate_rig(time);
+                    let p = profile.turned(crate::body_motion::at(&motion.body_turns, time));
+                    let check = crate::clearance::inspect(&p, &pose);
+                    let minimum = check
+                        .torso_clearance_meters
+                        .min(check.arm_clearance_meters)
+                        .min(check.stick_clearance_meters)
+                        .min(check.cross_clearance_meters);
+                    if minimum < -1e-6 {
+                        failures += 1;
+                        worst = worst.max(-minimum);
+                    }
+                }
+                if failures > 0 {
+                    motion.plan.diagnostics.push(Diagnostic::new("BODY_PATH_CLEARANCE",format!("타격 시각 {failures}곳에서 신체·스틱 대리 형상 겹침이 남았습니다(최대 {:.1} mm). 배치 완료와 별도로 연주 경로를 확인하세요.",worst*1000.0)));
+                }
             }
         }
         Ok(motion)

@@ -128,7 +128,7 @@ it.each([false, true])('the browser demo keeps right-hand hats and left-hand bac
       expect(Math.hypot(...ready.map((value, axis) => pose[9 + axis] - value))).toBeLessThan(1e-6);
     }
   } finally { session.close(); }
-});
+},20_000); // Real WASM joint planning measured 9s on the shared CI runner.
 
 it('the browser interpretation study preserves groove roles without disabling two-hand solo rolls', () => {
   const session = prepareNative(makeInterpretationDemo(), {

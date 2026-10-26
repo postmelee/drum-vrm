@@ -3,6 +3,7 @@ import { VRMHumanoid, VRMHumanBoneParentMap, type VRMHumanBoneName, type VRMHuma
 import type { RigAdapter, RigCalibration } from './scene';
 import { RIG_POSE_FLOATS, type KitPiece, type Quat, type RigProfile, type Vec3, type HandControlFrame } from './types';
 import { disposeModelSource } from './model-procedural';
+import { measureBodyGeometry } from './body-geometry';
 
 /** The numeric engine retains the explicitly versioned v1 basis. Native VRM
  * bones use +X anatomical left, +Y up, +Z forward and positive scales. */
@@ -204,6 +205,13 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       pelvis: legacyPositionToNative(seat.toArray()), chest: legacyPositionToNative(chest.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
       head: legacyPositionToNative(head.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
     };
+    // Measure the same prepared grip that will render, not the source's spread
+    // fingers. Sync normalized rotations to raw skin bones before sampling.
+    this.applyMatchedGrip(); humanoid.update(); source.updateMatrixWorld(true);
+    const measurementRotations = (['left', 'right'] as const).map((side, limb) => legacyQuaternionToNative(
+      required(`${side}Hand`).getWorldQuaternion(new THREE.Quaternion()).multiply(this.handMounts[limb]).toArray())) as [Quat, Quat];
+    this.profile.bodyGeometry = measureBodyGeometry(source, humanoid, this.profile,
+      world => new THREE.Vector3(...legacyPositionToNative(world.clone().add(translation).toArray())), measurementRotations);
     this.baseProfile = structuredClone(this.profile);
     // All validation above precedes taking ownership of the source scene.
     this.root.name = id; this.root.add(source, this.skeletonOverlay);
@@ -259,6 +267,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     const translate = (point: Vec3): Vec3 => point.map((v, i) => v + offset[i]) as Vec3;
     profile.roots = profile.roots.map(translate) as RigProfile['roots'];
     if (profile.torsoPivot) profile.torsoPivot = translate(profile.torsoPivot);
+    if (profile.bodyGeometry) profile.bodyGeometry.torso.center = translate(profile.bodyGeometry.torso.center);
     profile.pelvis = translate(profile.pelvis); profile.chest = translate(profile.chest); profile.head = translate(profile.head);
     profile.restTips = [translate(profile.restTips[0]), translate(profile.restTips[1]), [...pedals[0]], [...pedals[1]]];
     for (let limb = 0; limb < 2; limb++) {
@@ -267,6 +276,14 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       profile.contactRotations[limb] = legacyQuaternionToNative(orientation.rotation.toArray());
       profile.handFrames![limb] = orientation.controlFrame;
       profile.gripOffsets[limb] = legacyPositionToNative(orientation.grip.toArray());
+      if (profile.bodyGeometry?.handCenters) {
+        const base = toVector(this.baseProfile.bodyGeometry!.handCenters![limb]);
+        profile.bodyGeometry.handCenters[limb] = legacyPositionToNative(base.applyQuaternion(this.handMounts[limb]).applyQuaternion(orientation.mount.clone().invert()).toArray());
+      }
+      if (profile.bodyGeometry?.handCapsules) for (const key of ['start', 'end'] as const) {
+        const base = toVector(this.baseProfile.bodyGeometry!.handCapsules![limb][key]);
+        profile.bodyGeometry.handCapsules[limb][key] = legacyPositionToNative(base.applyQuaternion(this.handMounts[limb]).applyQuaternion(orientation.mount.clone().invert()).toArray());
+      }
       const toolOffset = orientation.grip.clone().add(toVector(profile.tipOffsets[limb]));
       profile.restTips[limb] = legacyPositionToNative(wrist.add(toolOffset.clone().applyQuaternion(orientation.rotation)).toArray());
       const chain = this.chains[limb]; chain.handToTool.copy(orientation.mount);

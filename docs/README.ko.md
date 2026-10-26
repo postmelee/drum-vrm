@@ -26,6 +26,8 @@
 
 | 범위 | 근거 |
 | --- | --- |
+| 자동 맞춤·측정 체형 간격·시간 기반 양팔 협응 | [체형 간격 검증](verification/body-clearance-measurements.md) |
+| 공개 브라우저 배포 | [Pages 배포 근거](verification/pages-browser-performance.md) |
 | 공개 MIDI→영상 흐름 | [v0.2 스튜디오 검사](verification/studio-0.2.md) |
 | VRM 앱과 출력 경로 | [VRM 검사](verification/vrm-studio-unreleased.md) |
 | 좌석·타점·공통 하드웨어 | [보정 검사](verification/calibration-unreleased.md) |

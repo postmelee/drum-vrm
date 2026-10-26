@@ -56,6 +56,15 @@ describe('versioned local project',()=>{
       expect(JSON.parse(after.plan_json()).sourceEvents).toEqual(fixture.plan.sourceEvents);
     }finally{before.free();after.free();}
   });
+  it('preserves measured collision descriptors exactly and still accepts projects without them',()=>{
+    const project=structuredClone(fixture),geometry=project.profile.bodyGeometry!;
+    geometry.source='mesh-estimate';geometry.sampleCount=320;
+    geometry.torso.halfExtents[2]=.12;
+    geometry.handCapsules=[{start:[0,0,.02],end:[0,0,.09],radius:.025},{start:[0,0,.03],end:[0,0,.08],radius:.03}];
+    expect(parseProject(JSON.stringify(project)).profile.bodyGeometry).toEqual(geometry);
+    delete project.profile.bodyGeometry;
+    expect(parseProject(JSON.stringify(project)).profile.bodyGeometry).toBeUndefined();
+  });
   it('requires same-content relinking; renamed same files match and same-name edits do not',async()=>{
     const renamed=new File([await midiFile.arrayBuffer()],'renamed.mid'),edited=new File(['changed'],midiFile.name);
     const good=await fileReference('midi',renamed),bad=await fileReference('midi',edited);
@@ -81,7 +90,7 @@ describe('versioned local project',()=>{
       for(const time of [239.625,96,0,95.75,96.375,180.125])expect(after.evaluate_rig_at(time)).toEqual(before.evaluate_rig_at(time));
       expect(JSON.parse(after.plan_json()).tempoMap).toEqual(project.plan.tempoMap);
     }finally{raw.free();before.free();after.free();}
-  });
+  },150_000); // Two independent full-score plans: measured 72s on CI; browser work runs in a Worker.
   it('reopens explicit omission and hand directives without editing source events',()=>{
     const project=structuredClone(fixture),omitted=project.plan.hits.find(hit=>hit.instrument==='snare')!.sourceEventId!;
     const forced=project.plan.hits.find(hit=>hit.instrument==='crash')!.sourceEventId!;
@@ -119,6 +128,8 @@ describe('versioned local project',()=>{
     rejected(project=>{project.appearance.pieces[0].settings.source='imported';});
     rejected(project=>{project.selection.omittedSourceEventIds=['1:1'];});
     rejected(project=>{project.selection.handOverrides={'1:1':1};});
+    rejected(project=>{project.profile.bodyGeometry!.armRadii[0][0]=-1;});
+    rejected(project=>{project.profile.bodyGeometry!.torso.center[0]=NaN;});
   });
   it('rejects unsafe presentation values and does not fetch asset references',()=>{
     const rejected=(change:(project:DrumProject)=>void)=>{const project=structuredClone(fixture);change(project);expect(()=>parseProject(JSON.stringify(project))).toThrow();};

@@ -69,7 +69,11 @@ fn bounded_common_fit_keeps_pedals_unchanged_and_is_idempotent() {
         let snare = fitted.kit.iter().find(|piece| piece.id == "snare").unwrap();
         assert!(snare_ready_fits(&profile, snare));
         for piece in &fitted.kit {
-            assert!(piece_posture_fits(&profile, piece), "{}", piece.id);
+            assert!(
+                piece_posture_fits(&profile, piece, &FitCache::default()),
+                "{}",
+                piece.id
+            );
         }
         for limb in 0..2 {
             for (lift, pitch) in [(0.0, 0.0), (0.055, -0.2), (0.11, -0.42)] {
@@ -188,4 +192,103 @@ fn incomplete_fit_remains_explicit_and_invalid_layouts_fail() {
         .unwrap()
         .position[2] += 0.1;
     assert!(fit_kit(&profile, &uncoupled).is_err());
+}
+
+#[test]
+fn measured_body_pair_capability_and_ready_pose_share_the_fit_contract() {
+    let mut profile = profile(1.0);
+    profile.body_geometry = Some(crate::rig::BodyGeometry {
+        version: 1,
+        source: "mesh-estimate".into(),
+        torso: crate::rig::TorsoGeometry {
+            center: [0.0, 0.98, 0.06],
+            half_extents: [0.15, 0.22, 0.12],
+        },
+        arm_radii: [[0.03, 0.024]; 2],
+        hand_radii: [0.03; 2],
+        hand_centers: None,
+        hand_capsules: None,
+        sample_count: 1000,
+    });
+    let result = fit_kit(&profile, &default_kit()).unwrap();
+    assert!(
+        result.complete,
+        "{:?} {:?}",
+        result.unreachable_piece_ids, result.capabilities
+    );
+    let audit = result.capabilities.as_ref().unwrap();
+    assert_eq!(audit.geometry_source, "mesh-estimate");
+    assert!(audit.required_pairs_available);
+    assert_eq!(audit.pair_checks, 64); // Eight physical hand-played surfaces.
+    assert_eq!(audit.hand_target_checks, 16);
+    assert!(audit.available_pairs > 0);
+    let pose = crate::posture::ready_pose(&profile, &result.kit).unwrap();
+    let inspected = crate::clearance::inspect(&profile, &pose);
+    assert!(inspected.torso_clearance_meters >= crate::posture::MARGIN - 1e-6);
+    assert!(inspected.arm_clearance_meters >= crate::posture::MARGIN - 1e-6);
+    assert!(inspected.stick_clearance_meters >= crate::posture::MARGIN - 1e-6);
+    assert!(inspected.cross_clearance_meters >= crate::posture::MARGIN - 1e-6);
+    assert!(inspected.bone_length_error_meters < 1e-6);
+    let snare = result.kit.iter().find(|p| p.id == "snare").unwrap();
+    let expected = crate::posture::ready_pair(&profile, snare, snare);
+    for (limb, target) in expected.iter().enumerate() {
+        let actual = [
+            pose[limb * 12 + 9] as f64,
+            pose[limb * 12 + 10] as f64,
+            pose[limb * 12 + 11] as f64,
+        ];
+        assert!(crate::motion::distance(actual, *target) < 1e-6);
+    }
+    assert_eq!(
+        pose,
+        crate::posture::ready_pose(&profile, &result.kit).unwrap()
+    );
+    let old = serde_json::to_string(&result.kit).unwrap();
+    assert_eq!(
+        old,
+        serde_json::to_string(&fit_kit(&profile, &result.kit).unwrap().kit).unwrap()
+    );
+}
+
+#[test]
+fn measured_body_is_validated_and_turns_without_changing_extents() {
+    let mut p = profile(1.0);
+    p.torso_pivot = Some([0.0, 0.9, 0.06]);
+    p.body_geometry = Some(crate::rig::BodyGeometry {
+        version: 1,
+        source: "mesh-estimate".into(),
+        torso: crate::rig::TorsoGeometry {
+            center: [0.02, 1.0, 0.10],
+            half_extents: [0.14, 0.20, 0.09],
+        },
+        arm_radii: [[0.03, 0.02]; 2],
+        hand_radii: [0.025; 2],
+        hand_centers: None,
+        hand_capsules: None,
+        sample_count: 100,
+    });
+    p.validate().unwrap();
+    let turned = p.turned(0.2);
+    assert_ne!(
+        turned.body_geometry.as_ref().unwrap().torso.center,
+        p.body_geometry.as_ref().unwrap().torso.center
+    );
+    assert_eq!(
+        turned.body_geometry.as_ref().unwrap().torso.half_extents,
+        p.body_geometry.as_ref().unwrap().torso.half_extents
+    );
+    for field in ["version", "source", "sampleCount", "armRadii", "handRadii"] {
+        let mut value = serde_json::to_value(&p).unwrap();
+        value["bodyGeometry"][field] = match field {
+            "version" => serde_json::json!(2),
+            "source" => serde_json::json!("unverified"),
+            "sampleCount" => serde_json::json!(1000001),
+            "armRadii" => serde_json::json!([[0.0, 0.02], [0.03, 0.02]]),
+            _ => serde_json::json!([0.9, 0.025]),
+        };
+        assert!(
+            crate::rig::RigProfile::from_json(&value.to_string()).is_err(),
+            "{field}"
+        );
+    }
 }
