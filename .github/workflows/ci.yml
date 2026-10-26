@@ -73,8 +73,8 @@ jobs:
       - name: Check documentation and generated notices
         run: |
           npm run docs:check
-          git ls-files --error-unmatch THIRD_PARTY_NOTICES.md public/licenses.txt public/models/NOTICE.txt docs/research/dependency-lock.md > /dev/null
-          git diff --exit-code -- THIRD_PARTY_NOTICES.md public/licenses.txt public/models/NOTICE.txt docs/research/dependency-lock.md
+          git ls-files --error-unmatch THIRD_PARTY_NOTICES.md public/licenses.txt public/models/NOTICE.txt public/demos/NOTICE.txt docs/research/dependency-lock.md > /dev/null
+          git diff --exit-code -- THIRD_PARTY_NOTICES.md public/licenses.txt public/models/NOTICE.txt public/demos/NOTICE.txt docs/research/dependency-lock.md
 
       - name: Typecheck and build the production site
         run: npm run build:web
