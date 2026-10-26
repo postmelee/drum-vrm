@@ -3,6 +3,10 @@
 
 mod body_motion;
 pub mod clearance;
+mod contact;
+mod count_in;
+pub mod equipment;
+mod equipment_motion;
 mod fit;
 mod hand_coordination;
 pub mod hihat;
@@ -53,6 +57,12 @@ pub fn inspect_midi(bytes: &[u8]) -> Result<String, JsValue> {
 #[wasm_bindgen]
 pub fn fit_kit(profile_json: &str, kit_json: &str) -> Result<String, JsValue> {
     fit::fit_kit_json(profile_json, kit_json).map_err(|error| JsValue::from_str(&error))
+}
+
+/// Shared bodies, mounting hardware and pedal envelopes in world coordinates.
+#[wasm_bindgen]
+pub fn kit_geometry(kit_json: &str) -> Result<String, JsValue> {
+    equipment::kit_geometry_json(kit_json).map_err(|error| JsValue::from_str(&error))
 }
 
 /// Shared no-MIDI calibration preview. No source notes are synthesized or edited.

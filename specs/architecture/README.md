@@ -9,6 +9,7 @@ Start with the [overview](overview.md), then read the boundary relevant to the c
 | [MIDI interpretation](midi-interpretation.md) | Source event evidence, mapping profiles, performer intent and control boundaries |
 | [Engine](engine-contract.md) | Input limits, timing, assignment and the profile/pose API |
 | [Rig](rig-contract.md) | Semantic bones, coordinate conversion, calibration, rendered contacts and drum appearance |
+| [Equipment and contact](equipment-contact.md) | Measured bodies, generated hardware, playable regions, complete-tool paths and count-in gestures |
 | [Audio and export](audio-export-contract.md) | Song/output time, PCM, playback clock and encoding |
 | [Local project format](project-format.md) | Versioned settings, source evidence, exact file relinking and restore validation |
 

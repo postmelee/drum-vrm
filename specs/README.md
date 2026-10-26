@@ -17,6 +17,7 @@ for the public app and quick start.
 | Humanoid, coordinates and drum hardware | [Rig contract](architecture/rig-contract.md) |
 | Audio clock and video frames | [Audio/export contract](architecture/audio-export-contract.md) |
 | Body, seat, grip and contact fitting | [Calibration](architecture/calibration.md) |
+| Instrument bodies, hardware and articulation regions | [Equipment and contact](architecture/equipment-contact.md) |
 | Standard rig support and measured limits | [Rig compatibility](architecture/rig-compatibility.md) |
 | Technique and future movement expression | [Performance expression](architecture/performance-expression.md) |
 | Runtime stack and adoption tradeoffs | [Dependency design](architecture/dependencies.md) |

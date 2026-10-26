@@ -9,6 +9,7 @@
 | [MIDI 해석](midi-interpretation.ko.md) | 원본 이벤트 근거, 매핑 프로필, 연주 의도와 제어의 경계 |
 | [엔진](engine-contract.ko.md) | 입력 제한, 시간, 손발 배정과 프로필·포즈 API |
 | [리그](rig-contract.ko.md) | 의미 기반 본, 좌표 변환, 보정, 렌더링된 접촉과 드럼 외형 |
+| [장비와 접촉](equipment-contact.ko.md) | 측정 본체·생성 하드웨어·연주 영역·스틱 전체 경로·카운트인 제스처 |
 | [오디오·출력](audio-export-contract.ko.md) | 곡·출력 시각, PCM, 재생 시계와 인코딩 |
 | [로컬 프로젝트 형식](project-format.ko.md) | 버전별 설정, 원본 근거, 동일 파일 연결과 복원 검증 |
 

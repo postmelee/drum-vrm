@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { hitPieceId, pieceInstrument, type Hit, type Instrument, type PieceId, type KitPiece, type PerformancePlan, type RigProfile, type Vec3 } from './types';
+import { hitPieceId, pieceInstrument, type Hit, type Instrument, type PieceId, type KitPiece, type KitGeometry, type PerformancePlan, type RigProfile, type Vec3 } from './types';
 import { createRestRigPose, NativeHumanoidRigAdapter, type HumanoidRigAdapter, type RigContactSample } from './rig-humanoid';
 import { validateKitLayout } from './kit-calibration';
-import { canonicalPieceId, cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
+import { canonicalPieceId, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
 import { loadLocalGLB } from './model-import';
-import { KitHardwareLayer } from './kit-hardware';
-import { alignInstrumentBody, cloneLibraryBody } from './instrument-body';
+import { KitHardwareLayer, solveKitGeometry } from './kit-hardware';
+import { createMeasuredInstrumentBody } from './instrument-body';
+import { initializeWasm } from './wasm-runtime';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack, evaluateHitResponse, validateHitResponse, type HitResponseBinding, type HitResponseSettings, type HitResponseTrack } from './hit-response';
 export { KIT_PRESETS, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings } from './model-procedural';
 export type { HitResponseSettings } from './hit-response';
@@ -231,6 +232,11 @@ export class DrumScene {
   private readonly libraryPromises = new Map<KitPresetId, Promise<Partial<Record<Instrument, THREE.Group>>>>();
   private loadGeneration = 0;
   private disposed = false;
+  private equipmentGeneration = 0;
+  private equipmentKey = '';
+  private equipmentPromise: Promise<KitGeometry> | null = null;
+  private equipmentResult: KitGeometry | null = null;
+  private equipmentError: string | null = null;
   private selected: PieceId | null = null;
   private selectionBox: THREE.BoxHelper | null = null;
   private editorMode = false;
@@ -308,7 +314,49 @@ export class DrumScene {
     this.rig.applyPose(pose);this.songTime=-.5;this.updateHitResponses();
   }
   getRigProfile(): RigProfile { return this.rig.getProfile(); }
-  getKitLayout(): KitPiece[] { return this.kit.map(piece => ({ ...piece, position: [...piece.position] })); }
+  getKitLayout(): KitPiece[] { return structuredClone(this.kit) as KitPiece[]; }
+  /** Measure a proposed layout against the currently selected appearances before
+   * passing it to planning. This never changes the displayed kit. */
+  measureKitLayout(kit: readonly KitPiece[]): KitPiece[] {
+    const measured = validateKitLayout(kit), library = this.libraries.get(this.preset);
+    for (const piece of measured) {
+      if (canonicalPieceId(piece.id) !== piece.id) continue;
+      const source = this.imported.get(piece.id)?.root ?? (isLibraryPreset(this.preset) && !this.proceduralOverrides.has(piece.id) ? library?.[pieceInstrument(piece)] : undefined);
+      const built = createMeasuredInstrumentBody(piece, this.getPieceVisual(piece.id), this.preset, measured, source, this.imported.has(piece.id));
+      piece.geometry = built.geometry; disposeModel(built.root);
+    }
+    const hihat = measured.find(piece => piece.id === 'hihat')!, open = measured.find(piece => piece.id === 'openHat')!;
+    open.geometry = structuredClone(hihat.geometry); return measured;
+  }
+  /** Actual body descriptors are synchronous; routed supports await WASM. */
+  refreshEquipmentGeometry(): Promise<KitGeometry> {
+    const kit = this.getKitLayout(), key = JSON.stringify(kit);
+    if (key === this.equipmentKey && this.equipmentPromise) return this.equipmentPromise;
+    const generation = this.equipmentGeneration = (this.equipmentGeneration ?? 0) + 1;
+    this.equipmentKey = key; this.equipmentError = null;
+    this.equipmentPromise = initializeWasm().then(() => solveKitGeometry(kit)).then(geometry => {
+      if (!this.disposed && generation === this.equipmentGeneration) {
+        this.hardware.setGeometry(kit, geometry); this.equipmentResult = geometry;
+      }
+      return geometry;
+    }).catch(error => {
+      if (!this.disposed && generation === this.equipmentGeneration) {
+        this.equipmentError = error instanceof Error ? error.message : String(error);
+        this.equipmentResult = null; this.hardware.clear(); this.equipmentKey = '';
+      }
+      throw error;
+    });
+    return this.equipmentPromise;
+  }
+  async whenEquipmentReady(): Promise<KitGeometry> {
+    for (;;) {
+      const pending = this.refreshEquipmentGeometry(), result = await pending;
+      if (pending === this.equipmentPromise) return structuredClone(result);
+    }
+  }
+  getEquipmentDiagnostics(): string[] {
+    return this.equipmentError ? [`장비 형상 계산 실패: ${this.equipmentError}`] : [...(this.equipmentResult?.unresolvedPieceIds ?? [])];
+  }
   setKitLayout(kit: readonly KitPiece[]): void {
     this.kit = validateKitLayout(kit); this.rebuildKit();
   }
@@ -383,6 +431,7 @@ export class DrumScene {
     this.preset = preset; this.overrides.clear(); this.proceduralOverrides.clear();
     const discarded = [...this.imported.values()]; this.imported.clear(); this.rebuildKit();
     discarded.forEach(model => disposeModelSource(model.root));
+    await this.whenEquipmentReady();
   }
   /** Load all external geometry before committing a project appearance. A failed
    * file or bundled preset leaves the currently displayed scene intact. */
@@ -403,14 +452,41 @@ export class DrumScene {
       }
     } catch(error){imported.forEach(model=>disposeModelSource(model.root));throw error;}
     let consumed=false;
+    const measureLayout = (kit: readonly KitPiece[]) => {
+      if (consumed) throw new Error('프로젝트 외형은 이미 적용하거나 정리했습니다.');
+      const measured = validateKitLayout(kit), library = this.libraries.get(preset);
+      for (const piece of measured) {
+        if (canonicalPieceId(piece.id) !== piece.id) continue;
+        const saved = pieces.find(value => value.id === piece.id)?.settings;
+        if (!saved) throw new Error(`드럼 외형 설정이 누락되었습니다: ${piece.id}`);
+        const settings = { ...resolvePieceVisual(preset, piece.id, saved), finishOverride: saved.finishOverride };
+        const source = imported.get(piece.id)?.root ?? (saved.source !== 'procedural' && isLibraryPreset(preset) ? library?.[pieceInstrument(piece)] : undefined);
+        const built = createMeasuredInstrumentBody(piece, settings, preset, measured, source, imported.has(piece.id));
+        piece.geometry = built.geometry; disposeModel(built.root);
+      }
+      const hihat = measured.find(piece => piece.id === 'hihat')!, open = measured.find(piece => piece.id === 'openHat')!;
+      open.geometry = structuredClone(hihat.geometry);
+      return measured;
+    };
     return {
+      measureLayout,
+      validateLayout: (kit: readonly KitPiece[]) => {
+        const measured = measureLayout(kit);
+        for (const piece of kit) {
+          if (canonicalPieceId(piece.id) !== piece.id) continue;
+          if (!piece.geometry || JSON.stringify(piece.geometry) !== JSON.stringify(measured.find(value => value.id === piece.id)!.geometry)) throw new Error(`저장한 드럼 형상과 원본 모델이 다릅니다: ${piece.label}. 원본 MIDI로 다시 준비하세요.`);
+        }
+        return measured;
+      },
       dispose:()=>{if(!consumed){imported.forEach(model=>disposeModelSource(model.root));consumed=true;}},
-      apply:()=>{
+      apply:(kit?: readonly KitPiece[])=>{
         if(consumed)throw new Error('프로젝트 외형은 한 번만 적용할 수 있습니다.');
+        const target = kit ? validateKitLayout(kit) : undefined;
         ++this.loadGeneration;
         const discarded=[...this.imported.values()];this.imported.clear();this.overrides.clear();this.proceduralOverrides.clear();this.preset=preset;
         for(const piece of pieces){const {finish,finishOverride,model,scale,rotation}=piece.settings;this.overrides.set(piece.id,{...(finishOverride?{finish}:{}),model,scale,rotation});if(piece.settings.source==='procedural')this.proceduralOverrides.add(piece.id);}
         imported.forEach((model,id)=>this.imported.set(id,model));consumed=true;
+        if (target) this.kit = target;
         this.rebuildKit();discarded.forEach(model=>disposeModelSource(model.root));
       },
     };
@@ -451,6 +527,7 @@ export class DrumScene {
     this.proceduralOverrides.delete(canonical);
     this.imported.set(canonical, { root, name: file.name, approximate: true }); this.rebuildKit();
     if (previous) disposeModelSource(previous.root);
+    await this.whenEquipmentReady();
     return { fileName: file.name, approximateCalibration: true };
   }
   selectPiece(id: PieceId | null): void {
@@ -590,30 +667,29 @@ export class DrumScene {
     this.selectPiece(object?.userData.pieceId as PieceId ?? null);
   };
   private rebuildKit(): void {
-    this.clearSelection(); this.hardware.setLayout(this.kit); disposeModel(this.kitGroup); this.visuals = [];
+    const nextKit = this.getKitLayout(), nextGroup = new THREE.Group(), visuals: KitVisual[] = [];
     const library = this.libraries.get(this.preset);
-    for (const piece of this.kit) {
+    try { for (const piece of nextKit) {
       if (canonicalPieceId(piece.id) !== piece.id) continue;
       const settings = this.getPieceVisual(piece.id);
-      const built = createPieceModel(piece, settings, this.preset, this.kit, false);
       const source = this.imported.get(piece.id)?.root ?? (isLibraryPreset(this.preset) && !this.proceduralOverrides.has(piece.id) ? library?.[pieceInstrument(piece)] : undefined);
-      if (source) {
-        built.ring.removeFromParent(); disposeModel(built.root); built.cymbal = undefined;
-        const custom = this.imported.has(piece.id);
-        const display = custom ? cloneModel(source) : cloneLibraryBody(source), pivot = new THREE.Group(); pivot.add(display); built.root.add(pivot, built.ring);
-        alignInstrumentBody(display, pivot, piece, settings);
-        if (this.overrides.get(piece.id)?.finish) display.traverse(node => {
-          if (node instanceof THREE.Mesh) for (const material of Array.isArray(node.material) ? node.material : [node.material]) if (material instanceof THREE.MeshStandardMaterial) material.color.set(settings.finish);
-        });
-      }
+      const built = createMeasuredInstrumentBody(piece, settings, this.preset, nextKit, source, this.imported.has(piece.id));
+      nextGroup.add(built.root); piece.geometry = built.geometry;
       const response = bindHitResponse(built.root, piece.position, this.imported.has(piece.id));
-      built.root.userData.pieceId = piece.id; this.kitGroup.add(built.root);
+      built.root.userData.pieceId = piece.id;
       // Different physical cymbals may share a library body and sound voice, but
       // their selection, hardware, contact and feedback are always independent.
       const instrument = pieceInstrument(piece);
       const hits = this.plan?.hits.filter(hit => canonicalPieceId(hitPieceId(hit)) === piece.id).sort((a, b) => a.time - b.time) ?? [];
-      this.visuals.push({ ...built, id: piece.id, instrument, hits, response, responseTrack: createHitResponseTrack(hits, instrument) });
-    }
+      visuals.push({ ...built, id: piece.id, instrument, hits, response, responseTrack: createHitResponseTrack(hits, instrument) });
+    }} catch (error) { disposeModel(nextGroup); throw error; }
+    const hihat = nextKit.find(piece => piece.id === 'hihat'), openHat = nextKit.find(piece => piece.id === 'openHat');
+    if (hihat?.geometry && openHat) openHat.geometry = structuredClone(hihat.geometry);
+    this.clearSelection(); disposeModel(this.kitGroup); this.kitGroup.add(...[...nextGroup.children]);
+    this.kit = nextKit; this.visuals = visuals;
+    // Rejections remain observable through whenEquipmentReady/diagnostics even
+    // for synchronous appearance edits; never report an unhandled background error.
+    void this.refreshEquipmentGeometry().catch(() => {});
     this.updateHitResponses(); this.updateSelection();
   }
 }

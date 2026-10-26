@@ -2,11 +2,14 @@
 //! The checksum detects stale/mixed/accidentally edited messages; it is not an
 //! authenticity signature. Independent validation remains mandatory on import.
 use super::{validate_plan, Motion, PLANNER_VERSION};
-use crate::{body_motion, hand_coordination, model::*, rig::RigProfile};
+use crate::{
+    body_motion, equipment_motion::PathSample, hand_coordination, model::*, rig::RigProfile,
+};
 use hand_coordination::SwivelSample;
 use serde::{Deserialize, Serialize};
-const FORMAT_VERSION: u32 = 1;
+const FORMAT_VERSION: u32 = 2;
 const MAX_BYTES: usize = 128 * 1024 * 1024;
+pub(super) const MAX_EQUIPMENT_SAMPLES: usize = 16_000;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -20,26 +23,39 @@ struct Prepared {
     body_turns: Vec<f64>,
     #[serde(deserialize_with = "bounded_track")]
     hand_swivels: Vec<SwivelSample>,
+    #[serde(deserialize_with = "bounded_equipment_track")]
+    equipment_path: Vec<PathSample>,
 }
 fn bounded_track<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: serde::Deserializer<'de>,
     T: Deserialize<'de>,
 {
-    struct TrackVisitor<T>(std::marker::PhantomData<T>);
-    impl<'de, T: Deserialize<'de>> serde::de::Visitor<'de> for TrackVisitor<T> {
+    bounded_values::<D, T, { hand_coordination::MAX_CONTROL_KNOTS }>(deserializer)
+}
+fn bounded_equipment_track<'de, D>(deserializer: D) -> Result<Vec<PathSample>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    bounded_values::<D, PathSample, MAX_EQUIPMENT_SAMPLES>(deserializer)
+}
+fn bounded_values<'de, D, T, const LIMIT: usize>(deserializer: D) -> Result<Vec<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    struct TrackVisitor<T, const LIMIT: usize>(std::marker::PhantomData<T>);
+    impl<'de, T: Deserialize<'de>, const LIMIT: usize> serde::de::Visitor<'de>
+        for TrackVisitor<T, LIMIT>
+    {
         type Value = Vec<T>;
         fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             f.write_str("a bounded numeric motion track")
         }
         fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Vec<T>, A::Error> {
-            let mut values = Vec::with_capacity(
-                seq.size_hint()
-                    .unwrap_or(0)
-                    .min(hand_coordination::MAX_CONTROL_KNOTS),
-            );
+            let mut values = Vec::with_capacity(seq.size_hint().unwrap_or(0).min(LIMIT));
             while let Some(value) = seq.next_element()? {
-                if values.len() >= hand_coordination::MAX_CONTROL_KNOTS {
+                if values.len() >= LIMIT {
                     return Err(serde::de::Error::custom(
                         "prepared motion track exceeds planning budget",
                     ));
@@ -49,7 +65,7 @@ where
             Ok(values)
         }
     }
-    deserializer.deserialize_seq(TrackVisitor(std::marker::PhantomData))
+    deserializer.deserialize_seq(TrackVisitor::<T, LIMIT>(std::marker::PhantomData))
 }
 fn fingerprint(value: &impl Serialize) -> String {
     let bytes = serde_json::to_vec(value).expect("validated finite worker transfer");
@@ -67,22 +83,59 @@ impl Prepared {
             &self.profile,
             &self.body_turns,
             &self.hand_swivels,
+            &self.equipment_path,
         ))
     }
 }
-pub(super) fn control_times(plan: &PerformancePlan) -> Result<Vec<f64>, String> {
-    let count = ((plan.duration + PRE_ROLL + TAIL) / hand_coordination::STEP).ceil() as usize + 1;
-    let mut times: Vec<_> = (0..count)
-        .map(|i| i as f64 * hand_coordination::STEP - PRE_ROLL)
+/// Same exact time grid for worker preparation and transfer validation.
+fn merge_times(mut samples: Vec<(f64, u8)>) -> Vec<f64> {
+    samples.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut result: Vec<(f64, u8)> = Vec::with_capacity(samples.len());
+    for sample in samples {
+        if let Some(previous) = result.last_mut().filter(|p| (p.0 - sample.0).abs() < 1e-9) {
+            if sample.1 > previous.1 {
+                *previous = sample;
+            }
+        } else {
+            result.push(sample);
+        }
+    }
+    result.into_iter().map(|s| s.0).collect()
+}
+pub(super) fn equipment_times(plan: &PerformancePlan) -> Result<Vec<f64>, String> {
+    let count = ((plan.duration + PRE_ROLL + TAIL) * 30.0).ceil() as usize + 1;
+    let mut samples: Vec<_> = (0..count)
+        .map(|i| (i as f64 / 30.0 - PRE_ROLL, 0))
         .collect();
-    times.extend(
+    samples.extend(
         plan.hits
             .iter()
             .filter(|h| h.limb.is_some_and(|l| l < 2))
-            .map(|h| h.time),
+            .map(|h| (h.time, 2)),
     );
-    times.sort_by(f64::total_cmp);
-    times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+    let times = merge_times(samples);
+    if times.len() > MAX_EQUIPMENT_SAMPLES {
+        return Err(format!("장비 경로 표본 {}개가 한계 {MAX_EQUIPMENT_SAMPLES}개를 초과합니다. 더 짧은 MIDI 구간이나 적은 트랙으로 다시 준비하세요.", times.len()));
+    }
+    Ok(times)
+}
+pub(super) fn control_times(plan: &PerformancePlan) -> Result<Vec<f64>, String> {
+    let count = ((plan.duration + PRE_ROLL + TAIL) / hand_coordination::STEP).ceil() as usize + 1;
+    let mut samples: Vec<_> = (0..count)
+        .map(|i| (i as f64 * hand_coordination::STEP - PRE_ROLL, 0))
+        .collect();
+    samples.extend(
+        plan.hits
+            .iter()
+            .filter(|h| h.limb.is_some_and(|l| l < 2))
+            .map(|h| (h.time, 2)),
+    );
+    samples.extend(
+        crate::count_in::control_times_for_plan(plan)
+            .into_iter()
+            .map(|t| (t, 1)),
+    );
+    let times = merge_times(samples);
     hand_coordination::check_control_budget(times.len())?;
     Ok(times)
 }
@@ -96,6 +149,7 @@ impl Motion {
             profile: self.profile.clone(),
             body_turns: self.body_turns.clone(),
             hand_swivels: self.hand_swivels.clone(),
+            equipment_path: self.equipment_path.clone(),
         };
         prepared.checksum = prepared.checksum();
         serde_json::to_string(&prepared).expect("validated finite worker transfer")
@@ -202,6 +256,45 @@ impl Motion {
         {
             return Err("준비된 연주의 양손 경로가 유효하지 않습니다.".into());
         }
+        let equipment_times =
+            if p.profile.is_some() && p.plan.kit.iter().any(|piece| piece.geometry.is_some()) {
+                equipment_times(&p.plan)?
+            } else {
+                Vec::new()
+            };
+        if p.equipment_path.len() != equipment_times.len()
+            || p.equipment_path
+                .iter()
+                .zip(equipment_times)
+                .any(|(s, time)| {
+                    !s.time.is_finite()
+                        || s.time.to_bits() != time.to_bits()
+                        || s.lift
+                            .iter()
+                            .any(|v| !v.is_finite() || *v < 0.0 || *v > 0.20 + 1e-9)
+                        || s.pitch
+                            .iter()
+                            .any(|v| !v.is_finite() || v.abs() > 0.60 + 1e-9)
+                })
+            || p.equipment_path.windows(2).any(|w| {
+                let dt = w[1].time - w[0].time;
+                dt <= 0.0
+                    || (0..2).any(|i| {
+                        (w[1].lift[i] - w[0].lift[i]).abs() > 1.2 * dt + 1e-9
+                            || (w[1].pitch[i] - w[0].pitch[i]).abs() > 2.0 * dt + 1e-9
+                    })
+            })
+            || p.plan.hits.iter().any(|hit| {
+                hit.limb.filter(|&l| l < 2).is_some_and(|limb| {
+                    !p.equipment_path.is_empty()
+                        && p.equipment_path
+                            .binary_search_by(|s| s.time.total_cmp(&hit.time))
+                            .map_or(true, |index| p.equipment_path[index].lift[limb] != 0.0)
+                })
+            })
+        {
+            return Err("준비된 연주의 장비 접근 경로가 유효하지 않습니다.".into());
+        }
         if let Some(profile) = &p.profile {
             for hit in &p.plan.hits {
                 if let Some(limb) = hit.limb.filter(|&limb| limb < 2) {
@@ -218,7 +311,11 @@ impl Motion {
         }
         // Reuse the complete plan/assignment/index validation path. Only expensive
         // torso/DP planning is skipped, using the already validated numeric tracks.
-        Self::assemble_with_tracks(p.plan, p.profile, Some((p.body_turns, p.hand_swivels)))
+        Self::assemble_with_tracks(
+            p.plan,
+            p.profile,
+            Some((p.body_turns, p.hand_swivels, p.equipment_path)),
+        )
     }
 }
 
@@ -258,6 +355,81 @@ mod tests {
         m.profile
             .as_ref()
             .map_or(String::new(), |p| serde_json::to_string(p).unwrap())
+    }
+    fn sample_equipment() -> Motion {
+        let original = sample(true);
+        let mut plan = original.plan;
+        plan.kit.retain(|p| p.id == "snare" || p.id == "hihat");
+        for piece in &mut plan.kit {
+            piece.geometry = Some(crate::equipment::local_geometry(piece));
+        }
+        Motion::with_profile(plan, original.profile.unwrap()).unwrap()
+    }
+    #[test]
+    fn exact_source_times_take_priority_over_nearby_sampling_grid() {
+        let mut plan = sample(false).plan;
+        plan.hits[0].time = 0.1;
+        plan.hits[0].time_us = 100_000;
+        assert_ne!(18.0f64 / 30.0 - PRE_ROLL, plan.hits[0].time);
+        for times in [
+            equipment_times(&plan).unwrap(),
+            control_times(&plan).unwrap(),
+        ] {
+            assert!(times
+                .iter()
+                .any(|t| t.to_bits() == plan.hits[0].time.to_bits()));
+            assert_eq!(times.iter().filter(|t| (**t - 0.1).abs() < 1e-9).count(), 1);
+        }
+    }
+    #[test]
+    fn equipment_tracks_transfer_exactly_and_reject_recomputed_checksum_tampering() {
+        let original = sample_equipment();
+        assert!(!original.equipment_path.is_empty());
+        let text = original.prepared_json();
+        let profile = profile_json(&original);
+        let hash = &original.plan.midi_hash;
+        let restored = Motion::from_prepared_json(&text, hash, &profile).unwrap();
+        assert_eq!(original.equipment_path, restored.equipment_path);
+        for t in [0.0, 0.1, 0.25, -0.5, 0.417, 0.75, 0.1] {
+            assert_eq!(original.evaluate_rig(t), restored.evaluate_rig(t));
+            assert_eq!(original.inspect_pose(t), restored.inspect_pose(t));
+        }
+        let prepared: Prepared = serde_json::from_str(&text).unwrap();
+        for change in 0..8 {
+            let mut edited = prepared.clone();
+            match change {
+                0 => {
+                    edited.equipment_path.pop();
+                }
+                1 => edited.equipment_path[0].time += 0.00001,
+                2 => edited.equipment_path[0].lift[0] = -0.01,
+                3 => edited.equipment_path[0].lift[0] = 0.21,
+                4 => edited.equipment_path[0].pitch[0] = 0.61,
+                5 => {
+                    edited.equipment_path[0].pitch[0] = 0.6;
+                    edited.equipment_path[1].pitch[0] = -0.6;
+                }
+                6 => {
+                    for s in &mut edited.equipment_path {
+                        s.lift = [0.01; 2];
+                    }
+                }
+                _ => {
+                    edited.equipment_path =
+                        vec![edited.equipment_path[0]; MAX_EQUIPMENT_SAMPLES + 1]
+                }
+            }
+            edited.checksum = edited.checksum();
+            assert!(
+                Motion::from_prepared_json(
+                    &serde_json::to_string(&edited).unwrap(),
+                    hash,
+                    &profile
+                )
+                .is_err(),
+                "tamper {change}"
+            );
+        }
     }
     #[test]
     fn worker_transfer_preserves_exact_poses_and_shuffled_evaluation() {

@@ -38,7 +38,6 @@ const synthesis = new SynthesisClient();
 let scene: DrumScene;
 try { scene = new DrumScene(stage); } catch { get('message').textContent = '3D 화면을 시작할 수 없습니다. WebGL을 지원하는 최신 브라우저를 사용해 주세요.'; throw new Error('WebGL unavailable'); }
 const defaultKit = scene.getKitLayout();
-void engine.setSetup(scene.getRigProfile(), defaultKit).catch(error=>message(String(error),true));
 let plan: PerformancePlan | null = null;
 let bytes: Uint8Array | null = null;
 let audio: DrumAudio | null = null;
@@ -152,9 +151,10 @@ async function applyCalibration(seat: HumanoidCalibration, kit: KitPiece[], feed
   const time=audio?.pause()??0;
   if(!automatic){modelBusy=true;controls();}
   try {
+    kit=scene.measureKitLayout(kit);
     const profile=scene.measureCalibration(seat,kit);
     staged=await prepareSetupInBackground(profile,kit);
-    sceneChanged=true;scene.setKitLayout(kit);scene.setCalibration(seat);
+    sceneChanged=true;scene.setKitLayout(kit);scene.setCalibration(seat);await scene.whenEquipmentReady();
     const next=staged.commit();
     if(next&&plan){plan=next;scene.setPlan(plan);timeline.setPlan(plan);renderDiagnostics();updateFrame(time);}
     if(!automatic){fitBaseline=structuredClone(kit);preFitSetup=null;}
@@ -320,27 +320,56 @@ get('character-reset').onclick=async()=>{
   catch(error){if(!adopted)adapter.dispose();get('character-message').textContent=String(error);}
   finally{modelBusy=false;controls();status(plan?'일시정지':'대기');}
 };
+async function synchronizeEquipmentAppearance() {
+  await scene.whenEquipmentReady();
+  const measured=scene.getKitLayout();
+  const baseline=scene.measureKitLayout(fitBaseline);
+  const seat={...scene.rig.getAutomaticCalibration(baseline),palmOrientation:scene.getCalibration().palmOrientation};
+  const result=await prepareAutomaticFit(scene.measureCalibration(seat,baseline),baseline,measured,fitInBackground);
+  const chosenSeat=result.applied?seat:scene.getCalibration();
+  if(!await applyCalibration(chosenSeat,result.kit,'model-message',true))throw new Error('새 악기 치수로 연주를 다시 준비하지 못했습니다.');
+  await scene.whenEquipmentReady();
+  fitBaseline=structuredClone(baseline);preFitSetup=null;
+  showFitResult(result);await refreshIdlePose();
+  const unresolved=scene.getEquipmentDiagnostics();
+  if(unresolved.length)message(`악기·받침대 배치 확인 필요: ${unresolved.join(', ')}`,true);
+}
+async function changeEquipment(change:()=>void|Promise<unknown>, commit:()=>void=()=>{}) {
+  if(busy||exporting||modelBusy)return false;
+  audio?.pause();modelBusy=true;controls();
+  const previous={kit:scene.getKitLayout(),seat:scene.getCalibration(),baseline:fitBaseline,undo:preFitSetup,proposal:fitProposal,state:fitState};
+  let rollback:Awaited<ReturnType<DrumScene['prepareProjectAppearance']>>|null=null,changed=false;
+  try {
+    const parts=new Map<PieceId,File>();for(const ref of sourceReferences)if(ref.kind==='drumPart'){const file=projectFiles.get(ref.sha256);if(file)parts.set(ref.pieceId!,file);}
+    rollback=await scene.prepareProjectAppearance(committedPreset as KitPresetId,previous.kit.filter(piece=>!['openHat','pedalHat'].includes(piece.id)).map(piece=>({id:piece.id,settings:scene.getPieceVisual(piece.id)})),parts);
+    changed=true;await change();await synchronizeEquipmentAppearance();commit();refreshPiece();return true;
+  }
+  catch(error){
+    if(changed&&rollback){rollback.apply(previous.kit);scene.setCalibration(previous.seat);await scene.whenEquipmentReady();fitBaseline=previous.baseline;preFitSetup=previous.undo;fitProposal=previous.proposal;fitState=previous.state;refreshFitState();refreshCalibration();refreshTarget();refreshPiece();if(plan)updateFrame(audio?.currentTime??0);else await refreshIdlePose();}
+    get('model-message').textContent=String(error);return false;
+  }
+  finally{rollback?.dispose();modelBusy=false;controls();status(plan?'일시정지':'대기');}
+}
 get<HTMLSelectElement>('kit-preset').onchange=async e=>{
-  const input=e.target as HTMLSelectElement;
-  modelBusy=true;controls();get('model-message').textContent='드럼 모델을 준비하고 있습니다…';
-  try {await scene.setKitPreset(input.value as KitPresetId);committedPreset=input.value;sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart');refreshPiece();get('model-message').textContent=({library:'Innerscene · CC0',batoski:'Batoski · CC BY 3.0',smoj:'smoj · CC BY 3.0'} as Record<string,string>)[input.value] ?? '자체 생성 도형 · 부품별로 외형을 변경할 수 있습니다.';}
-  catch(error){input.value=committedPreset;get('model-message').textContent=`모델 로딩 실패: ${error instanceof Error?error.message:String(error)}`;}
-  finally{modelBusy=false;controls();}
+  const input=e.target as HTMLSelectElement,preset=input.value as KitPresetId;
+  get('model-message').textContent='드럼 모델을 준비하고 있습니다…';
+  if(await changeEquipment(()=>scene.setKitPreset(preset),()=>{committedPreset=preset;sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart');}))get('model-message').textContent=({library:'Innerscene · CC0',batoski:'Batoski · CC BY 3.0',smoj:'smoj · CC BY 3.0'} as Record<string,string>)[preset] ?? '자체 생성 도형 · 부품별로 외형을 변경할 수 있습니다.';
+  input.value=committedPreset;
 };
 get<HTMLSelectElement>('piece').onchange=()=>{scene.selectPiece(selectedPiece());get<HTMLSelectElement>('target-piece').value=selectedPiece();refreshPiece();refreshTarget();};
 scene.onPieceSelect=id=>{if(!id)return;get<HTMLSelectElement>('piece').value=id==='openHat'||id==='pedalHat'?'hihat':id;get<HTMLSelectElement>('target-piece').value=id==='openHat'?'hihat':id;refreshPiece();refreshTarget();};
-get<HTMLSelectElement>('piece-model').onchange=e=>{scene.setPieceVisual(selectedPiece(),{model:(e.target as HTMLSelectElement).value as 'standard'|'deep'|'compact'});sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart'||ref.pieceId!==selectedPiece());refreshPiece();};
+get<HTMLSelectElement>('piece-model').onchange=e=>{const id=selectedPiece(),model=(e.target as HTMLSelectElement).value as 'standard'|'deep'|'compact';void changeEquipment(()=>scene.setPieceVisual(id,{model}),()=>{sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart'||ref.pieceId!==id);});};
 get<HTMLInputElement>('piece-finish').oninput=e=>scene.setPieceVisual(selectedPiece(),{finish:(e.target as HTMLInputElement).value});
-get<HTMLInputElement>('piece-scale').oninput=e=>{const scale=Number((e.target as HTMLInputElement).value);scene.setPieceVisual(selectedPiece(),{scale});get('piece-scale-value').textContent=`${Math.round(scale*100)}%`;};
-get('piece-reset').onclick=()=>{scene.resetPieceVisual(selectedPiece());sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart'||ref.pieceId!==selectedPiece());refreshPiece();get('model-message').textContent='선택한 부품을 프리셋 상태로 복원했습니다.';};
-get<HTMLInputElement>('piece-rotation').oninput=e=>{const rotation=Number((e.target as HTMLInputElement).value);scene.setPieceVisual(selectedPiece(),{rotation});get('piece-rotation-value').textContent=`${rotation}°`;};
+get<HTMLInputElement>('piece-scale').oninput=e=>{get('piece-scale-value').textContent=`${Math.round(Number((e.target as HTMLInputElement).value)*100)}%`;};
+get<HTMLInputElement>('piece-scale').onchange=e=>void changeEquipment(()=>scene.setPieceVisual(selectedPiece(),{scale:Number((e.target as HTMLInputElement).value)}));
+get('piece-reset').onclick=()=>{const id=selectedPiece();void changeEquipment(()=>scene.resetPieceVisual(id),()=>{sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart'||ref.pieceId!==id);});};
+get<HTMLInputElement>('piece-rotation').oninput=e=>{get('piece-rotation-value').textContent=`${(e.target as HTMLInputElement).value}°`;};
+get<HTMLInputElement>('piece-rotation').onchange=e=>void changeEquipment(()=>scene.setPieceVisual(selectedPiece(),{rotation:Number((e.target as HTMLInputElement).value)}));
 get('piece-import').onclick=()=>get<HTMLInputElement>('model-file').click();
 get<HTMLInputElement>('model-file').onchange=async e=>{
   const input=e.target as HTMLInputElement;const file=input.files?.[0];input.value='';if(!file)return;
-  modelBusy=true;controls();get('model-message').textContent='GLB를 불러오는 중…';
-  try{const id=selectedPiece(),reference=await fileReference('drumPart',file,id),result=await scene.loadPieceModel(id,file);commitProjectFile(reference,file);get('model-message').textContent=`${result.fileName} · 자동 크기 맞춤 (타점 확인 필요)`;refreshPiece();}
-  catch(error){get('model-message').textContent=error instanceof Error?error.message:String(error);}
-  finally{modelBusy=false;controls();}
+  get('model-message').textContent='GLB를 불러오는 중…';const id=selectedPiece();let reference:ProjectAsset;
+  if(await changeEquipment(async()=>{reference=await fileReference('drumPart',file,id);await scene.loadPieceModel(id,file);},()=>{commitProjectFile(reference,file);}))get('model-message').textContent=`${file.name} · 자동 크기 맞춤 (타점 확인 필요)`;
 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let responseChosen = false;
@@ -460,9 +489,10 @@ function renderDiagnostics() {
   const countIn = interpretations.filter(event=>event.kind==='countIn').length;
   const unmapped = interpretations.filter(event=>event.kind==='unmapped').length;
   const omitted=interpretations.filter(event=>event.kind==='omitted').length;
-  const warnings=unmapped+unresolved;get('analysis-badge').textContent=warnings?` ${warnings}`:'';get('analysis-badge').hidden=!warnings;
-  get('analysis-summary').textContent=warnings?`미매핑 ${unmapped}개 · 동작 미배정 ${unresolved}개`:'모든 타격에 동작이 배정되었습니다. 경로 검수는 별도로 실행하세요.';
-  get('source-summary').textContent=warnings?`확인할 타격 ${warnings}개 · 분석에서 확인하세요.`:'';get('source-analysis').hidden=!warnings;
+  const pathWarnings=plan.diagnostics.filter(d=>['BODY_PATH_CLEARANCE','EQUIPMENT_PATH_CLEARANCE','EQUIPMENT_LAYOUT_CLEARANCE','COUNT_IN_GESTURE_UNAVAILABLE'].includes(d.code)).length;
+  const warnings=unmapped+unresolved+pathWarnings;get('analysis-badge').textContent=warnings?` ${warnings}`:'';get('analysis-badge').hidden=!warnings;
+  get('analysis-summary').textContent=warnings?`미매핑 ${unmapped}개 · 동작 미배정 ${unresolved}개 · 경로 진단 ${pathWarnings}개`:'모든 타격에 동작이 배정되었습니다. 경로 검수는 별도로 실행하세요.';
+  get('source-summary').textContent=warnings?`확인할 항목 ${warnings}개 · 분석에서 확인하세요.`:'';get('source-analysis').hidden=!warnings;
   get('interpretation-summary').textContent = `${plan.mappingProfile==='logicDkdGm'?'Logic DKD · GM':'General MIDI'} · 카운트인 ${countIn}개 · 제어 ${interpretations.filter(event=>event.kind==='control').length}개 · 미매핑 ${unmapped}개 · 제외 ${omitted}개 · 손 지정 ${Object.keys(plan.handOverrides??{}).length}개 · 동작 미배정 ${unresolved}개`;
   get('diagnostics').hidden = !plan.diagnostics.length;
   get('diagnostic-summary').textContent = `분석 알림 ${plan.diagnostics.length}개${unresolved?` · 표현하지 못한 타격 ${unresolved}개`:''}`;
@@ -677,7 +707,7 @@ function currentReviewMeasurement() {
   const outputTime=audio?.pause()??0,songTime=outputTime-PRE_ROLL;
   updateFrame(outputTime);
   const contacts=scene.getRigContactSamples(),pose=engine.evaluate(songTime),proxy=engine.inspectPose(songTime);
-  get('review-measurement').textContent=`곡 ${songTime.toFixed(3)}초 · ${contacts.map(sample=>`${['L 스틱','R 스틱','L 발','R 발'][sample.limb]} ${(sample.errorMeters*1000).toFixed(2)} mm`).join(' · ')}${proxy?` · 근사 간격: 몸통 ${(proxy.torsoClearanceMeters*100).toFixed(1)} cm / 양팔 ${(proxy.armClearanceMeters*100).toFixed(1)} cm / 스틱 ${(proxy.stickClearanceMeters*100).toFixed(1)} cm (음수는 침범 후보)` : ''}`;
+  get('review-measurement').textContent=`곡 ${songTime.toFixed(3)}초 · ${contacts.map(sample=>`${['L 스틱','R 스틱','L 발','R 발'][sample.limb]} ${(sample.errorMeters*1000).toFixed(2)} mm`).join(' · ')}${proxy?` · 근사 간격: 몸통 ${(proxy.torsoClearanceMeters*100).toFixed(1)} cm / 양팔 ${(proxy.armClearanceMeters*100).toFixed(1)} cm / 스틱 ${(proxy.stickClearanceMeters*100).toFixed(1)} cm${proxy.equipmentClearanceMeters!==undefined?` / 장비 ${(proxy.equipmentClearanceMeters*100).toFixed(1)} cm`:''}${proxy.intentionalStickContact?' · 카운트인 끝 접촉':''} (음수는 침범 후보)` : ''}`;
   return { songTime, outputTime, contacts, proxy, pose:pose?Array.from(pose):null, sampledReview:poseReview };
 }
 get('review-current').onclick=()=>{if(plan&&!busy&&!exporting&&!modelBusy){currentReviewMeasurement();status('일시정지');}};
@@ -779,10 +809,11 @@ async function restorePendingProject() {
     const nextBuffer=aligned?.buffer??await synthesis.run(nextPlan);
     const parts=new Map<PieceId,File>();for(const ref of project.assets)if(ref.kind==='drumPart')parts.set(ref.pieceId!,projectFiles.get(ref.sha256)!);
     preparedAppearance=await scene.prepareProjectAppearance(project.appearance.preset,project.appearance.pieces,parts);
-    // Every file, setting and Rust plan has passed before replacing the session.
+    preparedAppearance.validateLayout(project.kit);
+    // Every file, setting, measured body and Rust plan has passed before replacing the session.
     const restored=await engine.restorePlan(project.plan,profile,project.kit);
-    audio?.pause();openPanel('source');scene.setKitLayout(project.kit);scene.setRig(adapter);adapter=null;
-    scene.setCalibration(project.calibration);preparedAppearance.apply();preparedAppearance=null;
+    audio?.pause();openPanel('source');preparedAppearance.apply(project.kit);preparedAppearance=null;scene.setRig(adapter);adapter=null;
+    scene.setCalibration(project.calibration);await scene.whenEquipmentReady();
     plan=restored;bytes=midiBytes;fileName=midiFile.name;preparedSelection=structuredClone(project.selection);arrangement=arrangementOf(restored);sourceReferences=structuredClone(project.assets);
     wav=nextWav;wavOffset=project.audio.offsetSeconds;wavAlignmentInfo=aligned?.info;
     committedPreset=project.appearance.preset;get<HTMLSelectElement>('kit-preset').value=committedPreset;
@@ -876,5 +907,13 @@ document.addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|SELECT|BUTT
 const resizeObserver=new ResizeObserver(()=>{if(!exporting){scene.resize();timeline.resize();}});resizeObserver.observe(get('stage-view'));
 let disposed=false;
 function tick(){if(disposed)return;if(!exporting){const time=audio?.currentTime??0;if(plan){updateFrame(time);get<HTMLInputElement>('seek').value=String(time);get('current-time').textContent=clockText(time);timeline.setTime(time);const playing=audio?.playing??false;if(get('play').dataset.icon!==(playing?'pause':'play')){setButtonIcon(get('play'),playing?'pause':'play');get('play').setAttribute('aria-label',playing?'일시정지':'재생');}if(!playing&&get('status').classList.contains('playing'))status(time>=outputDuration(plan)-.02?'연주 완료':'일시정지',time>=outputDuration(plan)-.02?'ready':'');}scene.render();}requestAnimationFrame(tick);}tick();
-controls();timeline.resize();setCharacterDisplay('skeleton');void autoFitCurrent();
+controls();timeline.resize();setCharacterDisplay('skeleton');
+async function initializeStudio() {
+  modelBusy=true;controls();
+  try{await scene.whenEquipmentReady();await engine.setSetup(scene.getRigProfile(),scene.getKitLayout());}
+  catch(error){message(String(error),true);return;}
+  finally{modelBusy=false;controls();}
+  await autoFitCurrent();
+}
+void initializeStudio();
 window.addEventListener('beforeunload',()=>{disposed=true;demoController?.abort();engine.dispose();synthesis.cancel();audio?.dispose();scene.dispose();timeline.dispose();resizeObserver.disconnect();clearTimeout(toastTimer);if(downloadUrl)URL.revokeObjectURL(downloadUrl);});

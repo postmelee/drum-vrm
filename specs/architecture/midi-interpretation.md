@@ -115,7 +115,11 @@ from identifying an event as a rimshot.
 explicitly interprets note 75 as a count-in cue. The source event is retained, but
 no drum hit, limb assignment or synthesized strike is added. A different file can
 use that note as played percussion, so this choice must remain visible and reversible.
-It is not automatic count-in detection or a stick-click animation.
+It is not automatic count-in detection. The
+[explicit count-in gesture](equipment-contact.md#explicit-stick-to-stick-count-in)
+can bring both actual tips together when the hands and body/equipment constraints
+permit it. This separate presentation track does not create a drum `Hit` or change
+the source cue; failed gestures remain diagnostics.
 
 ## Explicit arrangement edits
 

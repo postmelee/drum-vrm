@@ -3,7 +3,7 @@
 use crate::model::{Instrument, KitPiece, Vec3};
 use crate::rig::RigProfile;
 use serde::Serialize;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug, Serialize)]
@@ -22,19 +22,37 @@ pub struct KitFitProposal {
     pub clearance_piece_ids: Vec<String>,
     pub complete: bool,
     pub piece_adjustments: Vec<PieceAdjustment>,
+    pub search_candidates: usize,
+    pub search_limit_reached: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<crate::posture::Capabilities>,
 }
 /// Exact candidate memoization is local to one immutable profile/fit request.
 /// It changes neither arithmetic nor search ordering. Bounded storage prevents
 /// pathological custom kits from turning this optimization into unbounded work.
+pub const MAX_FIT_LAYOUT_CANDIDATES: usize = 80_000;
 #[derive(Default)]
 struct FitCache {
+    candidates: Cell<usize>,
+    exhausted: Cell<bool>,
     hands: RefCell<HashMap<(usize, [u64; 3]), bool>>,
     pairs: RefCell<HashMap<[u64; 6], bool>>,
 }
 impl FitCache {
     const LIMIT: usize = 100_000;
+    fn candidate(&self) -> bool {
+        if self.candidates.get() >= MAX_FIT_LAYOUT_CANDIDATES {
+            self.exhausted.set(true);
+            return false;
+        }
+        self.candidates.set(self.candidates.get() + 1);
+        true
+    }
+    fn finish(&self, mut result: KitFitProposal) -> KitFitProposal {
+        result.search_candidates = self.candidates.get();
+        result.search_limit_reached = self.exhausted.get();
+        result
+    }
     fn hand(&self, profile: &RigProfile, limb: usize, target: Vec3) -> bool {
         let key = (limb, target.map(f64::to_bits));
         if let Some(&result) = self.hands.borrow().get(&key) {
@@ -61,23 +79,32 @@ impl FitCache {
 fn hand_piece(piece: &KitPiece) -> bool {
     !matches!(piece.instrument, Instrument::Kick | Instrument::PedalHat)
 }
+fn fit_yaws(profile: &RigProfile) -> &'static [f64] {
+    // Same range as phrase-facing. One yaw must support all three probes;
+    // target-to-target transitions remain a separate temporal constraint.
+    if profile.torso_pivot.is_some() {
+        &[0.0, -0.12, 0.12, -0.24, 0.24]
+    } else {
+        &[0.0]
+    }
+}
 fn hand_posture_fits(profile: &RigProfile, limb: usize, target: Vec3) -> bool {
-    if !profile.reachable(limb, target) {
-        return false;
-    }
     if profile.hand_frames.is_none() {
-        return true;
+        return profile.reachable(limb, target);
     }
-    // The same elbow candidates and geometry serve fit, capability inspection
-    // and coordinated motion; a bad default swivel is not proof of no posture.
-    [(0.0, 0.0), (0.055, -0.2), (0.11, -0.42)]
-        .iter()
-        .all(|&(lift, pitch)| {
-            let raised = [target[0], target[1] + lift, target[2]];
-            crate::posture::hand_candidates(profile, limb, raised, pitch)
-                .next()
-                .is_some()
-        })
+    fit_yaws(profile).iter().any(|&yaw| {
+        let turned = profile.turned(yaw);
+        [(0.0, 0.0), (0.055, -0.2), (0.11, -0.42)]
+            .iter()
+            .all(|&(lift, pitch)| {
+                let raised = [target[0], target[1] + lift, target[2]];
+                crate::equipment_motion::PITCH_OFFSETS.iter().any(|delta| {
+                    crate::posture::hand_candidates(&turned, limb, raised, pitch + delta)
+                        .next()
+                        .is_some()
+                })
+            })
+    })
 }
 fn preferred_hands(piece: &KitPiece) -> &'static [usize] {
     match piece.instrument {
@@ -90,85 +117,69 @@ fn preferred_hands(piece: &KitPiece) -> &'static [usize] {
         _ => &[],
     }
 }
-/// Nominal procedural envelopes match `pieceBodyEnvelope` in kit-hardware.ts.
-/// Cylinders include rim/lug allowance. The kick uses a conservative circumscribed
-/// footprint; cosmetic overrides and skinned avatars are outside this certificate.
-#[derive(Clone, Copy)]
-struct BodyEnvelope {
-    center: Vec3,
-    radius: f64,
-    min_y: f64,
-    max_y: f64,
+fn default_target(profile: &RigProfile, piece: &KitPiece) -> Vec3 {
+    let observer =
+        std::array::from_fn(|axis| (profile.roots[0][axis] + profile.roots[1][axis]) * 0.5);
+    let articulation = match piece.instrument {
+        Instrument::Crash => "crash",
+        Instrument::Ride => "outer",
+        _ => "center",
+    };
+    crate::contact::target(piece, articulation, observer)
 }
-fn body_envelope(piece: &KitPiece) -> Option<BodyEnvelope> {
-    use Instrument::*;
-    let [x, y, z] = piece.position;
-    if matches!(piece.instrument, OpenHat | PedalHat) {
-        return None;
-    }
-    if piece.instrument == Kick {
-        return Some(BodyEnvelope {
-            center: [x, piece.radius + 0.018, z + 0.34],
-            radius: (piece.radius + 0.017).hypot(0.22),
-            min_y: 0.0,
-            max_y: 2.0 * piece.radius + 0.035,
-        });
-    }
-    let cymbal = matches!(piece.instrument, Hihat | Crash | Ride);
-    Some(BodyEnvelope {
-        center: [x, y, z + if cymbal { piece.radius * 0.5 } else { 0.0 }],
-        radius: piece.radius + if cymbal { 0.001 } else { 0.014 },
-        min_y: y - if cymbal {
-            if piece.instrument == Hihat {
-                0.045
-            } else {
-                0.02
-            }
-        } else {
-            match piece.instrument {
-                Snare => 0.135,
-                TomLow => 0.295,
-                _ => 0.225,
-            }
-        },
-        max_y: y + if cymbal { 0.05 } else { 0.008 },
+/// Fit all designated hands against the complete shaft and rigid equipment in
+/// impact, preparation and recovery probes. Pitch candidates are common numeric
+/// alternatives; no source hit time or bone dimension changes.
+fn equipment_posture_fits(
+    profile: &RigProfile,
+    piece: &KitPiece,
+    ctx: &crate::equipment_motion::EquipmentContext,
+) -> bool {
+    let target = default_target(profile, piece);
+    preferred_hands(piece).iter().all(|&limb| {
+        fit_yaws(profile).iter().any(|&yaw| {
+            let turned = profile.turned(yaw);
+            [(0.0, 0.0), (0.055, -0.2), (0.11, -0.42)]
+                .iter()
+                .all(|&(lift, pitch)| {
+                    let raised = [target[0], target[1] + lift, target[2]];
+                    crate::equipment_motion::PITCH_OFFSETS.iter().any(|&delta| {
+                        crate::posture::hand_candidates(&turned, limb, raised, pitch + delta).any(
+                            |hand| {
+                                crate::equipment_motion::hand_clearance(
+                                    &turned,
+                                    limb,
+                                    &hand,
+                                    ctx,
+                                    Some(piece.id.as_str()),
+                                ) >= crate::posture::MARGIN
+                            },
+                        )
+                    })
+                })
+        })
     })
 }
-fn bodies_clear(a: BodyEnvelope, b: BodyEnvelope) -> bool {
-    let vertical = a.min_y.max(b.min_y) - a.max_y.min(b.max_y);
-    let horizontal =
-        (a.center[0] - b.center[0]).hypot(a.center[2] - b.center[2]) - a.radius - b.radius;
-    vertical.max(horizontal) >= 0.005 - 1e-9
-}
+/// Static equipment, playable head approaches and all supports use the same
+/// numeric geometry that the renderer and temporal inspector consume.
 fn piece_clear(index: usize, kit: &[KitPiece]) -> bool {
-    let Some(body) = body_envelope(&kit[index]) else {
+    let piece = &kit[index];
+    let Some(body) = crate::equipment::body(piece) else {
         return true;
     };
-    kit.iter().enumerate().all(|(other, p)| {
-        if other == index {
-            return true;
-        }
-        let Some(obstacle) = body_envelope(p) else {
-            return true;
-        };
-        if !bodies_clear(body, obstacle) {
-            return false;
-        }
-        // A hi-hat pull rod cannot use the movable boom of crash/ride stands.
-        let straight_clear = |hat: BodyEnvelope, obstacle: BodyEnvelope| {
-            obstacle.min_y > hat.center[1] + 0.09
-                || (hat.center[0] - obstacle.center[0]).hypot(hat.center[2] - obstacle.center[2])
-                    >= obstacle.radius + 0.025
-        };
-        (kit[index].instrument != Instrument::Hihat || straight_clear(body, obstacle))
-            && (p.instrument != Instrument::Hihat || straight_clear(obstacle, body))
-    })
+    if kit.iter().enumerate().any(|(other, p)| {
+        other != index
+            && crate::equipment::body(p).is_some_and(|obstacle| {
+                !crate::equipment::boxes_clear(&body, &obstacle)
+                    || !crate::equipment::playable_pair(piece, p)
+            })
+    }) {
+        return false;
+    }
+    true
 }
 pub fn kit_clearance_ids(kit: &[KitPiece]) -> Vec<String> {
-    (0..kit.len())
-        .filter(|&i| !piece_clear(i, kit))
-        .map(|i| kit[i].id.clone())
-        .collect()
+    crate::equipment::kit_geometry(kit).unresolved_piece_ids
 }
 /// A comfortable reference is derived from the seated body before placing the
 /// snare. It is a soft search center, not a universal anatomical angle.
@@ -209,7 +220,7 @@ fn piece_posture_fits(profile: &RigProfile, piece: &KitPiece, cache: &FitCache) 
     snare_ready_fits_cached(profile, piece, cache)
         && preferred_hands(piece)
             .iter()
-            .all(|&limb| cache.hand(profile, limb, piece.position))
+            .all(|&limb| cache.hand(profile, limb, default_target(profile, piece)))
 }
 fn missed(profile: &RigProfile, kit: &[KitPiece], posture: bool) -> Vec<String> {
     let cache = FitCache::default();
@@ -218,9 +229,9 @@ fn missed(profile: &RigProfile, kit: &[KitPiece], posture: bool) -> Vec<String> 
             (posture && !snare_ready_fits_cached(profile, piece, &cache))
                 || preferred_hands(piece).iter().any(|&limb| {
                     if posture {
-                        !hand_posture_fits(profile, limb, piece.position)
+                        !hand_posture_fits(profile, limb, default_target(profile, piece))
                     } else {
-                        !profile.reachable(limb, piece.position)
+                        !profile.reachable(limb, default_target(profile, piece))
                     }
                 })
         })
@@ -250,6 +261,7 @@ pub(crate) fn valid(kit: &[KitPiece]) -> bool {
                 && piece.radius.is_finite()
                 && piece.radius > 0.0
                 && piece.radius <= 1.0
+                && crate::equipment::valid_piece_geometry(piece)
         })
 }
 fn proposal(
@@ -268,6 +280,8 @@ fn proposal(
         unreachable_piece_ids,
         clearance_piece_ids,
         piece_adjustments: Vec::new(),
+        search_candidates: 0,
+        search_limit_reached: false,
         capabilities: None,
     }
 }
@@ -294,95 +308,117 @@ fn shift_cost(translation: Vec3) -> f64 {
 /// Prefer the largest kit, then the smallest common translation, with a bounded
 /// search. A completed proposal is idempotent; incomplete results stay explicit.
 /// `complete` means designated hands pass sampled contact/preparation guards,
-/// nominal bodies remain separated and the hi-hat pull rod clears those bodies.
-/// It does not certify whole motion paths, cosmetic variants or skinned meshes.
+/// measured/default rigid body proxies and every generated support remain clear,
+/// and drumhead approach regions are accessible. It does not certify whole
+/// motion paths or skinned meshes; those require separate temporal inspection.
 fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal, String> {
     profile.validate()?;
     if !valid(kit) {
         return Err("키트 배치가 지원 범위를 벗어납니다.".into());
     }
+    // Freeze physical dimensions before any radius change. Without a reference
+    // descriptor, shrinking radius left legacy depth unchanged in both fitting
+    // and rendering. Every candidate now scales the complete rigid body.
+    let measured: Vec<_> = kit
+        .iter()
+        .map(|piece| {
+            let mut next = piece.clone();
+            next.geometry = Some(crate::equipment::local_geometry(piece));
+            next
+        })
+        .collect();
+    let kit = measured.as_slice();
     let cache = FitCache::default();
     let original = proposal(profile, kit.to_vec(), 1.0, [0.0; 3]);
-    if original.complete {
-        let repaired = repair_posture(profile, original.clone(), &cache);
-        if repaired.complete {
-            return Ok(repaired);
-        }
+    let repaired = repair_posture(profile, original.clone(), &cache);
+    if repaired.complete {
+        return Ok(cache.finish(repaired));
     }
-    let height_delta = (profile.roots[0][1] + profile.roots[1][1]) * 0.5 - 1.235;
     let reference = snare_reference(profile);
-    let snare = kit
-        .iter()
-        .find(|piece| piece.instrument == Instrument::Snare);
-    let snare_height = snare.map_or(0.0, |piece| reference[1] - piece.position[1]);
-    let mut heights = vec![0.0, snare_height.clamp(-0.5, 0.5)];
-    for step in -4..=4 {
-        heights.push(height_delta + step as f64 * 0.03);
-    }
-    heights.sort_by(|a, b| a.abs().total_cmp(&b.abs()));
-    heights.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
-    for step in 0..=20 {
-        let scale = 1.0 - step as f64 * 0.02;
-        let mut completed: Option<KitFitProposal> = None;
-        for &height in &heights {
-            // Keep even an extreme custom body from requesting an unbounded shift.
-            if height.abs() > 0.5 {
+    let height_delta = (profile.roots[0][1] + profile.roots[1][1]) * 0.5 - 1.235;
+    let attempt = |scale: f64| -> Option<KitFitProposal> {
+        let scaled = transform(kit, scale, [0.0; 3]);
+        let snare = scaled.iter().find(|p| p.instrument == Instrument::Snare);
+        let dy = snare
+            .map_or(height_delta, |p| reference[1] - p.position[1])
+            .clamp(-0.5, 0.5);
+        let dz = snare
+            .map_or(0.0, |p| reference[2] - p.position[2])
+            .clamp(-0.25, 0.10);
+        // A posture anchor and one untranslated-forward alternative replace the
+        // old exhaustive translation product. Failed search remains explicit;
+        // this is not a proof that every larger physical kit is impossible.
+        let mut translations = vec![[0.0, dy, dz], [0.0, dy, 0.0]];
+        translations.dedup();
+        for translation in translations {
+            if cache.exhausted.get() {
+                return None;
+            }
+            let adjusted = transform(kit, scale, translation);
+            if !valid(&adjusted) {
                 continue;
             }
-            for forward in -10..=4 {
-                let translation = [0.0, height, forward as f64 * 0.025];
-                let cost = |proposal: &KitFitProposal| {
-                    shift_cost(proposal.translation) * kit.len() as f64
-                        + proposal
-                            .piece_adjustments
-                            .iter()
-                            .map(|p| shift_cost(p.translation))
-                            .sum::<f64>()
-                };
-                if completed
-                    .as_ref()
-                    .is_some_and(|old| shift_cost(translation) * kit.len() as f64 >= cost(old))
-                {
-                    continue;
-                }
-                let adjusted = transform(kit, scale, translation);
-                if !valid(&adjusted) {
-                    continue;
-                }
-                let candidate = proposal(profile, adjusted, scale, translation);
-                if candidate.complete {
-                    let candidate = repair_posture(profile, candidate, &cache);
-                    if !candidate.complete {
-                        continue;
-                    }
-                    if completed
-                        .as_ref()
-                        .is_none_or(|old| cost(&candidate) < cost(old))
-                    {
-                        completed = Some(candidate);
-                    }
-                }
+            let candidate = repair_posture(
+                profile,
+                proposal(profile, adjusted, scale, translation),
+                &cache,
+            );
+            if candidate.complete {
+                return Some(candidate);
             }
         }
-        if let Some(completed) = completed {
-            return Ok(completed);
+        None
+    };
+    let mut previous = 1.0;
+    for scale in [1.0, 0.92, 0.84, 0.76, 0.68, 0.60] {
+        if cache.exhausted.get() {
+            break;
         }
+        if let Some(mut complete) = attempt(scale) {
+            // At most three fine probes recover larger safe dimensions between
+            // the preceding coarse failure and the first coarse success.
+            let mut finer = previous - 0.02;
+            while finer > scale + 1e-9 && !cache.exhausted.get() {
+                if let Some(candidate) = attempt(finer) {
+                    complete = candidate;
+                    break;
+                }
+                finer -= 0.02;
+            }
+            return Ok(cache.finish(complete));
+        }
+        previous = scale;
     }
     let mut unchanged = original;
     unchanged.unreachable_piece_ids = missed(profile, kit, true);
+    add_equipment_misses(profile, &mut unchanged);
     unchanged.clearance_piece_ids = kit_clearance_ids(kit);
     unchanged.complete = unchanged.unreachable_piece_ids.is_empty()
         && unchanged.clearance_piece_ids.is_empty()
         && crate::posture::required_pairs(profile, &unchanged.kit).is_empty();
-    Ok(unchanged)
+    Ok(cache.finish(unchanged))
 }
 /// First retain the original bounded uniform reach fit, then repair only
 /// surfaces that fail the common posture guard. No partial unsafe proposal is
 /// applied: failure returns the original layout with explicit offending IDs.
 fn repair_posture(
     profile: &RigProfile,
+    result: KitFitProposal,
+    cache: &FitCache,
+) -> KitFitProposal {
+    let first = repair_posture_order(profile, result.clone(), cache, false);
+    if first.complete || cache.exhausted.get() {
+        return first;
+    }
+    // A rack-first alternative avoids locking a floor tom into the rack's only
+    // usable corridor. Both orders share exactly the same finite work budget.
+    repair_posture_order(profile, result, cache, true)
+}
+fn repair_posture_order(
+    profile: &RigProfile,
     mut result: KitFitProposal,
     cache: &FitCache,
+    rack_first: bool,
 ) -> KitFitProposal {
     // Solve the supported ready surface first. A later target repair must keep
     // already placed bodies clear instead of fixing one hand by intersecting a tom.
@@ -392,15 +428,49 @@ fn repair_posture(
     order.sort_by_key(|&i| match result.kit[i].instrument {
         Instrument::Snare => 0,
         Instrument::Hihat | Instrument::OpenHat => 1,
-        Instrument::TomLow => 2,
-        Instrument::TomHigh => 3,
-        Instrument::TomMid => 4,
+        Instrument::TomLow => {
+            if rack_first {
+                4
+            } else {
+                2
+            }
+        }
+        Instrument::TomHigh => {
+            if rack_first {
+                2
+            } else {
+                3
+            }
+        }
+        Instrument::TomMid => {
+            if rack_first {
+                3
+            } else {
+                4
+            }
+        }
         _ => 5,
     });
     let mut locked: Vec<usize> = (0..result.kit.len())
         .filter(|&i| !hand_piece(&result.kit[i]))
         .collect();
     for index in order {
+        if !cache.candidate() {
+            break;
+        }
+        let clear_locked = |candidate: &[KitPiece]| {
+            let piece = &candidate[index];
+            let Some(body) = crate::equipment::body(piece) else {
+                return true;
+            };
+            locked.iter().all(|&i| {
+                i == index
+                    || crate::equipment::body(&candidate[i]).is_none_or(|obstacle| {
+                        crate::equipment::boxes_clear(&body, &obstacle)
+                            && crate::equipment::playable_pair(piece, &candidate[i])
+                    })
+            })
+        };
         let against_locked = |candidate: &[KitPiece]| {
             let mut fixed: Vec<KitPiece> = locked
                 .iter()
@@ -408,7 +478,16 @@ fn repair_posture(
                 .map(|&i| candidate[i].clone())
                 .collect();
             fixed.push(candidate[index].clone());
-            piece_clear(fixed.len() - 1, &fixed)
+            if !piece_clear(fixed.len() - 1, &fixed) {
+                return false;
+            }
+            let geometry = crate::equipment::kit_geometry(&fixed);
+            let ctx = crate::equipment_motion::EquipmentContext {
+                kit: fixed.clone(),
+                geometry,
+            };
+            ctx.geometry.unresolved_piece_ids.is_empty()
+                && equipment_posture_fits(profile, &candidate[index], &ctx)
                 && if matches!(
                     candidate[index].instrument,
                     Instrument::Hihat | Instrument::OpenHat
@@ -419,7 +498,14 @@ fn repair_posture(
                             cache.pair(
                                 profile,
                                 crate::posture::ready_pair(profile, snare, &candidate[index]),
+                            ) && crate::posture::pair_solution_with_equipment(
+                                profile,
+                                crate::posture::ready_pair(profile, snare, &candidate[index]),
+                                [0.0; 2],
+                                Some(&ctx),
+                                [Some(snare.id.as_str()), Some(candidate[index].id.as_str())],
                             )
+                            .is_some()
                         })
                 } else {
                     true
@@ -475,25 +561,31 @@ fn repair_posture(
             let score = |shift: Vec3| {
                 let distance =
                     std::array::from_fn(|axis| original[axis] + shift[axis] - desired[axis]);
-                shift_cost(distance) + 0.15 * shift_cost(shift)
+                shift_cost(distance) + 0.15 * shift_cost(shift) + 2.0 * shift[1] * shift[1]
             };
             score(*a).total_cmp(&score(*b))
         });
+        let mut placed = false;
         for shift in shifts {
+            if !cache.candidate() {
+                break;
+            }
             let mut candidate = result.kit.clone();
             for &i in &indices {
                 candidate[i].position =
                     std::array::from_fn(|axis| candidate[i].position[axis] + shift[axis]);
             }
             if !valid(&candidate)
-                || !against_locked(&candidate)
+                || !clear_locked(&candidate)
                 || indices
                     .iter()
                     .any(|&i| !piece_posture_fits(profile, &candidate[i], cache))
+                || !against_locked(&candidate)
             {
                 continue;
             }
             result.kit = candidate;
+            placed = true;
             for i in &indices {
                 if let Some(previous) = result
                     .piece_adjustments
@@ -511,14 +603,35 @@ fn repair_posture(
             }
             break;
         }
+        // Later greedy placements never move an already locked piece. Exhausting
+        // this piece's bounded candidates therefore ends this branch; spending
+        // more work on later instruments cannot turn it into a complete fit.
+        if !placed {
+            break;
+        }
         locked.push(index);
     }
     result.unreachable_piece_ids = missed(profile, &result.kit, true);
+    add_equipment_misses(profile, &mut result);
     result.clearance_piece_ids = kit_clearance_ids(&result.kit);
     result.complete = result.unreachable_piece_ids.is_empty()
         && result.clearance_piece_ids.is_empty()
         && crate::posture::required_pairs(profile, &result.kit).is_empty();
     result
+}
+
+fn add_equipment_misses(profile: &RigProfile, result: &mut KitFitProposal) {
+    let ctx = crate::equipment_motion::EquipmentContext {
+        kit: result.kit.clone(),
+        geometry: crate::equipment::kit_geometry(&result.kit),
+    };
+    for piece in &result.kit {
+        if !equipment_posture_fits(profile, piece, &ctx)
+            && !result.unreachable_piece_ids.contains(&piece.id)
+        {
+            result.unreachable_piece_ids.push(piece.id.clone());
+        }
+    }
 }
 
 pub fn fit_kit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal, String> {
