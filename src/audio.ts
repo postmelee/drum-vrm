@@ -1,3 +1,5 @@
+import { WORKER_MESSAGES } from './worker-messages';
+import { msg } from './i18n';
 import { outputDuration, PRE_ROLL, SAMPLE_RATE, type Hit, type Instrument, type PerformancePlan } from './types';
 
 export interface SynthPcm {
@@ -38,7 +40,7 @@ function noiseFor(hit: Hit): () => number {
 /** Original procedural drum synthesis. No samples, soundfonts, or downloaded assets. */
 export function synthesizePcm(plan: PerformancePlan, sampleRate = SAMPLE_RATE): SynthPcm {
   if (!Number.isInteger(sampleRate) || sampleRate < 8000 || sampleRate > 192000) {
-    throw new Error('지원하지 않는 오디오 샘플 레이트입니다.');
+    throw new Error(WORKER_MESSAGES.audioSampleRate);
   }
   const duration = outputDuration(plan);
   const length = Math.round(duration * sampleRate);
@@ -138,7 +140,7 @@ export class DrumAudio {
   }
 
   async play(outputTime = this.currentTime): Promise<void> {
-    if (this.disposed) throw new Error('오디오가 이미 정리되었습니다.');
+    if (this.disposed) throw new Error(msg("The audio has already been disposed.", "오디오가 이미 정리되었습니다."));
     this.pause();
     this.offset = Math.max(0, Math.min(this.buffer.duration, outputTime));
     if (this.offset >= this.buffer.duration) this.offset = 0;

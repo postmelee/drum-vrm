@@ -1,3 +1,4 @@
+import { msg } from './i18n';
 import type { PerformancePlan, PoseInspection, RigProfile } from './types';
 
 export interface PoseReview {
@@ -13,7 +14,7 @@ export interface PoseReview {
 /** Includes exact impacts and a bounded regular grid. Sampling is evidence, not
  * a continuous collision proof. Does not depend on the order of uploaded notes. */
 export function reviewTimes(plan: PerformancePlan, sampleRate = 30): number[] {
-  if (!Number.isFinite(sampleRate) || sampleRate < 1 || sampleRate > 60) throw new Error('검수 간격은 1–60 fps 범위여야 합니다.');
+  if (!Number.isFinite(sampleRate) || sampleRate < 1 || sampleRate > 60) throw new Error(msg("Inspection rate must be between 1 and 60 fps.", "검수 간격은 1–60 fps 범위여야 합니다."));
   const times = new Set<number>([-0.5, 0, plan.duration]);
   for (let index = 0; index <= Math.ceil(plan.duration * sampleRate); index++) times.add(Math.min(plan.duration, index / sampleRate));
   for (const hit of plan.hits) {
@@ -40,11 +41,11 @@ export function reviewOrder(length: number): number[] {
 }
 
 export function summarizePoseReview(times: number[], ordered: readonly Float32Array[], shuffled: readonly Float32Array[]): PoseReview {
-  if (times.length !== ordered.length || times.length !== shuffled.length) throw new Error('검수 프레임 수가 다릅니다.');
+  if (times.length !== ordered.length || times.length !== shuffled.length) throw new Error(msg("Inspection frame counts do not match.", "검수 프레임 수가 다릅니다."));
   let maxOrderDifference = 0, nonfiniteValues = 0;
   ordered.forEach((frame, index) => {
     const other = shuffled[index];
-    if (!frame.length || frame.length !== other.length) throw new Error('검수 자세 형식이 다르거나 비어 있습니다.');
+    if (!frame.length || frame.length !== other.length) throw new Error(msg("Inspection poses have different formats or are empty.", "검수 자세 형식이 다르거나 비어 있습니다."));
     frame.forEach((value, component) => {
       if (!Number.isFinite(value) || !Number.isFinite(other[component])) nonfiniteValues++;
       else maxOrderDifference = Math.max(maxOrderDifference, Math.abs(value - other[component]));
@@ -54,20 +55,20 @@ export function summarizePoseReview(times: number[], ordered: readonly Float32Ar
 }
 
 export function summarizeProxyReview(times: number[], inspections: readonly PoseInspection[]): NonNullable<PoseReview['proxy']> {
-  if (!times.length || times.length !== inspections.length) throw new Error('검수 표본 수가 다릅니다.');
+  if (!times.length || times.length !== inspections.length) throw new Error(msg("Inspection sample counts do not match.", "검수 표본 수가 다릅니다."));
   const result: NonNullable<PoseReview['proxy']> = { scope:'skeletal-proxies', samples: times.length,
     torsoMinimumMeters: Infinity, armsMinimumMeters: Infinity, sticksMinimumMeters: Infinity,
     boneLengthMaximumErrorMeters: 0, intersectingSamples: 0, firstIntersectionSeconds: null };
   inspections.forEach((sample,index) => {
     const values=[sample.torsoClearanceMeters,sample.armClearanceMeters,sample.stickClearanceMeters,sample.boneLengthErrorMeters];
-    if (!values.every(Number.isFinite)) throw new Error('유효하지 않은 간격 계측값입니다.');
+    if (!values.every(Number.isFinite)) throw new Error(msg("Invalid clearance measurement.", "유효하지 않은 간격 계측값입니다."));
     result.torsoMinimumMeters=Math.min(result.torsoMinimumMeters,sample.torsoClearanceMeters);
     result.armsMinimumMeters=Math.min(result.armsMinimumMeters,sample.armClearanceMeters);
     result.sticksMinimumMeters=Math.min(result.sticksMinimumMeters,sample.stickClearanceMeters);
     result.boneLengthMaximumErrorMeters=Math.max(result.boneLengthMaximumErrorMeters,sample.boneLengthErrorMeters);
     const extra:number[]=[];
-    if(sample.equipmentClearanceMeters!==undefined){if(!Number.isFinite(sample.equipmentClearanceMeters))throw new Error('유효하지 않은 장비 간격입니다.');result.equipmentMinimumMeters=Math.min(result.equipmentMinimumMeters??Infinity,sample.equipmentClearanceMeters);extra.push(sample.equipmentClearanceMeters);}
-    if(sample.crossClearanceMeters!==undefined){if(!Number.isFinite(sample.crossClearanceMeters))throw new Error('유효하지 않은 교차 간격입니다.');result.crossMinimumMeters=Math.min(result.crossMinimumMeters??Infinity,sample.crossClearanceMeters);extra.push(sample.crossClearanceMeters);}
+    if(sample.equipmentClearanceMeters!==undefined){if(!Number.isFinite(sample.equipmentClearanceMeters))throw new Error(msg("Invalid equipment clearance.", "유효하지 않은 장비 간격입니다."));result.equipmentMinimumMeters=Math.min(result.equipmentMinimumMeters??Infinity,sample.equipmentClearanceMeters);extra.push(sample.equipmentClearanceMeters);}
+    if(sample.crossClearanceMeters!==undefined){if(!Number.isFinite(sample.crossClearanceMeters))throw new Error(msg("Invalid crossing clearance.", "유효하지 않은 교차 간격입니다."));result.crossMinimumMeters=Math.min(result.crossMinimumMeters??Infinity,sample.crossClearanceMeters);extra.push(sample.crossClearanceMeters);}
     if (Math.min(...values.slice(0,3),...extra) < 0) { result.intersectingSamples++;result.firstIntersectionSeconds??=times[index]; }
   });
   return result;

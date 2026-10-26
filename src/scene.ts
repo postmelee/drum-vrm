@@ -1,3 +1,4 @@
+import { msg, raw } from './i18n';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { hitPieceId, pieceInstrument, type Hit, type Instrument, type PieceId, type KitPiece, type KitGeometry, type PerformancePlan, type RigProfile, type Vec3 } from './types';
@@ -310,7 +311,7 @@ export class DrumScene {
   /** Common-engine idle pose; never replace a prepared performance's pose. */
   applyReadyPose(pose: Float32Array): void {
     if(this.plan)return;
-    if(pose.length!==77||!pose.every(Number.isFinite))throw new Error('기본 자세 데이터가 잘못되었습니다.');
+    if(pose.length!==77||!pose.every(Number.isFinite))throw new Error(msg("Invalid ready-pose data.", "기본 자세 데이터가 잘못되었습니다."));
     this.rig.applyPose(pose);this.songTime=-.5;this.updateHitResponses();
   }
   getRigProfile(): RigProfile { return this.rig.getProfile(); }
@@ -355,7 +356,7 @@ export class DrumScene {
     }
   }
   getEquipmentDiagnostics(): string[] {
-    return this.equipmentError ? [`장비 형상 계산 실패: ${this.equipmentError}`] : [...(this.equipmentResult?.unresolvedPieceIds ?? [])];
+    return this.equipmentError ? [msg('Equipment geometry calculation failed: {0}', '장비 형상 계산 실패: {0}', this.equipmentError)] : [...(this.equipmentResult?.unresolvedPieceIds ?? [])];
   }
   setKitLayout(kit: readonly KitPiece[]): void {
     this.kit = validateKitLayout(kit); this.rebuildKit();
@@ -379,7 +380,7 @@ export class DrumScene {
   setStickTrace(paths:readonly [readonly Vec3[],readonly Vec3[]]|null):void {
     for(const child of [...this.stickTrace.children]){this.stickTrace.remove(child);disposeModel(child);}
     if(paths)paths.forEach((path,index)=>{
-      if(path.length<2||path.length>121||!path.every(point=>point.length===3&&point.every(Number.isFinite)))throw new Error('스틱 궤적 표본이 잘못되었습니다.');
+      if(path.length<2||path.length>121||!path.every(point=>point.length===3&&point.every(Number.isFinite)))throw new Error(msg("Invalid stick trajectory samples.", "스틱 궤적 표본이 잘못되었습니다."));
       const geometry=new THREE.BufferGeometry().setFromPoints(path.map(point=>new THREE.Vector3(...point)));
       const line=new THREE.Line(geometry,new THREE.LineBasicMaterial({color:index===0?0xc47b00:0x167bd1,depthTest:false}));
       line.renderOrder=20;this.stickTrace.add(line);
@@ -417,7 +418,7 @@ export class DrumScene {
     this.rig.setFirstPerson?.(!enabled && this.cameraView === 'player'); this.updateHitResponses(); this.updateSelection();
   }
   async setKitPreset(preset: KitPresetId): Promise<void> {
-    if (!['studio', 'vintage', 'electronic', 'library', 'batoski', 'smoj'].includes(preset)) throw new Error('지원하지 않는 드럼 키트입니다.');
+    if (!['studio', 'vintage', 'electronic', 'library', 'batoski', 'smoj'].includes(preset)) throw new Error(msg("Unsupported drum kit.", "지원하지 않는 드럼 키트입니다."));
     const generation = ++this.loadGeneration;
     if (isLibraryPreset(preset)) {
       if (!this.libraryPromises.has(preset)) this.libraryPromises.set(preset, import('./model-library').then(module => module.loadLibraryKit(preset)).then(library => {
@@ -440,25 +441,25 @@ export class DrumScene {
     try {
       if(isLibraryPreset(preset)&&!this.libraries.has(preset)) {
         const library=await import('./model-library').then(module=>module.loadLibraryKit(preset));
-        if(this.disposed){this.disposeLibrary(library);throw new Error('화면이 종료되었습니다.');}
+        if(this.disposed){this.disposeLibrary(library);throw new Error(msg("The scene has been disposed.", "화면이 종료되었습니다."));}
         this.libraries.set(preset,library);
       }
       for(const piece of pieces) {
         resolvePieceVisual(preset,piece.id,piece.settings);
         if(piece.settings.source==='imported') {
-          const file=files.get(piece.id);if(!file)throw new Error('드럼 모델 파일을 다시 연결해 주세요.');
+          const file=files.get(piece.id);if(!file)throw new Error(msg("Relink the drum model file.", "드럼 모델 파일을 다시 연결해 주세요."));
           imported.set(piece.id,{root:await loadLocalGLB(file),name:file.name,approximate:true});
         }
       }
     } catch(error){imported.forEach(model=>disposeModelSource(model.root));throw error;}
     let consumed=false;
     const measureLayout = (kit: readonly KitPiece[]) => {
-      if (consumed) throw new Error('프로젝트 외형은 이미 적용하거나 정리했습니다.');
+      if (consumed) throw new Error(msg("The project appearance has already been applied or disposed.", "프로젝트 외형은 이미 적용하거나 정리했습니다."));
       const measured = validateKitLayout(kit), library = this.libraries.get(preset);
       for (const piece of measured) {
         if (canonicalPieceId(piece.id) !== piece.id) continue;
         const saved = pieces.find(value => value.id === piece.id)?.settings;
-        if (!saved) throw new Error(`드럼 외형 설정이 누락되었습니다: ${piece.id}`);
+        if (!saved) throw new Error(msg('Drum appearance settings missing: {0}', '드럼 외형 설정이 누락되었습니다: {0}', piece.id));
         const settings = { ...resolvePieceVisual(preset, piece.id, saved), finishOverride: saved.finishOverride };
         const source = imported.get(piece.id)?.root ?? (saved.source !== 'procedural' && isLibraryPreset(preset) ? library?.[pieceInstrument(piece)] : undefined);
         const built = createMeasuredInstrumentBody(piece, settings, preset, measured, source, imported.has(piece.id));
@@ -474,13 +475,13 @@ export class DrumScene {
         const measured = measureLayout(kit);
         for (const piece of kit) {
           if (canonicalPieceId(piece.id) !== piece.id) continue;
-          if (!piece.geometry || JSON.stringify(piece.geometry) !== JSON.stringify(measured.find(value => value.id === piece.id)!.geometry)) throw new Error(`저장한 드럼 형상과 원본 모델이 다릅니다: ${piece.label}. 원본 MIDI로 다시 준비하세요.`);
+          if (!piece.geometry || JSON.stringify(piece.geometry) !== JSON.stringify(measured.find(value => value.id === piece.id)!.geometry)) throw new Error(msg('The saved drum geometry differs from the source model: {0}. Prepare the original MIDI again.', '저장한 드럼 형상과 원본 모델이 다릅니다: {0}. 원본 MIDI로 다시 준비하세요.', raw(piece.label)));
         }
         return measured;
       },
       dispose:()=>{if(!consumed){imported.forEach(model=>disposeModelSource(model.root));consumed=true;}},
       apply:(kit?: readonly KitPiece[])=>{
-        if(consumed)throw new Error('프로젝트 외형은 한 번만 적용할 수 있습니다.');
+        if(consumed)throw new Error(msg("The project appearance can only be applied once.", "프로젝트 외형은 한 번만 적용할 수 있습니다."));
         const target = kit ? validateKitLayout(kit) : undefined;
         ++this.loadGeneration;
         const discarded=[...this.imported.values()];this.imported.clear();this.overrides.clear();this.proceduralOverrides.clear();this.preset=preset;
@@ -522,7 +523,7 @@ export class DrumScene {
     const canonical = canonicalPieceId(id), generation = this.loadGeneration;
     const version = this.invalidatePieceLoad(canonical);
     const root = await loadLocalGLB(file);
-    if (this.disposed || generation !== this.loadGeneration || this.pieceLoadVersions.get(canonical) !== version) { disposeModelSource(root); throw new Error('모델을 불러오는 동안 키트가 변경되었습니다. 다시 선택해 주세요.'); }
+    if (this.disposed || generation !== this.loadGeneration || this.pieceLoadVersions.get(canonical) !== version) { disposeModelSource(root); throw new Error(msg("The kit changed while the model was loading. Select it again.", "모델을 불러오는 동안 키트가 변경되었습니다. 다시 선택해 주세요.")); }
     const previous = this.imported.get(canonical);
     this.proceduralOverrides.delete(canonical);
     this.imported.set(canonical, { root, name: file.name, approximate: true }); this.rebuildKit();
@@ -573,7 +574,7 @@ export class DrumScene {
     return {view:state.view,position:state.position.toArray(),target:state.target.toArray(),fov:state.fov,near:state.near};
   }
   setViewState(state:SceneViewState):void {
-    if(!['front','stage','top','player'].includes(state.view)||state.position.length!==3||state.target.length!==3||![...state.position,...state.target,state.fov,state.near].every(Number.isFinite)||state.fov<15||state.fov>100||state.near<.005||state.near>.5)throw new Error('카메라 설정이 잘못되었습니다.');
+    if(!['front','stage','top','player'].includes(state.view)||state.position.length!==3||state.target.length!==3||![...state.position,...state.target,state.fov,state.near].every(Number.isFinite)||state.fov<15||state.fov>100||state.near<.005||state.near>.5)throw new Error(msg("Invalid camera settings.", "카메라 설정이 잘못되었습니다."));
     this.transition=null;this.savedCamera=null;
     this.applyCameraState({...cameraPresetState(state.view),position:new THREE.Vector3(...state.position),target:new THREE.Vector3(...state.target),fov:state.fov,near:state.near});
     this.rig.setFirstPerson?.(state.view==='player');this.controls.enabled=!this.exportMode;this.controls.update();

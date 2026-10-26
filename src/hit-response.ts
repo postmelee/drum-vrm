@@ -1,3 +1,4 @@
+import { msg } from './i18n';
 import * as THREE from 'three';
 import type { Hit, Instrument, Vec3 } from './types';
 
@@ -10,7 +11,7 @@ const REST: ResponseSample = Object.freeze({ scale: 1, tiltX: 0, tiltZ: 0 });
 
 export function validateHitResponse(settings: HitResponseSettings): HitResponseSettings {
   if (typeof settings.enabled !== 'boolean' || !Number.isFinite(settings.strength) || settings.strength < 0 || settings.strength > 1) {
-    throw new Error('타격 반응 강도는 0–100% 범위여야 합니다.');
+    throw new Error(msg("Hit response strength must be between 0% and 100%.", "타격 반응 강도는 0–100% 범위여야 합니다."));
   }
   return { ...settings };
 }

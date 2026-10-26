@@ -1,6 +1,6 @@
 # 캐릭터 모델 준비하기
 
-[English](models.md) · **한국어** · [문서 안내](README.ko.md)
+[English](models.md) · **한국어** · [문서 안내](README.ko.md) · [앱 열기](https://postmelee.github.io/drum-vrm/?lang=ko)
 
 로컬 VRM 1.0 캐릭터를 불러오고, 이용 조건을 확인한 뒤 드럼 키트에 맞춥니다. 이 안내는 저장소 빌드를 설명하므로 공개 앱을 사용한다면 [버전별 제공 범위](../README.ko.md#어떤-버전을-사용하고-있나요)를 먼저 확인하세요. 외부 아바타는 배포물에 포함하지 않습니다.
 

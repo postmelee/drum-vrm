@@ -1,3 +1,4 @@
+import { msg } from './i18n';
 import * as THREE from 'three';
 import { pieceInstrument, type PieceId, type KitPiece } from './types';
 import { createPieceHardware, pieceAnchors } from './kit-hardware';
@@ -23,11 +24,11 @@ export function resolvePieceVisual(preset: KitPresetId, id: PieceId, override: P
     smoj: { finish: '#8d4554', model: 'standard' as const },
   }[preset];
   const scale = override.scale ?? 1;
-  if (!Number.isFinite(scale) || scale < .65 || scale > 1.4) throw new Error('크기는 65%–140% 범위여야 합니다.');
-  if (override.finish !== undefined && !/^#[0-9a-f]{6}$/i.test(override.finish)) throw new Error('마감 색상은 #RRGGBB 형식이어야 합니다.');
-  if (override.model !== undefined && !['standard', 'deep', 'compact'].includes(override.model)) throw new Error('지원하지 않는 드럼 형태입니다.');
+  if (!Number.isFinite(scale) || scale < .65 || scale > 1.4) throw new Error(msg("Scale must be between 65% and 140%.", "크기는 65%–140% 범위여야 합니다."));
+  if (override.finish !== undefined && !/^#[0-9a-f]{6}$/i.test(override.finish)) throw new Error(msg("Finish color must use #RRGGBB format.", "마감 색상은 #RRGGBB 형식이어야 합니다."));
+  if (override.model !== undefined && !['standard', 'deep', 'compact'].includes(override.model)) throw new Error(msg("Unsupported drum shape.", "지원하지 않는 드럼 형태입니다."));
   const rotation = override.rotation ?? 0;
-  if (!Number.isFinite(rotation) || rotation < -360 || rotation > 360) throw new Error('회전은 -360°–360° 범위여야 합니다.');
+  if (!Number.isFinite(rotation) || rotation < -360 || rotation > 360) throw new Error(msg("Rotation must be between -360° and 360°.", "회전은 -360°–360° 범위여야 합니다."));
   return { ...defaults, ...override, scale, rotation };
 }
 

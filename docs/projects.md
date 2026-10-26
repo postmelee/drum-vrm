@@ -1,16 +1,16 @@
 # Save and reopen a local project
 
-**English** · [한국어](projects.ko.md) · [Documentation](README.md)
+**English** · [한국어](projects.ko.md) · [Documentation](README.md) · [Open the app](https://postmelee.github.io/drum-vrm/?lang=en)
 
 The repository build can save a prepared performance and its setup as a local
 `.drumvrm.json` file. This is separate from the [measurement report](calibration.md#inspect-a-problem-passage).
 
 1. Prepare MIDI, choose its mapping/interpretation, fit the character and kit, and
    align the [WAV](export.md) if used.
-2. In **파일 · 오디오** (Files / Audio), press **프로젝트 저장** (Save project). Save again after changing settings.
-3. To return, choose **프로젝트 열기…** (Open project). The current session stays
+2. In **Files / Audio**, press **Save project**. Save again after changing settings.
+3. To return, choose **Open project…**. The current session stays
    available while required files are missing or a file fails validation.
-4. Use **원본 파일 연결…** (Relink source files) to select the same MIDI and any
+4. Use **Relink source files…** to select the same MIDI and any
    WAV, VRM or custom drum GLB. Names may change, but file contents must match the
    saved SHA-256 and size. Bundled drum presets do not need relinking.
 5. Once all references match, the app restores the prepared plan, selected tracks,

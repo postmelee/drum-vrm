@@ -131,7 +131,7 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
 
   it('rejects nonuniform skeletal ancestor scale before taking ownership', () => {
     const {vrm} = generatedVRM(); vrm.scene.scale.set(1, 1.2, .8);
-    expect(() => new VRMHumanoidRigAdapter(vrm, 'generated-bad-scale')).toThrow('비균일');
+    expect(() => new VRMHumanoidRigAdapter(vrm, 'generated-bad-scale')).toThrow('Nonuniform');
     expect(vrm.scene.parent).toBeNull();
   });
 

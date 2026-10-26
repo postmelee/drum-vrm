@@ -1,6 +1,6 @@
 # 로컬 프로젝트 저장과 다시 열기
 
-[English](projects.md) · **한국어** · [문서 안내](README.ko.md)
+[English](projects.md) · **한국어** · [문서 안내](README.ko.md) · [앱 열기](https://postmelee.github.io/drum-vrm/?lang=ko)
 
 저장소 빌드에서는 준비한 연주와 설정을 로컬 `.drumvrm.json` 파일로 저장할 수 있습니다.
 [계측 보고서](calibration.ko.md#문제-구간-검수하기)와는 별도의 파일입니다.

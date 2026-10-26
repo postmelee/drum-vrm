@@ -1,3 +1,4 @@
+import { msg, translate, bindText, bindAttribute, joinMessages, onLocaleChange } from './i18n';
 import { PRE_ROLL, outputDuration } from './types';
 import type { Hit, Instrument, PerformancePlan, TimeSignature, EventInterpretation } from './types';
 
@@ -30,14 +31,14 @@ function hasMetricTime(plan: PerformancePlan): boolean {
 
 /** Source ticks use the global MIDI tempo map. Pre-roll is added only by the UI. */
 export function tickToSongTime(plan: PerformancePlan, tick: number): number {
-  if (!hasMetricTime(plan)) throw new Error('이 계획에는 MIDI 템포맵이 없습니다.');
+  if (!hasMetricTime(plan)) throw new Error(msg('This plan has no MIDI tempo map.', '이 계획에는 MIDI 템포맵이 없습니다.'));
   const anchors = plan.tempoMap!;
   const anchor = anchors[lastAtOrBefore(anchors, tick, item => item.tick)];
   return anchor.time + (tick - anchor.tick) * anchor.microsecondsPerQuarter / plan.ppq! / 1_000_000;
 }
 
 export function songTimeToTick(plan: PerformancePlan, time: number): number {
-  if (!hasMetricTime(plan)) throw new Error('이 계획에는 MIDI 템포맵이 없습니다.');
+  if (!hasMetricTime(plan)) throw new Error(msg('This plan has no MIDI tempo map.', '이 계획에는 MIDI 템포맵이 없습니다.'));
   const anchors = plan.tempoMap!;
   const anchor = anchors[lastAtOrBefore(anchors, time, item => item.time)];
   return anchor.tick + (time - anchor.time) * 1_000_000 * plan.ppq! / anchor.microsecondsPerQuarter;
@@ -90,13 +91,13 @@ export function createTimelineGrid(plan: PerformancePlan, fromOutput = 0, toOutp
 }
 
 const instrumentNames: Record<Instrument, string> = {
-  kick: 'Kick', snare: 'Snare', hihat: 'Hi-hat', openHat: 'Open hat', pedalHat: 'Hat pedal',
-  tomHigh: 'High tom', tomMid: 'Mid tom', tomLow: 'Low tom', crash: 'Crash', ride: 'Ride',
+  kick: msg('Kick', '킥'), snare: msg('Snare', '스네어'), hihat: msg('Hi-hat', '하이햇'), openHat: msg('Open hat', '열린 하이햇'), pedalHat: msg('Hat pedal', '하이햇 페달'),
+  tomHigh: msg('High tom', '하이 탐'), tomMid: msg('Mid tom', '미드 탐'), tomLow: msg('Low tom', '로우 탐'), crash: msg('Crash', '크래시'), ride: msg('Ride', '라이드'),
 };
 
 export interface TimelineNote { id: string; time: number; note: number; velocity: number; name: string; kind: EventInterpretation['kind']; hit?: Hit; }
-const articulationNames: Record<string,string> = {rimshot:'Snare rimshot',rimshotEdge:'Snare rim edge',sideStick:'Side stick',edge:'Snare edge'};
-const hitName = (hit: Hit) => hit.pieceId==='crashRight'?'Crash R':hit.instrument==='crash'?'Crash L':hit.instrument==='snare'?(articulationNames[hit.articulation??'']??'Snare'):hit.instrument==='ride'&&hit.articulation==='edge'?'Ride edge':instrumentNames[hit.instrument];
+const articulationNames: Record<string,string> = {rimshot:msg('Snare rimshot', '스네어 림샷'),rimshotEdge:msg('Snare rim edge', '스네어 림 가장자리'),sideStick:msg('Side stick', '사이드 스틱'),edge:msg('Snare edge', '스네어 가장자리')};
+const hitName = (hit: Hit) => hit.pieceId==='crashRight'?msg('Crash R', '오른쪽 크래시'):hit.instrument==='crash'?msg('Crash L', '왼쪽 크래시'):hit.instrument==='snare'?(articulationNames[hit.articulation??'']??msg('Snare', '스네어')):hit.instrument==='ride'&&hit.articulation==='edge'?msg('Ride edge', '라이드 가장자리'):instrumentNames[hit.instrument];
 /** Display source note-ons, including controls/count-in/unmapped notes. Derived
  * hit removal must not erase the original piano-roll evidence. */
 export function createTimelineNotes(plan:PerformancePlan):TimelineNote[] {
@@ -107,7 +108,7 @@ export function createTimelineNotes(plan:PerformancePlan):TimelineNote[] {
     const meaning=meanings.get(source.id),hit=meaning?.hitId===undefined?undefined:plan.hits[meaning.hitId];
     const kind=meaning?.kind??'unmapped';
     return [{id:source.id,time:source.timeUs/1e6,note:source.message.key,velocity:source.message.velocity,
-      name:hit?hitName(hit):kind==='countIn'?'Count-in':kind==='control'?'Hat close':kind==='omitted'&&meaning?.instrument?(meaning.pieceId==='crashRight'?'Crash R':meaning.instrument==='crash'?'Crash L':meaning.instrument==='snare'?(articulationNames[meaning.articulation??'']??'Snare'):instrumentNames[meaning.instrument]):`Note ${source.message.key}`,kind,hit}];
+      name:hit?hitName(hit):kind==='countIn'?msg('Count-in', '카운트인'):kind==='control'?msg('Hat close', '하이햇 닫힘'):kind==='omitted'&&meaning?.instrument?(meaning.pieceId==='crashRight'?msg('Crash R', '오른쪽 크래시'):meaning.instrument==='crash'?msg('Crash L', '왼쪽 크래시'):meaning.instrument==='snare'?(articulationNames[meaning.articulation??'']??msg('Snare', '스네어')):instrumentNames[meaning.instrument]):msg('Note {0}', '음표 {0}', source.message.key),kind,hit}];
   });
 }
 interface NoteRow { note: number; name: string; hits: TimelineNote[]; }
@@ -131,6 +132,7 @@ export class DrumTimeline {
   private readonly accessible = document.createElement('p');
   private readonly observer: ResizeObserver;
   private readonly options: TimelineOptions;
+  private readonly stopLocaleUpdates: () => void;
   private plan: PerformancePlan | null = null;
   private rows: NoteRow[] = [];
   private theme: Theme = 'light';
@@ -155,7 +157,7 @@ export class DrumTimeline {
     Object.assign(this.scroll.style, { width: '100%', height: '100%', overflow: 'auto', position: 'relative', scrollbarWidth: 'thin' });
     this.scroll.tabIndex = 0;
     this.scroll.setAttribute('role', 'slider');
-    this.scroll.setAttribute('aria-label', 'MIDI 미리보기. 좌우 화살표로 탐색, 위아래로 악기 목록 스크롤');
+    bindAttribute(this.scroll, 'aria-label', msg('MIDI preview. Seek with left and right arrows; scroll instruments with up and down arrows.', 'MIDI 미리보기. 좌우 화살표로 탐색, 위아래로 악기 목록 스크롤'));
     this.scroll.setAttribute('aria-valuemin', '0');
     this.scroll.setAttribute('aria-valuemax', '0');
     this.scroll.setAttribute('aria-valuenow', '0');
@@ -184,6 +186,7 @@ export class DrumTimeline {
     this.observer = new ResizeObserver(() => this.resize());
     this.observer.observe(container);
     this.setPlan(null);
+    this.stopLocaleUpdates = onLocaleChange(() => this.draw());
   }
 
   setPlan(plan: PerformancePlan | null): void {
@@ -197,7 +200,7 @@ export class DrumTimeline {
     this.scroll.scrollLeft = 0; this.scroll.scrollTop = 0;
     this.scroll.setAttribute('aria-valuemax', String(plan ? outputDuration(plan) : 0));
     this.scroll.setAttribute('aria-disabled', String(!plan));
-    this.accessible.textContent = plan ? `${this.rows.reduce((count,row)=>count+row.hits.length,0)}개 원본 음표 · ${plan.hits.length}개 타격. ${this.rows.map(row => `MIDI ${row.note} ${row.name}, ${row.hits.length}개`).join('. ')}. 좌우 화살표 0.1초, Shift와 함께 1초, Home과 End로 처음과 끝을 탐색합니다.` : 'MIDI 파일을 불러오면 악기별 음표와 마디가 표시됩니다.';
+    bindText(this.accessible, plan ? msg('{0} source notes · {1} hits. {2}. Left and right arrows seek 0.1 seconds, or 1 second with Shift; Home and End go to the start and end.', '{0}개 원본 음표 · {1}개 타격. {2}. 좌우 화살표 0.1초, Shift와 함께 1초, Home과 End로 처음과 끝을 탐색합니다.', this.rows.reduce((count,row)=>count+row.hits.length,0), plan.hits.length, joinMessages(this.rows.map(row => msg('MIDI {0} {1}, {2} notes', 'MIDI {0} {1}, {2}개', row.note, row.name, row.hits.length)), '. ')) : msg('Load a MIDI file to display notes and bars for each instrument.', 'MIDI 파일을 불러오면 악기별 음표와 마디가 표시됩니다.'));
     this.inspector.style.display = 'none';
     this.resize();
     this.options.onInspect?.(null);
@@ -215,7 +218,7 @@ export class DrumTimeline {
       }
     }
     this.scroll.setAttribute('aria-valuenow', this.time.toFixed(2));
-    this.scroll.setAttribute('aria-valuetext', `${this.time.toFixed(2)}초`);
+    bindAttribute(this.scroll, 'aria-valuetext', msg('{0} seconds', '{0}초', this.time.toFixed(2)));
     this.drawPlayhead();
   }
 
@@ -318,14 +321,14 @@ export class DrumTimeline {
       if (y + this.rowHeight < this.rulerHeight || y > this.height) continue;
       if (row && [1, 3, 6, 8, 10].includes(row.note % 12)) { context.fillStyle = c.blackKey; context.fillRect(0, Math.max(this.rulerHeight, y), this.labelWidth, this.rowHeight); }
       context.fillStyle = c.text;
-      if (row && y >= this.rulerHeight - 1) { context.fillText(row.name, 10, y + this.rowHeight / 2); context.fillStyle = c.muted; context.textAlign = 'right'; context.fillText(String(row.note), this.labelWidth - 10, y + this.rowHeight / 2); context.textAlign = 'left'; }
+      if (row && y >= this.rulerHeight - 1) { context.fillText(translate(row.name), 10, y + this.rowHeight / 2); context.fillStyle = c.muted; context.textAlign = 'right'; context.fillText(String(row.note), this.labelWidth - 10, y + this.rowHeight / 2); context.textAlign = 'left'; }
       context.strokeStyle = c.line; context.beginPath(); context.moveTo(0, y + this.rowHeight + .5); context.lineTo(this.labelWidth, y + this.rowHeight + .5); context.stroke();
     }
     context.fillStyle = c.ruler; context.fillRect(0, 0, this.labelWidth, this.rulerHeight);
-    context.fillStyle = c.muted; context.fillText('DRUM / NOTE', 10, 13);
+    context.fillStyle = c.muted; context.fillText(translate(msg('DRUM / NOTE', '드럼 / 음표')), 10, 13);
     context.strokeStyle = c.bar; context.beginPath(); context.moveTo(this.labelWidth + .5, 0); context.lineTo(this.labelWidth + .5, this.height); context.stroke();
-    if (!this.plan) { context.fillStyle = c.muted; context.fillText('MIDI를 불러오면 음표가 표시됩니다', this.labelWidth + 20, this.rulerHeight + 32); }
-    else if (prepEnd - this.labelWidth > 42) { context.fillStyle = c.muted; context.fillText('준비', this.labelWidth + 7, 13); }
+    if (!this.plan) { context.fillStyle = c.muted; context.fillText(translate(msg('Load a MIDI file to display notes', 'MIDI를 불러오면 음표가 표시됩니다')), this.labelWidth + 20, this.rulerHeight + 32); }
+    else if (prepEnd - this.labelWidth > 42) { context.fillStyle = c.muted; context.fillText(translate(msg('Ready', '준비')), this.labelWidth + 7, 13); }
     this.root.style.background = c.background;
     this.inspector.style.background = this.theme === 'dark' ? '#171717ed' : '#ffffffed';
     this.inspector.style.color = c.text;
@@ -356,7 +359,8 @@ export class DrumTimeline {
       }
     }
     this.selected = hit;
-    this.inspector.textContent = hit ? `${hit.name} · ${hit.note} · Velocity ${hit.velocity} · ${hit.time.toFixed(3)}s · ${hit.kind==='omitted'?'연주에서 제외':hit.kind==='control'?'하이햇 제어':hit.kind==='countIn'?'카운트인':hit.kind==='unmapped'?'미매핑':hit.hit?.limb==null?'동작 미배정':['왼손','오른손','왼발','오른발'][hit.hit.limb]}` : '';
+    const role = hit?.kind==='omitted'?msg('Omitted', '연주에서 제외'):hit?.kind==='control'?msg('Hi-hat control', '하이햇 제어'):hit?.kind==='countIn'?msg('Count-in', '카운트인'):hit?.kind==='unmapped'?msg('Unmapped', '미매핑'):hit?.hit?.limb==null?msg('Motion unassigned', '동작 미배정'):[msg('Left hand', '왼손'),msg('Right hand', '오른손'),msg('Left foot', '왼발'),msg('Right foot', '오른발')][hit.hit.limb];
+    bindText(this.inspector, hit ? msg('{0} · {1} · Velocity {2} · {3}s · {4}', '{0} · {1} · Velocity {2} · {3}초 · {4}', hit.name, hit.note, hit.velocity, hit.time.toFixed(3), role) : '');
     this.inspector.style.display = hit ? 'block' : 'none';
     this.options.onInspect?.(hit?.hit??null);
     this.options.onSourceInspect?.(hit?.id??null);
@@ -374,6 +378,7 @@ export class DrumTimeline {
   }
 
   dispose(): void {
+    this.stopLocaleUpdates();
     this.observer.disconnect();
     this.scroll.removeEventListener('scroll', this.onScroll);
     this.canvas.removeEventListener('pointerdown', this.onPointer);

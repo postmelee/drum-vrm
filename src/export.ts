@@ -1,3 +1,4 @@
+import { msg } from './i18n';
 import {
   AudioBufferSource, AudioBufferSink, BufferSource, BufferTarget, CanvasSource, Input, MP4, WEBM,
   Mp4OutputFormat, Output, Quality, WebMOutputFormat,
@@ -43,15 +44,15 @@ function videoConfig(profile: ExportProfile) {
 }
 
 function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException('영상 내보내기가 취소되었습니다.', 'AbortError');
+  if (signal?.aborted) throw new DOMException(msg("Video export canceled.", "영상 내보내기가 취소되었습니다."), 'AbortError');
 }
 
 /** A pending browser codec request must not prevent the UI from cancelling. */
 function withAbort<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
   if (!signal) return pending;
-  if (signal.aborted) return Promise.reject(new DOMException('영상 내보내기가 취소되었습니다.', 'AbortError'));
+  if (signal.aborted) return Promise.reject(new DOMException(msg("Video export canceled.", "영상 내보내기가 취소되었습니다."), 'AbortError'));
   return new Promise((resolve, reject) => {
-    const abort = () => reject(new DOMException('영상 내보내기가 취소되었습니다.', 'AbortError'));
+    const abort = () => reject(new DOMException(msg("Video export canceled.", "영상 내보내기가 취소되었습니다."), 'AbortError'));
     signal.addEventListener('abort', abort, { once: true });
     pending.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
@@ -119,7 +120,7 @@ async function trialEncode(profile: ExportProfile, signal?: AbortSignal): Promis
   signal?.addEventListener('abort', cancel, { once: true });
   let timeout: ReturnType<typeof setTimeout>;
   const deadline = new Promise<never>((_, reject) => {
-    timeout = setTimeout(() => { cancel(); reject(new Error('시험 인코딩 시간이 초과되었습니다.')); }, 15_000);
+    timeout = setTimeout(() => { cancel(); reject(new Error(msg("Trial encoding timed out.", "시험 인코딩 시간이 초과되었습니다."))); }, 15_000);
   });
   try {
     const encode = (async () => {
@@ -173,7 +174,7 @@ export async function probeExport(muted = false, signal?: AbortSignal): Promise<
   for (const base of profiles) {
     throwIfAborted(signal);
     const profile = muted
-      ? { ...base, id: `${base.id}-muted`, audioCodec: null, label: `${base.extension.toUpperCase()} · ${base.videoCodec.toUpperCase()} · 무음` }
+      ? { ...base, id: `${base.id}-muted`, audioCodec: null, label: msg('{0} · {1} · silent', '{0} · {1} · 무음', base.extension.toUpperCase(), base.videoCodec.toUpperCase()) }
       : { ...base };
     try {
       const videoSupported = await withAbort(canEncodeVideo(profile.videoCodec, {
@@ -209,7 +210,7 @@ export interface ExportResult {
   duration: number;
 }
 
-const aborted = () => new DOMException('영상 내보내기가 취소되었습니다.', 'AbortError');
+const aborted = () => new DOMException(msg("Video export canceled.", "영상 내보내기가 취소되었습니다."), 'AbortError');
 const yieldToUi = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 /** Memory holds the PCM and compressed output, never a sequence of raw frames. */
@@ -217,13 +218,13 @@ export async function exportVideo(options: ExportOptions): Promise<ExportResult>
   const { canvas, renderFrame, plan, audio, profile, signal, onProgress } = options;
   if (signal?.aborted) throw aborted();
   if (canvas.width !== EXPORT_WIDTH || canvas.height !== EXPORT_HEIGHT) {
-    throw new Error('내보내기 캔버스는 1280 × 720 픽셀이어야 합니다.');
+    throw new Error(msg("The export canvas must be 1280 × 720 pixels.", "내보내기 캔버스는 1280 × 720 픽셀이어야 합니다."));
   }
   const frames = outputFrameCount(plan);
   const duration = outputDuration(plan);
   const samples = Math.round(duration * SAMPLE_RATE);
   if (audio.numberOfChannels !== 2 || audio.sampleRate !== SAMPLE_RATE || audio.length !== samples) {
-    throw new Error('선택한 오디오의 길이·채널·샘플 레이트가 영상 설정과 일치하지 않습니다.');
+    throw new Error(msg("The selected audio duration, channels or sample rate do not match the video settings.", "선택한 오디오의 길이·채널·샘플 레이트가 영상 설정과 일치하지 않습니다."));
   }
   const output = createOutput(profile);
   let encodedFrames = 0;
@@ -267,13 +268,13 @@ export async function exportVideo(options: ExportOptions): Promise<ExportResult>
     await output.finalize();
     if (signal?.aborted) throw aborted();
     if (!output.target.buffer?.byteLength || encodedFrames !== frames) {
-      throw new Error(`영상 프레임 검증 실패: ${frames}개 중 ${encodedFrames}개가 인코딩되었습니다.`);
+      throw new Error(msg('Video frame validation failed: {0} of {1} frames were encoded.', '영상 프레임 검증 실패: {1}개 중 {0}개가 인코딩되었습니다.', encodedFrames, frames));
     }
     if (audioSource && encodedAudioPackets === 0) {
-      throw new Error('오디오가 인코딩되지 않았습니다. 무음 영상으로 대체하지 않습니다.');
+      throw new Error(msg("Audio was not encoded. Export stopped instead of producing a silent video.", "오디오가 인코딩되지 않았습니다. 무음 영상으로 대체하지 않습니다."));
     }
     if (audioSource && !await checkAudioTimeline(output.target.buffer, duration, undefined, signal)) {
-      throw new Error('인코딩된 오디오 길이가 영상과 1프레임 이상 다릅니다. 다른 지원 형식으로 다시 시도해 주세요.');
+      throw new Error(msg("Encoded audio differs from the video by at least one frame. Try another supported format.", "인코딩된 오디오 길이가 영상과 1프레임 이상 다릅니다. 다른 지원 형식으로 다시 시도해 주세요."));
     }
     const blob = new Blob([output.target.buffer], { type: profile.mime });
     onProgress?.(1);

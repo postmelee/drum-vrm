@@ -35,6 +35,7 @@ flowchart TB
 | 휴머노이드 | [rig-humanoid.ts](../../src/rig-humanoid.ts), [rig-vrm.ts](../../src/rig-vrm.ts) | 공통 의미 기반 본, 정규화·원본 본 변환, 부착된 도구 측정 |
 | 배치·외형 | [kit-calibration.ts](../../src/kit-calibration.ts), [하드웨어](../../src/kit-hardware.ts), [라이브러리](../../src/model-library.ts) | 접촉 배치와 교체 가능한 드럼 본체 분리 |
 | 렌더링·UI | [scene.ts](../../src/scene.ts), [main.ts](../../src/main.ts), [timeline.ts](../../src/timeline.ts) | 장면, 조작부, 템포·박자 기반 미리보기 |
+| 화면 언어 | [i18n.ts](../../src/i18n.ts) | 연주 데이터와 분리된 영어·한국어 문구와 명시적인 언어 선택 |
 | 소리·재생 | [synthesis.ts](../../src/synthesis.ts), [wav.ts](../../src/wav.ts), [audio.ts](../../src/audio.ts) | 합성 또는 시간 맞춘 WAV PCM, 공통 재생·출력 시계 |
 | 인코딩 | [export.ts](../../src/export.ts) | 실제 코덱 검사, 고정 프레임 시각, 다중화, 취소·정리 |
 
@@ -48,6 +49,15 @@ flowchart TB
 외형 교체는 원본 타격 시각, 타점 위치나 합성음을 바꾸지 않습니다.
 의도적인 배치 보정은 키트 타점과 대응하는 이벤트 타점을 함께 변경합니다.
 자세한 경계는 [리그 계약](rig-contract.ko.md)에 정의되어 있습니다.
+
+## 화면 언어
+
+기본 언어는 영어이며 선택한 언어를 선택적인 브라우저 설정 `drum-language`에 저장합니다.
+`?lang=en`과 `?lang=ko`는 저장한 설정보다 우선합니다. 도구 모음에서 전환하면 앱을 다시 불러오거나 파일을 다시 가져오거나 동작을 다시
+계획하지 않고 화면과 URL을 갱신하며, 현재 재생 위치도 유지합니다.
+화면 언어는 UI 문구와 접근성 라벨에 적용하며 사용자 파일 이름·트랙 이름·모델
+메타데이터를 번역하지 않습니다. MIDI 원본 이벤트, 연주 시각, 수치 설정과 에셋
+출처는 바뀌지 않습니다.
 
 ## 호환 경로
 

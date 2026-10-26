@@ -4,7 +4,7 @@
 
 DAW에서 만든 드럼 MIDI를 브라우저에서 3D 드러머의 연주 영상으로 바꿉니다. Rust/WASM이 연주를 계획하고 Three.js가 드러머와 키트를 렌더링합니다.
 
-**[앱 사용하기](https://postmelee.github.io/drum-vrm/) · [사용 안내](docs/README.ko.md) · [기술 설계](specs/README.ko.md)**
+**[앱 사용하기](https://postmelee.github.io/drum-vrm/?lang=ko) · [사용 안내](docs/README.ko.md) · [기술 설계](specs/README.ko.md)**
 
 ## 기능
 
@@ -31,6 +31,8 @@ DAW에서 만든 드럼 MIDI를 브라우저에서 3D 드러머의 연주 영상
 안내 문서는 이 저장소 빌드를 설명합니다. 더 최신 로컬 변경이 공개되었다고 판단하기 전에 배포 커밋을 확인하세요. 상세 개발 검사는 연결된 [검증 기록](docs/README.ko.md#검증)에서 확인할 수 있습니다.
 
 ## 사용 방법
+
+기본 언어는 영어이며 브라우저 저장소를 사용할 수 있으면 선택한 언어를 기억합니다. 도구 모음의 **EN / 한국어**로 전환해도 불러온 파일과 현재 재생 위치는 유지됩니다. 바로 접속하기: [English](https://postmelee.github.io/drum-vrm/?lang=en) · [한국어](https://postmelee.github.io/drum-vrm/?lang=ko).
 
 1. **파일 · 오디오**에서 `.mid`/`.midi` 파일을 선택하거나 **데모**를 펼쳐 [데모 악보](docs/calibration.ko.md#데모-악보-사용하기)를 고르고 **불러오기**를 누릅니다. 첫 화면의 **데모 재생 준비**는 Studio Groove를 사용합니다.
 2. **MIDI 설정**에서 트랙·채널·매핑을, **분석**에서 진단을 확인합니다. 카운트인·짧은 열림/닫힘 하이햇 해석은 관련 음표가 있을 때 표시되는 명시적 해석 정책입니다. 파일을 만든 DAW를 식별한다고 주장하지 않습니다. 변경 후 **설정 적용**을 누릅니다.
@@ -67,7 +69,7 @@ npm run build:wasm
 npm run dev
 ```
 
-서버가 출력한 로컬 주소의 `/drum-vrm/`을 엽니다. `src/wasm/`은 생성 파일이며, Rust를 수정하면 `npm run build:wasm`으로 다시 만듭니다.
+서버가 출력한 로컬 주소의 `/drum-vrm/`을 엽니다. 한국어로 열려면 `/drum-vrm/?lang=ko`를 사용하세요. `src/wasm/`은 생성 파일이며, Rust를 수정하면 `npm run build:wasm`으로 다시 만듭니다.
 
 ```sh
 cargo fmt --check

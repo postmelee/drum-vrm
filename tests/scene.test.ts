@@ -168,7 +168,7 @@ describe('editable procedural models preserve playing contacts', () => {
   });
   it('rejects unsafe or nonfinite editor inputs before building geometry', () => {
     expect(() => resolvePieceVisual('studio', 'snare', { scale: NaN })).toThrow('65%');
-    expect(() => resolvePieceVisual('studio', 'snare', { rotation: Infinity })).toThrow('회전');
+    expect(() => resolvePieceVisual('studio', 'snare', { rotation: Infinity })).toThrow('Rotation');
     expect(() => resolvePieceVisual('studio', 'snare', { finish: 'url(https://example.com)' })).toThrow('#RRGGBB');
   });
 });
@@ -199,14 +199,14 @@ describe('local model privacy validation', () => {
     expect(() => validateSelfContainedGLB(glb({ asset: { version: '2.0' }, buffers: [{ byteLength: 12 }] }))).not.toThrow();
     expect(() => validateSelfContainedGLB(glb({ asset: { version: '2.0' }, images: [{ uri: 'data:image/png;base64,AAAA' }] }))).not.toThrow();
     for (const uri of ['https://example.com/image.png', '//example.com/image.png', '../image.png', 'file:///private/image.png', 'blob:outside', 'data:text/html;base64,AAAA']) {
-      expect(() => validateSelfContainedGLB(glb({ asset: { version: '2.0' }, images: [{ uri }] }))).toThrow('외부');
+      expect(() => validateSelfContainedGLB(glb({ asset: { version: '2.0' }, images: [{ uri }] }))).toThrow('external');
     }
   });
   it('rejects incomplete and corrupted GLB containers', () => {
     expect(() => validateSelfContainedGLB(new ArrayBuffer(12))).toThrow('GLB');
     const bytes = glb({ asset: { version: '2.0' } });
     new DataView(bytes).setUint32(12, bytes.byteLength, true);
-    expect(() => validateSelfContainedGLB(bytes)).toThrow('청크');
+    expect(() => validateSelfContainedGLB(bytes)).toThrow('chunk');
     expect(() => validateSelfContainedGLB(glb({ asset: { version: '1.0' } }))).toThrow('2.0');
   });
 });
@@ -282,7 +282,7 @@ describe('project drum appearance restoration',()=>{
       const saved = scene.getKitLayout(), appearance = saved.filter(piece => !['openHat', 'pedalHat'].includes(piece.id)).map(piece => ({ id: piece.id, settings: scene.getPieceVisual(piece.id) }));
       const prepared = await scene.prepareProjectAppearance('studio', appearance, new Map()), shown = kitGroup.children[0];
       const corrupted = structuredClone(saved); corrupted.find(piece => piece.id === 'snare')!.geometry!.body.halfExtents[1] += .05;
-      expect(() => prepared.validateLayout(corrupted)).toThrow('저장한 드럼 형상');
+      expect(() => prepared.validateLayout(corrupted)).toThrow('saved drum geometry');
       expect(kitGroup.children[0]).toBe(shown); expect(scene.getKitLayout()).toEqual(saved);
       const fitted = structuredClone(saved);
       for (const piece of fitted) if (!['kick', 'pedalHat'].includes(piece.id)) { piece.radius *= .9; piece.position[1] -= .02; piece.position[2] -= .03; }
@@ -290,7 +290,7 @@ describe('project drum appearance restoration',()=>{
       expect(kitGroup.children[0]).toBe(shown);
       prepared.apply(fitted); await scene.whenEquipmentReady();
       expect(scene.getKitLayout()).toEqual(fitted);
-      expect(() => prepared.measureLayout(saved)).toThrow('이미 적용');
+      expect(() => prepared.measureLayout(saved)).toThrow('already been applied');
       const rollback = await scene.prepareProjectAppearance('studio', appearance, new Map());
       scene.setPieceVisual('snare', { model: 'deep', scale: 1.1 }); await scene.whenEquipmentReady();
       const changed = scene.getKitLayout(), candidate = scene.measureKitLayout(saved);
@@ -324,7 +324,7 @@ describe('project drum appearance restoration',()=>{
       scene.setPieceVisual('snare',{finish:'#000000'});
       const restored=await scene.prepareProjectAppearance('library',[{id:'snare',settings:tinted}],new Map());restored.apply();
       expect(color()).toBe('e0c128');expect(scene.getPieceVisual('snare').finishOverride).toBe(true);
-      await expect(scene.prepareProjectAppearance('library',[{id:'snare',settings:{...original,source:'imported'}}],new Map())).rejects.toThrow('연결');
+      await expect(scene.prepareProjectAppearance('library',[{id:'snare',settings:{...original,source:'imported'}}],new Map())).rejects.toThrow('Relink');
       expect(color()).toBe('e0c128');
       await scene.whenEquipmentReady();
     }finally{Reflect.set(scene,'disposed',true);hardware.dispose();disposeModel(kitGroup);disposeModel(source);}
