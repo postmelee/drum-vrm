@@ -5,7 +5,7 @@ next worker; contracts own behavior and evidence reports own measured results.
 
 - [#54](https://github.com/postmelee/drum-vrm/issues/54) adds VRM 0.0 local imports
   alongside 1.0, with source-basis normalization and original legacy model terms.
-  Review this branch and its PR checks before any merge or publication; the Pages
+  Review the [verification](verification/vrm-0-support.md) and PR before any merge or publication; the Pages
   commit below is unchanged. [Import contract](../specs/architecture/rig-contract.md#model-import)
   owns the accepted versions and conversion boundary.
 - The approved body-clearance batch adds automatic character/kit fitting, focused

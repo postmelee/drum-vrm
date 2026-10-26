@@ -47,6 +47,17 @@ VRM 0.0 imports directly, with facing and legacy thumb names normalized before b
 
 Spring motion is reset for each evaluated pose so seeking and output are repeatable. Dynamic hair/clothing simulation, collision-free seating, precise skin/sole calibration and natural wrists at every target are not established by a successful import. Use a [local project](projects.md) to retain model/calibration choices across sessions; the same model file must be relinked.
 
+## A legacy model looks washed out
+
+MToon uses separate lit and shade colors/textures. A VRM 0.0 material with a
+`_MainTex`, white `_ShadeColor` and no `_ShadeTexture` can turn white in shaded
+regions even when its main texture loads correctly. The importer preserves that
+material setting. Inspect the original material before changing global lighting.
+If the intended shade uses the base artwork, assign the same texture to the lit
+and shade slots in the source editor and export a separate copy, as described in
+the [official MToon guide](https://vrm.dev/en/univrm/shaders/shader_mtoon/).
+This appearance correction does not resolve body-fitting or contact warnings.
+
 ## Find a model
 
 | Source | What to use it for |
