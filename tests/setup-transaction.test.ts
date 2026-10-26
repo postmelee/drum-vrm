@@ -53,7 +53,7 @@ it('leaves the active evaluator unchanged while a replacement is prepared or aba
     expect(Array.from(engine.evaluate(.5)!)).toEqual(before);
     expect(()=>staged.commit()).toThrow('consumed');
   }finally{engine.dispose();rig.dispose();}
-});
+},20_000); // Multiple real WASM plans; CI measured 5–6s under concurrent load.
 
 it('keeps exact source directives through fit commit and restores saved setup without another fit',async()=>{
   const {rig,profile,plan}=fixture(),engine=new EngineClient(localWorker);
@@ -70,7 +70,7 @@ it('keeps exact source directives through fit commit and restores saved setup wi
     await engine.restorePlan(plan,profile,plan.kit);
     expect(Array.from(engine.evaluate(.75)!)).toEqual(savedPose);
   }finally{engine.dispose();rig.dispose();}
-});
+},20_000); // Multiple real WASM plans; CI measured 5–6s under concurrent load.
 
 it('rejects invalid setup before replacing a playable performance',async()=>{
   const {rig,profile,plan}=fixture(),engine=new EngineClient(localWorker);

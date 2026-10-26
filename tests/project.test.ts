@@ -90,7 +90,7 @@ describe('versioned local project',()=>{
       for(const time of [239.625,96,0,95.75,96.375,180.125])expect(after.evaluate_rig_at(time)).toEqual(before.evaluate_rig_at(time));
       expect(JSON.parse(after.plan_json()).tempoMap).toEqual(project.plan.tempoMap);
     }finally{raw.free();before.free();after.free();}
-  },60_000); // Independent full-score temporal plans; the app performs this CPU work in a worker.
+  },150_000); // Two independent full-score plans: measured 72s on CI; browser work runs in a Worker.
   it('reopens explicit omission and hand directives without editing source events',()=>{
     const project=structuredClone(fixture),omitted=project.plan.hits.find(hit=>hit.instrument==='snare')!.sourceEventId!;
     const forced=project.plan.hits.find(hit=>hit.instrument==='crash')!.sourceEventId!;

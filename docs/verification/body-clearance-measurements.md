@@ -236,7 +236,7 @@ bounded desktop/narrow-panel check, not mobile or cross-browser certification.
   errors were distinguished by their old development URL/time; they were not
   treated as final-build errors or silently erased.
 - Final repository checks passed: 93 Rust tests, Rust formatting and strict
-  clippy, 174 browser-side tests in 25 files, TypeScript and production build,
+  clippy, 170 repository browser-side tests in 23 files, TypeScript and production build,
   generated-license consistency, and documentation checks (83 Markdown files,
   21 public language pairs). Browser checks do not replace the remaining surface
   clearance acceptance in #18/#20/#23.
@@ -245,3 +245,12 @@ The final review separately checked Worker cancellation/generation guards,
 transactional setup replacement, the planning-budget error, and prepared payload
 validation. A different MIDI intentionally clears the previous score; preserving
 an active evaluator on failure applies to setup/replan/model replacement.
+
+The first PR CI run reached all numerical assertions but failed four integration
+test deadlines (9.1/5.9/5.3 seconds against a 5-second default; the two independent
+four-minute project plans took 72.2 seconds against 60 seconds). Only these real
+WASM integration cases receive explicit 20-second/150-second limits; ordinary
+unit-test timeouts remain unchanged. This is not a performance pass. Repository
+test discovery is explicitly limited to `tests/**/*.test.ts`; the earlier local
+174-test count included four checks in two ignored private experiment files.
+The reproducible public suite contains 170 tests in 23 files.
