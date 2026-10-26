@@ -1,5 +1,6 @@
 import { validateKitLayout } from './kit-calibration';
 import { validateHitResponse, type HitResponseSettings } from './hit-response';
+import { validateBodyGeometry } from './body-geometry';
 import { resolvePieceVisual, type KitPresetId, type PieceVisualSettings } from './model-procedural';
 import type { HumanoidCalibration } from './rig-humanoid';
 import type { SceneViewState } from './scene';
@@ -53,6 +54,8 @@ export function parseProject(json:string):DrumProject {
   if(new TextEncoder().encode(json).length>MAX_PROJECT_BYTES)throw new Error('프로젝트는 32 MiB 이하여야 합니다.');
   const input=record(JSON.parse(json));
   if(input.format!=='drum-vrm-project'||input.schemaVersion!==PROJECT_SCHEMA_VERSION)throw new Error('지원하지 않는 프로젝트 형식 또는 버전입니다.');
+  const profile=record(input.profile);
+  if(profile.bodyGeometry!==undefined)validateBodyGeometry(profile.bodyGeometry);
   const plan=record(input.plan) as unknown as PerformancePlan;
   if(plan.schemaVersion!==2||!Array.isArray(plan.hits)||!Array.isArray(plan.sourceEvents)||plan.hits.length>50000||plan.sourceEvents.length>200000)throw new Error('프로젝트 연주 계획이 잘못되었거나 너무 큽니다.');
   number(plan.duration,0,300);

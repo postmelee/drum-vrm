@@ -2,6 +2,19 @@ export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
 /** Numeric Rust contract. Geometry is reflected only at the native VRM adapter boundary. */
 export interface HandControlFrame { forearm: Vec3; palm: Vec3; desiredPalm: Vec3; }
+/** Bounded sampled envelopes, never a skin/clothing collision certificate. */
+export interface BodyGeometry {
+  version: 1;
+  source: 'mesh-estimate' | 'skeleton-fallback';
+  torso: { center: Vec3; halfExtents: Vec3 };
+  /** LH/RH, each upper arm and forearm radius, in metres. */
+  armRadii: [[number, number], [number, number]];
+  handRadii: [number, number];
+  /** Optional offsets from wrist to the sampled hand sphere, in tool frame. */
+  handCenters?: [Vec3, Vec3];
+  handCapsules?: [{ start: Vec3; end: Vec3; radius: number }, { start: Vec3; end: Vec3; radius: number }];
+  sampleCount: number;
+}
 export interface RigProfile {
   schemaVersion: 1; id: string;
   coordinateSystem: 'legacy-y-up-z-forward-left-negative-x';
@@ -9,13 +22,19 @@ export interface RigProfile {
   lengths: [[number, number], [number, number], [number, number], [number, number]];
   restTips: [Vec3, Vec3, Vec3, Vec3]; bendPoles: [Vec3, Vec3, Vec3, Vec3];
   gripOffsets: [Vec3, Vec3, Vec3, Vec3]; tipOffsets: [Vec3, Vec3, Vec3, Vec3];
-  contactRotations: [Quat, Quat, Quat, Quat]; handFrames?: [HandControlFrame, HandControlFrame]; torsoPivot?: Vec3; pelvis: Vec3; chest: Vec3; head: Vec3;
+  contactRotations: [Quat, Quat, Quat, Quat]; handFrames?: [HandControlFrame, HandControlFrame]; torsoPivot?: Vec3; bodyGeometry?: BodyGeometry; pelvis: Vec3; chest: Vec3; head: Vec3;
 }
 export const RIG_POSE_FLOATS = 77;
 export type Instrument = 'kick'|'snare'|'hihat'|'openHat'|'pedalHat'|'tomHigh'|'tomMid'|'tomLow'|'crash'|'ride';
 /** Physical identity is separate from its voice; both crashes use the crash voice. */
 export type PieceId = Instrument | 'crashRight';
-export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; }
+export interface KitCapabilities {
+  scope: 'sampled-body-proxies'; geometrySource: string;
+  handTargetChecks: number; pairChecks: number; availablePairs: number;
+  requiredPairsAvailable: boolean; unresolvedRequiredPairs: string[];
+  pairs: { leftPieceId: string; rightPieceId: string; status: 'available' | 'not-found' | 'unmeasured' }[];
+}
+export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; capabilities?: KitCapabilities; }
 export interface KitPiece { id: PieceId; instrument?: Instrument; label: string; position: Vec3; radius: number; }
 export const pieceInstrument = (piece: KitPiece): Instrument => piece.instrument ?? (piece.id === 'crashRight' ? 'crash' : piece.id);
 export const hitPieceId = (hit: Hit): PieceId => hit.pieceId ?? hit.instrument;
@@ -48,4 +67,4 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const outputFrameCount = (plan: PerformancePlan) => Math.ceil((PRE_ROLL + plan.duration + TAIL) * FPS);
 export const outputDuration = (plan: PerformancePlan) => outputFrameCount(plan) / FPS;
 
-export interface PoseInspection { scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; boneLengthErrorMeters: number; poseFloats: number; }
+export interface PoseInspection { scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; crossClearanceMeters?: number; geometrySource?: string; boneLengthErrorMeters: number; poseFloats: number; }

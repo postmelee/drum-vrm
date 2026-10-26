@@ -12,9 +12,9 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 - Select General MIDI or Logic Drum Kit Designer (GM mode) mapping, retain source events, and inspect count-in, hi-hat control and unassigned-hit diagnostics.
 - Play, pause, reset and seek with synthesized drums or a local WAV replacement.
 - Use a reference skeleton or a local VRM 1.0 character with the same measured-body motion solver.
-- Adjust seat, contact points and palm direction, or explicitly fit the hand-played kit to the measured body. Replace drum bodies while keeping shared stands and pedals.
+- Automatically fit the seat and hand-played kit when loading a character; undo or adjust contact points and palm direction manually. Replace drum bodies while keeping shared stands and pedals.
 - Choose Studio, Vintage or Electronic procedural kits, or models by Innerscene, Batoski and smoj.
-- Use a white/black workspace, four settings panels, stage/front/top/player views and optional hit feedback.
+- Use a white/black workspace, focused settings and a separate Analysis panel, stage/front/top/player views and optional hit feedback.
 - Export 1280 × 720 video at 30 fps with the selected audio as MP4 or WebM, depending on browser codecs.
 - Inspect individual source notes, omit a mistaken strike or choose its hand without rewriting the MIDI. Review measured contact errors and stick paths.
 - Save a local project with interpretation, appearance, calibration, audio offset and view settings; relink original files when reopening.
@@ -24,19 +24,19 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 
 | Version | Availability |
 | --- | --- |
-| Repository / local build | Includes the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. These changes await a separate deployment. |
-| [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed baseline [`d8dfab3`](https://github.com/postmelee/drum-vrm/commit/d8dfab38cefc3bffd6edc0b88643d02ff829af73): VRM import, seat/palm/contact calibration and video export with synthesized drums. Check [Pages workflow runs](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml) for subsequent deployments. |
+| Repository / local build | Includes the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. See the separate Pages row for the public build. |
+| [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed batch [`22e182a`](https://github.com/postmelee/drum-vrm/commit/22e182a8153e3f409ac4a93bb49c9021e96ed15c): MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local projects, plus stable groove hands and post-fill crash assignment. [Deployment verification](docs/verification/pages-browser-performance.md). Check [Pages workflow runs](https://github.com/postmelee/drum-vrm/actions/workflows/pages.yml) for subsequent deployments. |
 | [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
 The guides describe this repository build. Check the deployed commit before assuming a newer local change is public; detailed development checks remain in the linked [verification records](docs/README.md#verification).
 
 ## Use the app
 
-1. Open **업로드 · 연주정보** (Upload / Performance) and choose **30초 데모** (30-second demo) or a `.mid`/`.midi` file.
-2. Review tracks, channels, mapping profile and diagnostics. Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **선택한 설정으로 다시 준비** (Prepare selected settings) after changes. **연주 검증 패턴** (Performance check pattern) provides a small authored fixture for visual checks.
+1. Open **파일 · 오디오** (Files / Audio) and choose a `.mid`/`.midi` file, or use the initial **데모 재생 준비** (Prepare demo) button.
+2. Review tracks, channels and mapping under **MIDI 설정** (MIDI settings); diagnostics are in **분석** (Analysis). Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **설정 적용** (Apply settings) after changes. **연주 검증 패턴** (Performance check pattern) provides a small authored fixture for visual checks.
 3. Press **재생** (Play). Seek on the timeline and use the viewpoint buttons or drag/scroll to adjust the camera. **연주자** (Player) view locks rotation, panning and zoom; closing drum editing restores the previous view.
 4. Optionally [load a character](docs/models.md) and [fit the seat, contact points or drum parts](docs/calibration.md).
-5. In **업로드 · 연주정보 → 연주 오디오** (Upload / Performance → Performance audio), [load a WAV and adjust its start offset](docs/export.md). Play and seek to review its synchronization.
+5. In **파일 · 오디오 → 연주 오디오** (Files / Audio → Performance audio), [load a WAV and adjust its start offset](docs/export.md). Play and seek to review its synchronization.
 6. [Save a local project](docs/projects.md) to retain settings and explicit note edits. **내보내기** (Export) remains available for video; the selected audio is included unless **오디오 없이 내보내기** (Export without audio) is selected.
 
 Drum appearance changes do not change the sound, and the app does not reproduce the source DAW's instruments. Export adds 0.5 seconds of preparation and a 0.25-second tail: an exactly 30-second song produces 923 frames, approximately 30.7667 seconds.
@@ -49,6 +49,8 @@ Drum appearance changes do not change the sound, and the app does not reproduce 
 | WAV | PCM or float, mono/stereo; up to 100 MiB and 300 seconds. Start offset ±300 seconds. [Formats and trimming](docs/export.md). |
 | Character | Self-contained VRM 1.0 `.vrm`, up to 50 MiB. [Bone, image and format limits](docs/models.md#supported-files). |
 | Drum appearance | Self-contained static GLB 2.0 `.glb`, up to 25 MiB; embedded resources, no skinned models. [Preparation and fitting](docs/calibration.md#replace-drum-bodies-while-keeping-hardware). |
+
+Humanoid motion preparation has a separate [6,000-control-time budget](specs/architecture/engine-contract.md#preparation-and-worker-boundary); dense scores may reach it before the MIDI input limits. Setup replanning can be cancelled without losing the current setup.
 
 SMF 2, SMPTE timing and malformed files are rejected with a reason. Unmapped notes are reported and excluded from drum synthesis; supported hits the rig cannot perform retain their original sound, time and target highlight. The planner does not move notes or stretch bones to hide reach problems.
 

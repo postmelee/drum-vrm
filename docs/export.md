@@ -5,7 +5,7 @@
 This guide describes the repository build. Check the [version table](../README.md#which-version-am-i-using)
 before assuming that a local change is on the public site.
 
-1. Load MIDI and prepare the performance in **업로드 · 연주정보** (Upload / Performance).
+1. Load MIDI and prepare the performance in **파일 · 오디오** (Files / Audio).
 2. In the same panel, choose **WAV 불러오기…** (Load WAV) under **연주 오디오** (Performance audio). The WAV
    replaces synthesized drum sound for both preview and video; it is not mixed with it.
 3. Set **WAV 시작 위치** (WAV start position) relative to MIDI song time, then press
@@ -14,7 +14,7 @@ before assuming that a local change is on the public site.
 4. Review the displayed trimming/padding information, play a recognizable hit and
    seek near the end to check alignment. The app does not automatically match beats
    or remove silence from your WAV. Keep count-in and leading silence when comparing origins.
-5. If a video is needed, open **내보내기** (Export), choose an available format and press **영상 추출**
+5. If a video is needed, open **내보내기** (Export) and press **영상 추출**
    (Export video). Keep **오디오 없이 내보내기** (Export without audio) off to include
    the selected WAV. Download the completed file and check its sound and picture.
 

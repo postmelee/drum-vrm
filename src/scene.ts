@@ -288,15 +288,24 @@ export class DrumScene {
   }
   setRig(adapter: HumanoidRigAdapter): void {
     if (adapter === this.rig) return;
-    this.setStickTrace(null);this.rig.dispose(); this.rig = adapter;
-    // Native VRM bone hierarchies never inherit the legacy kit reflection.
-    this.scene.add(adapter.root); adapter.calibrate(this.kit);
+    // Configure the candidate before transferring ownership. A calibration or
+    // pose failure must not dispose the currently displayed character.
+    adapter.calibrate(this.kit);
     if (!this.plan) adapter.applyPose(createRestRigPose(adapter.getProfile()));
     adapter.root.visible = this.characterVisible && !this.editorMode;
     adapter.setSkeletonVisible(this.skeletonVisible); adapter.setModelVisible(this.modelVisible);
     adapter.setVisualOptions({ bodyColor: this.theme === 'light' ? '#5c626b' : '#c3c9d1' });
     adapter.setFirstPerson?.(!this.editorMode && this.cameraView === 'player');
+    const previous = this.rig;
+    this.scene.add(adapter.root); this.rig = adapter;
+    this.setStickTrace(null); previous.dispose();
     if (!this.editorMode && this.cameraView === 'player') this.setCamera('player');
+  }
+  /** Common-engine idle pose; never replace a prepared performance's pose. */
+  applyReadyPose(pose: Float32Array): void {
+    if(this.plan)return;
+    if(pose.length!==77||!pose.every(Number.isFinite))throw new Error('기본 자세 데이터가 잘못되었습니다.');
+    this.rig.applyPose(pose);this.songTime=-.5;this.updateHitResponses();
   }
   getRigProfile(): RigProfile { return this.rig.getProfile(); }
   getKitLayout(): KitPiece[] { return this.kit.map(piece => ({ ...piece, position: [...piece.position] })); }
@@ -305,6 +314,12 @@ export class DrumScene {
   }
   getCalibration() { return this.rig.getCalibration(); }
   getAutomaticCalibration() { return this.rig.getAutomaticCalibration(this.kit); }
+  /** Measure a candidate without leaving the displayed rig in that calibration. */
+  measureCalibration(value: Parameters<HumanoidRigAdapter['setCalibration']>[0], kit: readonly KitPiece[]): RigProfile {
+    const previous=this.rig.getCalibration();
+    try{return this.rig.setCalibration(value,kit);}
+    finally{this.rig.setCalibration(previous,this.kit);}
+  }
   setCalibration(value: Parameters<HumanoidRigAdapter['setCalibration']>[0]): RigProfile {
     const profile = this.rig.setCalibration(value, this.kit);
     if (!this.plan) this.rig.applyPose(createRestRigPose(profile));

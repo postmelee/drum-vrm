@@ -21,9 +21,9 @@ VRM 0.x needs conversion or re-export as VRM 1.0 where the model's terms permit 
 ## Import and inspect
 
 1. Open **캐릭터** (Character), choose **VRM 불러오기…** (Import VRM), and select one `.vrm`. The app processes it in the browser without uploading it.
-2. Read the model name, author, version, required-bone and finger-bone counts, and **모델 이용 조건** (Model usage conditions). Missing optional rights fields are identified with the VRM 1.0 specification default; absence is not treated as permission. Metadata links are not opened or fetched automatically.
-3. Load a demo or MIDI and inspect the separate model/skeleton visibility controls. The adapter measures limb lengths and uses the same semantic-bone solver as the built-in skeleton. Available finger bones receive a grip pose; missing optional fingers do not prevent import.
-4. [Adjust the seat and targets](calibration.md), then compare playback and arbitrary forward/backward seeks. Check the visible grip, attached stick tips, feet and pedals. Contact measurements use tool/foot sockets, not all skin, glove or shoe vertices.
+2. Open **모델 정보 · 이용 조건** (Model information / terms) for the name, author, version, required-bone and finger-bone counts and terms. Missing optional rights fields are identified with the VRM 1.0 specification default; absence is not treated as permission. Metadata links are not opened or fetched automatically.
+3. Load a demo or MIDI and choose Model, Skeleton, Both or Hidden in the display selector. The adapter measures limb lengths and uses the same semantic-bone solver as the built-in skeleton. Available finger bones receive a grip pose; missing optional fingers do not prevent import.
+4. The app automatically attempts a body-fit layout. Inspect its result and, if needed, [adjust the seat and targets](calibration.md), then compare playback and arbitrary forward/backward seeks. Check the visible grip, attached stick tips, feet and pedals. Contact measurements use tool/foot sockets, not all skin, glove or shoe vertices.
 5. Choose **기본 리그** (Default rig) to restore the skeleton. Import and reset replan the current MIDI for the selected body without changing original hit times.
 
 Spring motion is reset for each evaluated pose so seeking and output are repeatable. Dynamic hair/clothing simulation, collision-free seating, precise skin/sole calibration and natural wrists at every target are not established by a successful import. Use a [local project](projects.md) to retain model/calibration choices across sessions; the same model file must be relinked.

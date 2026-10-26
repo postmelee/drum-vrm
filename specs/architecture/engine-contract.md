@@ -49,7 +49,7 @@ calibration/replanning. A limb is either assigned or explicitly absent. Source-e
 scope, mapping options and schema 1 migration are defined in
 [MIDI interpretation](midi-interpretation.md).
 
-Planner `phrase-beam-8-beat-horizon-24-v4` uses an eight-candidate beam with lookahead
+Planner `phrase-beam-8-beat-horizon-24-body-v7` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each
@@ -93,9 +93,12 @@ Unsupported notes and supported-but-unassigned hits are different diagnostics.
 | --- | --- |
 | `inspect_midi(bytes)` | Return inspection/track metadata as JSON |
 | `fit_kit(profileJson, kitJson)` | Return a bounded static kit-fit proposal without changing source events |
+| `ready_pose(profileJson, kitJson)` | Return a validated dual-snare reference pose without a score |
 | `Performance(bytes, selectionJson)` | Build the retained legacy performance path |
 | `Performance.from_json(planJson)` | Load the legacy primitive comparison path |
 | `Performance.from_json_with_profile(planJson, profileJson)` | Reassign and evaluate for a measured numeric body |
+| `prepared_json()` | Serialize validated plan/profile and precomputed motion tracks for a Worker handoff |
+| `Performance.from_prepared_json(json, expectedMidiHash, expectedProfileJson)` | Validate and install a prepared runtime without repeating planning |
 | `plan_json()` | Return the validated resulting plan |
 | `evaluate_at(songTime)` | Return 57 world-position floats |
 | `evaluate_rig_at(songTime)` | Return 57 positions, four xyzw tool quaternions and one torso quaternion: 77 floats |
@@ -119,6 +122,31 @@ schema 1 compatible. The profile is supplied separately from the plan.
 A plan's `calibrationId` alone cannot
 reconstruct the profile. The [rig contract](rig-contract.md) defines coordinate and
 attachment semantics.
+
+## Preparation and Worker boundary
+
+Browser fitting, initial planning, calibration replanning and project reconstruction
+run in cancellable Workers. The active scene and evaluator stay intact until a
+candidate is validated and committed; failed or cancelled setup/replan operations
+retain the previous setup. Loading a different MIDI intentionally clears the old
+score before preparation. Rendering, absolute-time evaluation and inexpensive runtime installation
+remain on the main thread.
+
+[prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
+1, containing the plan, numeric profile, torso/elbow tracks and FNV-1a integrity
+checksum. Installation checks engine/planner versions, expected source/profile
+identity, finite values, ordering, track bounds, exact control times and assigned
+contact/pedal feasibility. The checksum detects stale or damaged data; it is not a
+cryptographic signature. Payloads are capped at 128 MiB. Exact float round trips
+preserve primary poses and numeric inspection. This ephemeral handoff is separate
+from the [saved project format](project-format.md).
+
+The joint motion planner has a separate 6,000-control-time budget, including its
+0.1-second grid and exact assigned hand impacts after deduplication. Exceeding it
+returns a preparation error before allocating the search tables; shorten the
+selected passage or reduce selected tracks. The 50,000-hit parsing limit does not
+guarantee that a score fits this motion budget. Sampling and memory bounds are
+specified in [calibration](calibration.md).
 
 ## Deterministic evaluation
 
@@ -152,8 +180,8 @@ proxy clearance and change from the previous planned sample. Absolute-time smoot
 interpolation selects yaw; both arms are solved again from the turned shoulders to
 the original world targets. Pelvis and leg roots remain fixed. This precomputed
 curve does not depend on playback order or frame rate. Every assigned hand impact
-is checked using the interpolated yaw; losing reach attenuates the entire curve,
-with zero yaw as the fallback. The [calibration contract](calibration.md) defines
+is checked using interpolated yaw; losing reach attenuates adjacent knots with
+rate-bound propagation, with zero yaw as the bounded-repair fallback. The [calibration contract](calibration.md) defines
 the continuous neutral-wrist solve and bounded torso planning.
 
 For profiles with `handFrames`, a separate precomputed elbow-swivel track coordinates
@@ -164,7 +192,9 @@ Absolute-time interpolation preserves seek determinism; proxy costs do not certi
 collision-free motion.
 
 `inspect_pose_at` reports `scope: "skeletal-proxies"`, `torsoClearanceMeters`,
-`armClearanceMeters`, `stickClearanceMeters`, `boneLengthErrorMeters` and `poseFloats`.
+`armClearanceMeters`, `stickClearanceMeters`, `crossClearanceMeters`,
+`geometrySource`, `boneLengthErrorMeters` and `poseFloats`. Cross clearance is the
+minimum stick-to-opposite-arm/hand clearance; own-hand grip attachment is permitted.
 Negative clearance means overlap of the numeric proxies. Bone error is the maximum
 segment-length deviation across four limbs. These values inspect the evaluated
 numeric pose; they neither measure rendered attachment markers nor establish skin,

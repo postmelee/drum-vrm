@@ -81,9 +81,14 @@ and skeletal posture checks at contact and two preparation samples. The samples 
   0.10 times upper-arm length. Higher targets are exempt from this height bound.
 - Elbow forward position is at least shoulder Z minus 0.35 times upper-arm length.
 - Wrist forward position is at least shoulder Z plus 0.15 times forearm length.
-- Arm/tool-to-torso proxy clearance is at least −0.002 m.
+- Arm/tool-to-torso proxy clearance is at least 0.002 m. Each sample searches the shared bounded elbow candidates rather than only the neutral elbow.
 
-Snare height must also be 0.4–1.6 upper-arm lengths below each shoulder. Snare, toms
+Snare height must also be 0.4–1.6 upper-arm lengths below each shoulder. The fit
+additionally requires a two-hand snare-ready pose and a left-snare/right-hi-hat
+groove pose. These probes use tips 35 mm above the heads; two tips on the same
+head are separated symmetrically by a bounded fraction of its radius. They are
+fixed calibration probes, not random strike offsets. `ready_pose` uses the same
+accepted two-snare solution when no MIDI is active. Snare, toms
 and crashes check both hands; hi-hat and ride check the right hand. Legacy profiles
 without `handFrames` retain static reach checks without these posture guards.
 
@@ -100,13 +105,54 @@ entries containing `pieceId` and local `translation`. If no complete candidate e
 return the **original layout unchanged**, `scale: 1`, zero translation,
 `pieceAdjustments: []` and `complete: false`. `unreachablePieceIds` identifies reach
 or posture failures; `clearancePieceIds` identifies nominal-body/hi-hat-rod overlaps.
-The UI keeps proposal and application separate: inspect a complete proposal, then
-explicitly apply it to change the layout and replan. An incomplete proposal leaves
-the current layout intact for manual seat/target adjustment. Character import does
-not silently apply a proposal; the previous applied setup can be restored.
+The browser automatically applies a complete fit when importing a character or
+restoring the built-in rig, and offers persistent undo. Incomplete fitting retains
+a usable previous layout and explicit warnings. Repeated imports start from the
+last explicit layout baseline rather than repeatedly shrinking an automatic result.
+Saved project reopening bypasses fitting and restores the recorded setup exactly.
 Fitting a successful result again leaves the layout unchanged and returns no local
 adjustments. These numeric guards do not establish universal fit across VRM body
 shapes; rendered comparisons remain necessary.
+
+The result includes `capabilities`: a bounded ordered left/right target-pair audit,
+geometry source, checked-target/pair counts and the required-pair outcome. The
+canonical eight hand-played surfaces produce 16 hand/target checks and 64 ordered
+pairs. Open/closed hat share a surface; feet are excluded. At most 16 surfaces are
+enumerated for larger custom layouts. `available` means the bounded static search
+found a proxy-clear witness; `not-found` is not proof of physical impossibility.
+`unmeasured` identifies profiles without the necessary hand-frame contract. This
+matrix guides inspection; it does not certify a time-ordered performance.
+
+## One geometric clearance contract
+
+Calibration, motion planning and inspection share
+[clearance.rs](../../crates/drum-engine/src/clearance.rs). The adapter supplies the
+[numeric body descriptor](rig-contract.md#numeric-body-geometry); older profiles
+use an explicit skeleton fallback. Arms and hands are capsules, and sticks are
+6 mm-radius segments. Hand capsules follow the solved tool rotation. The own-hand
+grip attachment is allowed; the opposite arm, hand and stick remain obstacles.
+
+For capsules with axes `A(u)` and `B(v)` and radii `rA`, `rB`, clearance is
+`min(u,v ∈ [0,1]) |A(u) − B(v)| − rA − rB`. Finite segment endpoints,
+parallel axes and degenerate spheres are handled explicitly.
+
+The torso uses a capped elliptical cylinder in the moving shoulder frame. For
+local point `p` and half extents `(rx, ry, rz)`, a conservative distance bound is
+`max((sqrt((px/rx)² + (pz/rz)²) − 1) × min(rx,rz), |py| − ry)`.
+The whole segment is minimized with 16 golden-section iterations and a residual
+Lipschitz bound before subtracting its radius. This avoids treating isolated
+segment samples as proof that a narrow crossing was absent.
+
+An upper arm necessarily connects to its own torso. When the shoulder origin is
+inside the proxy and the upper arm moves outward on its own side, only the
+connected proximal attachment region is permitted; the elbow must clear the torso.
+Inward/cross-body upper arms, forearms, hands and sticks retain full checks. This
+geometric rule does not discard measured sleeves or branch on model identity.
+
+Negative clearance is a proxy overlap, not a measured skin penetration depth.
+Nonnegative clearance also cannot certify all clothing vertices or continuous
+animated triangles. Pair availability, actual impact clearance, intervening paths
+and rendered surfaces are separate verification layers.
 
 ## Contact is a transform chain
 
@@ -145,13 +191,14 @@ rendered fingers and mesh, before claiming a natural grip.
 Optional `torsoPivot` is measured from the normalized spine and translated with the
 seat. [body_motion.rs](../../crates/drum-engine/src/body_motion.rs) precomputes a
 12 Hz yaw curve, bounded to ±0.24 radians. Each step examines 13 candidates within
-±0.06 radians of the previous planned yaw. Costs balance the direction of both hand
-targets, torso/forearm proxy clearance and change in yaw. Smooth interpolation is
+±0.06 radians of the previous planned yaw. Costs balance the direction of both hand targets, a joint bounded search for
+left/right elbow candidates, shared proxy clearance and change in yaw. Smooth interpolation is
 evaluated by absolute time; this is planned continuity, not accumulated frame state.
 The resulting curve is checked at every assigned hand impact, including impacts
-between sample knots. If facing loses reach, the entire curve is attenuated by
-halving its angles until reach is retained, with zero yaw as the fallback. This
-preserves curve continuity and the source contact times.
+between sample knots. If facing loses reach, only adjacent time knots are attenuated toward neutral,
+propagating the existing 0.06 rad neighbor bound. A bounded 16-pass repair retains
+other phrases; zero yaw is the final fallback if contacts still cannot be retained.
+This preserves curve continuity and source contact times.
 
 Rotating the profile moves shoulders, bend references, chest and head around the
 pivot. Both arms are then solved again to the original world-space tool targets.
@@ -162,20 +209,34 @@ shoulder roots.
 
 When `handFrames` are available,
 [hand_coordination.rs](../../crates/drum-engine/src/hand_coordination.rs) then plans
-both elbow swivels on a 30 Hz grid plus the original impact timestamps. It evaluates
-the already turned body and existing tool paths, with forward/backward refinement
-of torso, arm-to-arm and stick-to-stick proxy costs. Angles remain within ±0.8 rad;
-neighboring samples differ by at most 2 rad/s. C1 smoothstep interpolation has a
-maximum 3 rad/s angular rate for this additional swivel track. These bounds apply
-to the swivel contribution, not the entire animated elbow or wrist. The track is
-precomputed, independent of playback order, and does not move source impacts or
-stretch bones. Lower proxy costs can still leave penetrations and do not establish
-skin clearance or natural posture.
+both elbow swivels on a 0.1-second grid plus exact source impact timestamps. Each
+node contains 33 × 33 joint candidates in 0.05 rad steps, spanning ±0.8 rad per arm.
+Dynamic programming selects a whole-timeline path, retaining alternatives that
+prepare for future constraints instead of accepting a locally convenient collision.
+An edge permits at most 2 rad/s of sampled-angle change; C1 smoothstep interpolation
+therefore contributes at most 3 rad/s. These are swivel-track limits, not limits on
+the entire moving elbow or wrist.
 
-[clearance.rs](../../crates/drum-engine/src/clearance.rs) estimates an elliptical
-torso from semantic shoulder width and checks sampled arm/tool segments against it.
-`inspect_pose_at` additionally reports arm-to-arm and stick-to-stick proxy distances
-and bone-length error. The [engine contract](engine-contract.md) defines the fields.
+The selected path is checked at 30 Hz and exact impacts with the turned body and
+actual stroke targets. Colliding edges receive their measured cost and the graph
+is searched again, up to eight iterations. The best inspected path is retained.
+This is bounded cost optimization: it may still return a least-bad path when no
+safe candidate sequence is found. `BODY_PATH_CLEARANCE` reports residual proxy
+intersections at assigned hand-impact times. It is not a continuous collision
+certificate and does not silently omit the notes.
+
+The track is precomputed and independent of playback order. It changes neither
+source times nor hit targets, stretches no bones, and adds no random target offsets.
+
+The joint planner accepts at most 6,000 deduplicated control times, checked before
+allocating its node-cost and parent tables (about 52 MB + 13 MB at this bound).
+Exceeding this separate motion budget returns an actionable preparation error;
+it does not fall back silently to an unchecked motion. The MIDI parser's 50,000-hit
+limit is not a promise that every dense score fits this humanoid planning budget.
+
+`inspect_pose_at` reports the shared torso, arm-to-arm, stick-to-stick and
+stick-to-opposite-arm/hand clearances, geometry source and bone-length error.
+The [engine contract](engine-contract.md) defines the fields.
 These metrics support reproducible inspection but do not inspect skin, clothing,
 all instrument geometry or the entire continuous path. Zero numeric contact error
 and nonnegative proxy clearance are separate from a convincing rendered pose.

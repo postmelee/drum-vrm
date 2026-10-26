@@ -10,6 +10,7 @@ pub mod interpretation;
 mod midi;
 pub mod model;
 pub mod motion;
+mod posture;
 pub mod rig;
 
 use model::{MidiInfo, PerformancePlan, Selection};
@@ -54,6 +55,24 @@ pub fn fit_kit(profile_json: &str, kit_json: &str) -> Result<String, JsValue> {
     fit::fit_kit_json(profile_json, kit_json).map_err(|error| JsValue::from_str(&error))
 }
 
+/// Shared no-MIDI calibration preview. No source notes are synthesized or edited.
+#[wasm_bindgen]
+pub fn ready_pose(profile_json: &str, kit_json: &str) -> Result<Vec<f32>, JsValue> {
+    let result = (|| {
+        let profile = RigProfile::from_json(profile_json)?;
+        if kit_json.len() > 128 * 1024 {
+            return Err("키트 배치 크기가 한계를 초과합니다.".into());
+        }
+        let kit: Vec<model::KitPiece> =
+            serde_json::from_str(kit_json).map_err(|e| format!("키트 배치 형식 오류: {e}"))?;
+        if !fit::valid(&kit) {
+            return Err("키트 배치가 지원 범위를 벗어납니다.".into());
+        }
+        posture::ready_pose(&profile, &kit)
+    })();
+    result.map_err(|error: String| JsValue::from_str(&error))
+}
+
 #[wasm_bindgen]
 pub struct Performance {
     motion: Motion,
@@ -84,6 +103,21 @@ impl Performance {
         profile_json: &str,
     ) -> Result<Performance, JsValue> {
         load_motion(plan_json, Some(profile_json))
+            .map(|motion| Self { motion })
+            .map_err(|e| JsValue::from_str(&e))
+    }
+
+    /// Internal worker transfer, not a persisted project or user-import format.
+    pub fn prepared_json(&self) -> String {
+        self.motion.prepared_json()
+    }
+
+    pub fn from_prepared_json(
+        prepared_json: &str,
+        expected_midi_hash: &str,
+        expected_profile_json: &str,
+    ) -> Result<Performance, JsValue> {
+        Motion::from_prepared_json(prepared_json, expected_midi_hash, expected_profile_json)
             .map(|motion| Self { motion })
             .map_err(|e| JsValue::from_str(&e))
     }

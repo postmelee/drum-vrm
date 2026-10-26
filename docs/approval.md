@@ -39,3 +39,30 @@ See [release policy / 릴리스 정책](release-policy.md). This record document
 The owner instructed: “남은 PR도 검토후 문제없다면 병합하고 현재까지 진행된 것을 Pages에 배포해줘. 릴리즈는 하지 말아줘.”
 
 This authorizes review and merge of the remaining PRs #34/#39 and one Pages deployment of the verified integrated main commit. Record that exact commit, workflow run and public checks on the PRs and #36. It does **not** authorize a version bump, release tag or GitHub Release. The earlier v0.2.0 public-state statements above remain historical. Further feature work waits for the owner's next instruction; this is not ongoing deployment approval.
+
+
+## 2026-10-26 — browser performance batch, merge and Pages only
+
+The owner requested Pages access to the current changes while away from the local server, then explicitly approved merging PRs #40/#41 and deploying the tested integrated commit by replying “승인할게” to that concrete scope. Both PRs were merged and commit `045b78aa56f00709471359d8e861c420222bda93` was deployed. Its tree exactly matches tested candidate `5d5d7ae6363f4562209bc5c94f4e2860d8d3903d`.
+
+This approval covers that batch only, with no version bump, release tag or GitHub Release. [Deployment evidence](verification/pages-browser-performance.md) records the successful workflow, public artifact comparison and browser smoke checks. It does not authorize future deployments or declare remaining motion-quality issues complete.
+
+
+## 2026-10-26 — groove-hand correction Pages approval
+
+After reviewing the PR #43 change summary, test evidence and explicit undeployed status, the owner requested: “Pages 배포해서 내가 변경을 확인할 수 있게 해줘.” This authorizes publication of that reviewed correction. PR #43 was merged as `22e182a8153e3f409ac4a93bb49c9021e96ed15c`; the integrated tree equals tested head `09639306a0c87e9436ca42a144f2d1275b3f766b`. [Deployment evidence](verification/pages-browser-performance.md#groove-hand-correction-follow-up) records the successful Pages run. No tag or GitHub Release was created. This does not authorize subsequent batches.
+
+## 2026-10-26 — automatic fitting and measured-clearance batch
+
+The owner explicitly requested continuing through the stage before randomized
+strike-location variation, reorganizing/updating issues, merging PRs where needed,
+and deploying the result: “이것까지 고려해서 위치 분산 추가 작업 전까지 진행하고 배포해줘.
+이슈 재정립과 업데이트, pr 병합이 필요하다면 진행하며 계속해줘.”
+
+This authorizes the tested automatic-fit/menu and measured body-clearance batch,
+including shared reference-pose/target-pair constraints, temporal torso/elbow
+coordination and responsive preparation. Record the exact reviewed commit and
+Pages workflow in [batch evidence](verification/body-clearance-measurements.md).
+It does not authorize randomized strike variation, version changes, release tags
+or GitHub Releases. Remaining fast-transfer and skin/clothing limits stay open;
+this is not continuing deployment approval for later features.

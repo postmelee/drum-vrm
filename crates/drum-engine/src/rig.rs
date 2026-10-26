@@ -21,6 +21,36 @@ pub struct HandControlFrame {
     pub desired_palm: Vec3,
 }
 
+/// Numeric envelope measurements in the profile's world basis. The torso axes
+/// follow shoulder-right / up / body-forward; this is not a skinned mesh.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TorsoGeometry {
+    pub center: Vec3,
+    pub half_extents: Vec3,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HandCapsule {
+    pub start: Vec3,
+    pub end: Vec3,
+    pub radius: f64,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BodyGeometry {
+    pub version: u32,
+    pub source: String,
+    pub torso: TorsoGeometry,
+    pub arm_radii: [[f64; 2]; 2],
+    pub hand_radii: [f64; 2],
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hand_centers: Option<[Vec3; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hand_capsules: Option<[HandCapsule; 2]>,
+    pub sample_count: u32,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RigProfile {
@@ -44,6 +74,8 @@ pub struct RigProfile {
     pub hand_frames: Option<[HandControlFrame; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub torso_pivot: Option<Vec3>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_geometry: Option<BodyGeometry>,
     pub pelvis: Vec3,
     pub chest: Vec3,
     pub head: Vec3,
@@ -101,6 +133,7 @@ impl RigProfile {
             contact_rotations: [[0.0, 0.0, 0.0, 1.0]; 4],
             hand_frames: None,
             torso_pivot: None,
+            body_geometry: None,
             pelvis: [0.0, 0.71, -0.15],
             chest: [0.0, 1.24, -0.10],
             head: [0.0, 1.62, -0.10],
@@ -135,6 +168,37 @@ impl RigProfile {
             || self.torso_pivot.as_ref().is_some_and(|v| !point(v))
         {
             return Err("리그 몸통 좌표가 유한한 미터 범위를 벗어납니다.".into());
+        }
+        if let Some(body) = &self.body_geometry {
+            let radius = |r: &f64| r.is_finite() && (0.005..=0.25).contains(r);
+            if body.version != 1
+                || !matches!(body.source.as_str(), "mesh-estimate" | "skeleton-fallback")
+                || !point(&body.torso.center)
+                || body
+                    .torso
+                    .half_extents
+                    .iter()
+                    .any(|r| !r.is_finite() || !(0.01..=1.0).contains(r))
+                || !body.arm_radii.iter().flatten().all(radius)
+                || !body.hand_radii.iter().all(radius)
+                || body.hand_centers.as_ref().is_some_and(|centers| {
+                    centers
+                        .iter()
+                        .any(|c| !point(c) || distance(*c, [0.0; 3]) > 0.5)
+                })
+                || body.hand_capsules.as_ref().is_some_and(|capsules| {
+                    capsules.iter().any(|c| {
+                        !point(&c.start)
+                            || !point(&c.end)
+                            || distance(c.start, [0.0; 3]) > 0.5
+                            || distance(c.end, [0.0; 3]) > 0.5
+                            || !radius(&c.radius)
+                    })
+                })
+                || body.sample_count > 1_000_000
+            {
+                return Err("리그 충돌 형상 측정값이 지원 범위를 벗어납니다.".into());
+            }
         }
         if let Some(frames) = &self.hand_frames {
             for frame in frames {
@@ -252,6 +316,9 @@ impl RigProfile {
         for limb in 0..2 {
             p.roots[limb] = turn(p.roots[limb]);
             p.bend_poles[limb] = rotate(q, p.bend_poles[limb]);
+        }
+        if let Some(body) = &mut p.body_geometry {
+            body.torso.center = turn(body.torso.center);
         }
         p.chest = turn(p.chest);
         p.head = turn(p.head);

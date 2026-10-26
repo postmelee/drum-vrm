@@ -1,17 +1,48 @@
 # Work entrypoint
 
-Use the relevant issue for current scope and review status. This page routes the next worker; it does not duplicate release state or measurements.
+Use the relevant issue for current scope and review status. This page routes the
+next worker; contracts own behavior and evidence reports own measured results.
 
-- The owner approved the browser-naturalness follow-up on top of [PR #40](https://github.com/postmelee/drum-vrm/pull/40), with user WAV synchronization prioritized and expanded video/interchange outputs deferred. The active branch is `codex/natural-browser-performance`; the foundation PR remains unmerged.
-- [Outcome sequence](plan.md#outcome-sequence) routes M3 browser quality, M4 advanced expression/platforms and M5 production outputs. Issues own live completion; no merge/release/Pages approval is implied.
-- The private benchmark revision supplied as `투명소녀1.mid` removes the early hi-hat/crash conflicts. The owner explicitly selected dual crashes plus kick for its final three-hand chord. Retain the MIDI and record the snare omission through the generic source-event arrangement layer; never branch on filename or silently remove notes.
-- The browser candidate integrates coherent kit sizes and separated hardware, body-first fitting, phrase sticking, coordinated torso/arms, general import controls, WAV preview, local inspection and project reopen. [Final numerical and bounded browser evidence](verification/browser-natural-performance.md) separates verified contact/source preservation from remaining fast-transfer and skin-clearance limits. Next: owner local visual review of the benchmark and representative VRMs, especially floor-tom → crash transfers and stick crossings; use the observed failures to refine the linked issues before any broader naturalness claim.
-- [Source-adoption review](research/motion-adoption-gates.md) recommends independent browser tracing; unverified runnable models/weights are not adopted. [Earlier geometry/sticking research](research/ergonomics-and-sticking.md) retains the motivating observations.
-- The owner's review of the deployed browser batch exposed left-hand hi-hat assignment. The `codex/groove-hand-roles` candidate prioritizes right-hand hats and left-hand sparse snare, while releasing crash ownership after fills. [Regression evidence](verification/groove-hand-roles.md) records both demos, left-hand post-fill crashes and remaining unfitted torso overlap. Review this correction before further style work; it has no new merge or Pages approval.
-- [Simplification verification](verification/documentation-simplification.md) preserves the documentation audit; earlier measured records retain their original scope.
+- The approved body-clearance batch adds automatic character/kit fitting, focused
+  menus with Analysis, measured skin-weight geometry, common static target-pair
+  checks, and coordinated temporal torso/elbow planning. Fitting and planning run
+  in cancellable Workers. See [verification and limits](verification/body-clearance-measurements.md).
+- The owner authorized implementation, necessary PR merges and Pages publication
+  through the stage **before randomized strike-location variation**. No release
+  tag or GitHub Release is authorized. [Approval history](approval.md) retains the
+  exact scope; the verification report records publication when completed.
+- [#44](https://github.com/postmelee/drum-vrm/issues/44) owns automatic-fit/menu
+  acceptance. [#18](https://github.com/postmelee/drum-vrm/issues/18) owns common body
+  calibration, [#20](https://github.com/postmelee/drum-vrm/issues/20) owns motion
+  quality, and [#23](https://github.com/postmelee/drum-vrm/issues/23) owns inspection.
+  Keep their broader acceptance open: static feasibility and accurate contact do
+  not certify clear skin/clothing throughout a song.
+- Next motion work should reproduce the remaining fast-transfer crossing with
+  bounded posed-surface evidence before adding strike variation. The final audit
+  retains one observed opposing-arm crossing at 92.55 seconds on AvatarSample B;
+  broader per-frame proxies also report residual conflicts. Do not shrink body
+  proxies, stretch bones or shift MIDI times to make warnings disappear.
+- The private benchmark revision supplied as `투명소녀1.mid` removes early
+  hi-hat/crash conflicts. The owner explicitly chose dual crashes plus kick for
+  its final three-hand chord. Preserve the source MIDI and use the generic
+  source-event omission layer for the extra snare; never branch on filenames.
+- [Outcome sequence](plan.md#outcome-sequence) routes M3 browser quality, M4 advanced
+  expression/platforms and M5 production outputs. WAV preview remains the audio
+  priority; expanded video/interchange output stays deferred.
 
-Start with the [MIDI interpretation contract](../specs/architecture/midi-interpretation.md), then its linked engine, calibration and expression contracts. Earlier [calibration](verification/calibration-unreleased.md), [palm orientation](verification/palm-orientation-unreleased.md) and [VRM foundation](verification/vrm-studio-unreleased.md) measurements retain their original commit scope. [Source research](research/references.md) preserves provenance.
+Start with [MIDI interpretation](../specs/architecture/midi-interpretation.md),
+[calibration](../specs/architecture/calibration.md) and the
+[engine boundary](../specs/architecture/engine-contract.md).
+[Ergonomics/sticking research](research/ergonomics-and-sticking.md),
+[source provenance](research/references.md), and
+[motion adoption gates](research/motion-adoption-gates.md) retain rationale.
 
-The [release policy](release-policy.md) requires separate batch approval. No release or Pages approval is conveyed by this index.
-
-Earlier context remains in the [pre-refactor handoff](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/handoff.md), [requirements origin](context/source-conversation.md) and [approval history](approval.md). Consult them for historical evidence, not current task status.
+Earlier [browser performance](verification/browser-natural-performance.md),
+[groove-hand correction](verification/groove-hand-roles.md) and
+[Pages batches](verification/pages-browser-performance.md) retain their tested
+commits and original limitations. [Documentation simplification](verification/documentation-simplification.md)
+preserves the structural decisions. Historical context remains in the
+[requirements origin](context/source-conversation.md) and
+[pre-refactor handoff](https://github.com/postmelee/drum-vrm/blob/66951cd69015e43cfe132a6ba61545b175a25412/docs/handoff.md).
+The [release policy](release-policy.md) requires explicit approval for each later
+batch; this index does not grant future deployment permission.
