@@ -26,7 +26,7 @@
 - Fit through semantic humanoid measurements and common numeric constraints, without avatar-name branches or stretching bones. Actual stick/sole-marker contact is not proof of natural posture or skin collision clearance.
 - Run meaningful checks appropriate to the changed boundary before claiming success. Rebuild WASM for Rust changes. Media changes need actual output evidence, not just encoder completion.
 - Pin dependency/source versions and preserve applicable licenses. Distinguish papers, code, data, weights and assets; a license for one does not cover the others. Model provenance JSON owns attribution metadata; generate notices with `npm run licenses`.
-- Never commit uploaded MIDI/WAV/VRM, private downloads, secrets or raw conversations without explicit permission for the exact public asset and recorded distribution rights. The reviewed MIDI in `public/demos/*-provenance.json` is such an exception; it does not authorize any other upload or change its license to MIT. `.local/` stays private. Author other public demo/test fixtures independently.
+- Never commit uploaded MIDI/WAV/VRM, private downloads, secrets or raw conversations without explicit permission for the exact public asset and recorded distribution rights. The reviewed MIDI in `public/demos/*-provenance.json` and official samples in `public/characters/*-provenance.json` are recorded exceptions; they do not authorize other uploads or change asset licenses to MIT. `.local/` stays private. Author other public demo/test fixtures independently.
 
 ## Finish
 

@@ -1,0 +1,71 @@
+{
+  "id": "twist",
+  "title": "VRM1_Constraint_Twist_Sample",
+  "creator": "pixiv Inc.",
+  "file": "twist.vrm",
+  "bytes": 10776032,
+  "sha256": "12c2b97e95e700783a6a550dc0eee2d7880aeedccef9ae67bc4c5a2f0f2631a2",
+  "source": "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/vrm/VRM1_Constraint_Twist_Sample.vrm",
+  "sourceCommit": "94e82dd346fa6cf0337c4421728640e5252dd38e",
+  "download": "https://raw.githubusercontent.com/vrm-c/vrm-specification/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/vrm/VRM1_Constraint_Twist_Sample.vrm",
+  "license": "VRM-Public-License-1.0",
+  "licenseUrl": "https://vrm.dev/en/licenses/1.0/",
+  "creditRequired": false,
+  "credit": "VRM1_Constraint_Twist_Sample — (c) 2022 pixiv Inc.",
+  "copyright": "(c) 2022 pixiv Inc.",
+  "retrieved": "2026-10-24",
+  "rightsReviewed": "2026-10-26",
+  "licenseFile": "VRM-Public-License-1.0.txt",
+  "noticeFile": "twist-NOTICE.txt",
+  "termsSummary": "Redistribution and modification allowed under the embedded VRM Public License settings; antisocial/hate usage is not allowed. Separate from three-vrm code MIT. No endorsement is implied.",
+  "unmodifiedBinary": true,
+  "embeddedMetadata": {
+    "allowAntisocialOrHateUsage": false,
+    "allowExcessivelySexualUsage": true,
+    "allowExcessivelyViolentUsage": true,
+    "allowPoliticalOrReligiousUsage": true,
+    "allowRedistribution": true,
+    "authors": [
+      "pixiv Inc."
+    ],
+    "avatarPermission": "everyone",
+    "commercialUsage": "corporation",
+    "copyrightInformation": "(c) 2022 pixiv Inc.",
+    "creditNotation": "unnecessary",
+    "licenseUrl": "https://vrm.dev/licenses/1.0/",
+    "modification": "allowModificationRedistribution",
+    "name": "VRM1_Constraint_Twist_Sample",
+    "version": "v1.0.1"
+  },
+  "files": [
+    {
+      "file": "twist.vrm",
+      "bytes": 10776032,
+      "sha256": "12c2b97e95e700783a6a550dc0eee2d7880aeedccef9ae67bc4c5a2f0f2631a2",
+      "source": "https://github.com/vrm-c/vrm-specification/blob/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/vrm/VRM1_Constraint_Twist_Sample.vrm"
+    },
+    {
+      "file": "VRM-Public-License-1.0.txt",
+      "bytes": 16870,
+      "sha256": "c3188770d30dde33ea3dbb11210caed3dfecc319b5b1357c1ef6ae81766be7ee",
+      "source": "https://vrm.dev/en/licenses/1.0/"
+    },
+    {
+      "file": "twist-NOTICE.txt",
+      "bytes": 190,
+      "sha256": "079d48f0b8f15852e9b28b197c5c87c92c3fe7a614524a0afa939c74f649cc5a",
+      "source": "https://raw.githubusercontent.com/vrm-c/vrm-specification/94e82dd346fa6cf0337c4421728640e5252dd38e/samples/VRM1_Constraint_Twist_Sample/README.md"
+    }
+  ],
+  "licenseTextEvidence": {
+    "source": "https://vrm.dev/en/licenses/1.0/",
+    "retrieved": "2026-10-26",
+    "sourceHtmlSha256": "22e38727184a5df1a362d158a989d4d9c732d2f600a998155ea0f52035776a0e",
+    "processing": "Complete canonical English license body extracted to plain text; list labels retained; PDF download label omitted."
+  },
+  "ownerPermission": {
+    "recorded": "2026-10-26",
+    "scope": "The owner requested the previously acquired local test VRMs as selectable website presets and public Pages deployment. This record applies only to this exact official artifact with its original distribution rights; it does not authorize other private models or relicense the file."
+  },
+  "runtimeAdaptation": "Loaded on selection through the common VRM 1.0 importer and semantic humanoid adapter. Runtime posing, grip and body/kit fitting are transient; original model bytes and metadata remain unchanged. No avatar-specific motion branches."
+}

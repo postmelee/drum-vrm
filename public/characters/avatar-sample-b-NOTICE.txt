@@ -1,0 +1,17 @@
+AvatarSample_B, model version 1.1
+Author: VRoid Project
+Copyright: pixiv Inc.
+
+The author, copyright, license and additional-terms statements above/below are
+preserved from the unchanged file's embedded VRMC_vrm.meta. This notice is an
+extraction of those original metadata fields, not a separate upstream license.
+
+VRM Public License 1.0: https://vrm.dev/licenses/1.0/
+Additional conditions (original embedded URL):
+https://vroid.pixiv.help/hc/ja/articles/4402394424089-AvatarSample-A-B-C
+English conditions:
+https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z
+
+The file is redistributed unchanged and without a fee. It is not CC0 or MIT.
+Source:
+https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm

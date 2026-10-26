@@ -1,0 +1,81 @@
+{
+  "id": "avatar-sample-b",
+  "title": "AvatarSample_B",
+  "creator": "VRoid Project",
+  "file": "avatar-sample-b.vrm",
+  "bytes": 21047556,
+  "sha256": "ffbd8c92a9e67c0a948f69c7a2eec91e5c282c9ae70e9184309fc164d74cbc27",
+  "source": "https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm",
+  "sourceCommit": "b542aa00e19dccf9fc48ba340cf7eee011d2329a",
+  "download": "https://raw.githubusercontent.com/pixiv/ChatVRM/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm",
+  "license": "VRM-Public-License-1.0 + VRoid sample-model conditions",
+  "licenseUrl": "https://vrm.dev/en/licenses/1.0/",
+  "creditRequired": false,
+  "credit": "AvatarSample_B by VRoid Project; copyright pixiv Inc.",
+  "copyright": "pixiv Inc.",
+  "retrieved": "2026-10-24",
+  "rightsReviewed": "2026-10-26",
+  "licenseFile": "VRM-Public-License-1.0.txt",
+  "noticeFile": "avatar-sample-b-NOTICE.txt",
+  "termsSummary": "Free unchanged redistribution and model/avatar use under the embedded settings and VRoid sample conditions. Not CC0/MIT. No paid sample redistribution, sample-based character creation service, false endorsement or prohibited conduct.",
+  "unmodifiedBinary": true,
+  "embeddedMetadata": {
+    "name": "AvatarSample_B",
+    "version": "1.1",
+    "authors": [
+      "VRoid Project"
+    ],
+    "copyrightInformation": "pixiv Inc.",
+    "contactInformation": "https://www.pixiv.net/support.php?mode=select_vroid",
+    "licenseUrl": "https://vrm.dev/licenses/1.0/",
+    "avatarPermission": "everyone",
+    "allowExcessivelyViolentUsage": true,
+    "allowExcessivelySexualUsage": true,
+    "commercialUsage": "corporation",
+    "allowPoliticalOrReligiousUsage": true,
+    "allowAntisocialOrHateUsage": false,
+    "creditNotation": "unnecessary",
+    "allowRedistribution": true,
+    "modification": "allowModificationRedistribution",
+    "otherLicenseUrl": "https://vroid.pixiv.help/hc/ja/articles/4402394424089-AvatarSample-A-B-C"
+  },
+  "files": [
+    {
+      "file": "avatar-sample-b.vrm",
+      "bytes": 21047556,
+      "sha256": "ffbd8c92a9e67c0a948f69c7a2eec91e5c282c9ae70e9184309fc164d74cbc27",
+      "source": "https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm"
+    },
+    {
+      "file": "VRM-Public-License-1.0.txt",
+      "bytes": 16870,
+      "sha256": "c3188770d30dde33ea3dbb11210caed3dfecc319b5b1357c1ef6ae81766be7ee",
+      "source": "https://vrm.dev/en/licenses/1.0/"
+    },
+    {
+      "file": "avatar-sample-b-NOTICE.txt",
+      "bytes": 774,
+      "sha256": "2d3dae089f575c0baa8e8a41f01c87b095af3b4d54714e78d4a44938aa9ccd08",
+      "source": "https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm#embedded-vrm-metadata"
+    },
+    {
+      "file": "VRoid-Sample-Conditions.txt",
+      "bytes": 2902,
+      "sha256": "e83a570055e3bcd70d59f5f7f87cc4db86e45a3fa20600a13a9ee236d705afb6",
+      "source": "https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z"
+    }
+  ],
+  "licenseTextEvidence": {
+    "source": "https://vrm.dev/en/licenses/1.0/",
+    "retrieved": "2026-10-26",
+    "sourceHtmlSha256": "22e38727184a5df1a362d158a989d4d9c732d2f600a998155ea0f52035776a0e",
+    "processing": "Complete canonical English license body extracted to plain text; list labels retained; PDF download label omitted."
+  },
+  "ownerPermission": {
+    "recorded": "2026-10-26",
+    "scope": "The owner requested the previously acquired local test VRMs as selectable website presets and public Pages deployment. This record applies only to this exact official artifact with its original distribution rights; it does not authorize other private models or relicense the file."
+  },
+  "runtimeAdaptation": "Loaded on selection through the common VRM 1.0 importer and semantic humanoid adapter. Runtime posing, grip and body/kit fitting are transient; original model bytes and metadata remain unchanged. No avatar-specific motion branches.",
+  "additionalTermsUrl": "https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z",
+  "additionalTermsFile": "VRoid-Sample-Conditions.txt"
+}

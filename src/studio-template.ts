@@ -28,9 +28,10 @@ export const studioTemplate = `  <header class="toolbar">
     <aside id="inspector" class="inspector" hidden>
       <div class="inspector-heading"><h2 id="panel-title"></h2><button id="close-panel" aria-label="${msg("Close settings", "설정 닫기")}" title="${msg("Close (Esc)", "닫기 (Esc)")}"></button></div>
       <section id="panel-character" class="panel" hidden>
+        <label class="field">${msg("Character", "캐릭터")}<select id="character-preset"><option value="native">${msg("Default skeleton", "기본 스켈레톤")}</option></select></label>
         <label class="field">${msg("Display", "표시")}<select id="character-display"><option value="model">${msg("Model", "모델")}</option><option value="skeleton" selected>${msg("Skeleton", "뼈대")}</option><option value="both">${msg("Model + skeleton", "모델 + 뼈대")}</option><option value="hidden">${msg("Hidden", "숨김")}</option></select></label>
         <div hidden><input id="character-visible" type="checkbox" checked/><input id="skeleton-visible" type="checkbox" checked/><input id="model-visible" type="checkbox"/></div>
-        <div class="button-row"><button id="character-import">${msg("Import VRM…", "VRM 불러오기…")}</button><button id="character-reset">${msg("Default rig", "기본 리그")}</button></div><input id="character-file" type="file" accept=".vrm" hidden/>
+        <div class="button-row"><button id="character-import">${msg("Import VRM…", "VRM 불러오기…")}</button><button id="character-cancel" hidden>${msg("Cancel download", "다운로드 취소")}</button></div><input id="character-file" type="file" accept=".vrm" hidden/>
         <p id="character-message" class="hint" role="status">${msg("VRM 1.0 humanoid bones · Default skeleton", "VRM 1.0 표준 본 · 기본 스켈레톤")}</p>
         <p class="hint">${msg("VRM 1.0 · Up to 50 MiB", "VRM 1.0 · 최대 50 MiB")}</p>
         <div id="character-info"></div>
