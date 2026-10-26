@@ -7,7 +7,7 @@ use std::f64::consts::PI;
 mod prepared;
 #[path = "sticking.rs"]
 mod sticking;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-body-v7";
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-equipment-v8";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -449,6 +449,7 @@ fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
             || !k.radius.is_finite()
             || !(0.0..=10.0).contains(&k.radius)
             || k.radius == 0.0
+            || !crate::equipment::valid_piece_geometry(k)
     }) || plan
         .diagnostics
         .iter()
@@ -488,7 +489,7 @@ fn validate_plan(plan: &PerformancePlan) -> Result<(), String> {
             || !plan.kit.iter().any(|piece| {
                 piece.id == hit.piece_id
                     && piece.instrument == hit.instrument
-                    && distance(piece.position, hit.target) < 1e-9
+                    && crate::contact::valid_target(piece, hit.target)
             })
             || hit.track >= 512
             || hit.event_index >= MAX_EVENTS
@@ -507,6 +508,9 @@ pub struct Motion {
     profile: Option<RigProfile>,
     body_turns: Vec<f64>,
     hand_swivels: Vec<crate::hand_coordination::SwivelSample>,
+    equipment: Option<std::sync::Arc<crate::equipment_motion::EquipmentContext>>,
+    equipment_path: Vec<crate::equipment_motion::PathSample>,
+    count_in: crate::count_in::CountInTrack,
 }
 
 impl Motion {
@@ -532,6 +536,9 @@ impl Motion {
                     | "RIG_UNREACHABLE_PEDAL"
                     | "HAND_OVERRIDE_INFEASIBLE"
                     | "BODY_PATH_CLEARANCE"
+                    | "EQUIPMENT_PATH_CLEARANCE"
+                    | "EQUIPMENT_LAYOUT_CLEARANCE"
+                    | "COUNT_IN_GESTURE_UNAVAILABLE"
             )
         });
         for limb in 2..4 {
@@ -558,6 +565,7 @@ impl Motion {
                 ));
             }
         }
+        crate::contact::apply(&mut plan, &profile);
         assign_for_profile(&mut plan, Some(&profile));
         plan.calibration_id.clone_from(&profile.id);
         Self::assemble(plan, Some(profile))
@@ -569,7 +577,11 @@ impl Motion {
     fn assemble_with_tracks(
         plan: PerformancePlan,
         profile: Option<RigProfile>,
-        tracks: Option<(Vec<f64>, Vec<crate::hand_coordination::SwivelSample>)>,
+        tracks: Option<(
+            Vec<f64>,
+            Vec<crate::hand_coordination::SwivelSample>,
+            Vec<crate::equipment_motion::PathSample>,
+        )>,
     ) -> Result<Self, String> {
         validate_plan(&plan)?;
         let mut limbs: [Vec<usize>; 4] = std::array::from_fn(|_| Vec::new());
@@ -621,18 +633,26 @@ impl Motion {
                 limbs[limb].push(index);
             }
         }
+        let cue_profile = profile.clone().unwrap_or_else(RigProfile::primitive);
+        let count_in = crate::count_in::CountInTrack::prepare(&plan, &cue_profile);
+        let equipment = crate::equipment_motion::EquipmentContext::for_kit(&plan.kit);
         let mut motion = Self {
             plan,
             limbs,
             profile,
             body_turns: Vec::new(),
             hand_swivels: Vec::new(),
+            equipment,
+            equipment_path: Vec::new(),
+            count_in,
         };
-        if let Some((body_turns, hand_swivels)) = tracks {
+        if let Some((body_turns, hand_swivels, equipment_path)) = tracks {
             motion.body_turns = body_turns;
             motion.hand_swivels = hand_swivels;
+            motion.equipment_path = equipment_path;
             return Ok(motion);
         }
+        motion.prepare_equipment_path()?;
         if let Some(profile) = &motion.profile {
             if profile.torso_pivot.is_some() {
                 let count = ((motion.plan.duration + PRE_ROLL + TAIL) / crate::body_motion::STEP)
@@ -672,6 +692,14 @@ impl Motion {
                         profile: profile.turned(crate::body_motion::at(&motion.body_turns, time)),
                         tips: samples.map(|s| s.0),
                         pitches: samples.map(|s| -s.1),
+                        equipment: motion.equipment.clone(),
+                        intended_pieces: std::array::from_fn(|limb| {
+                            motion.contact_piece_at(limb, time).map(str::to_owned)
+                        }),
+                        intended_stick_contact: motion
+                            .count_in
+                            .sample(time, samples.map(|s| s.0), samples.map(|s| -s.1))
+                            .intended_stick_contact,
                     }
                 };
                 let control_times = prepared::control_times(&motion.plan)?;
@@ -688,6 +716,11 @@ impl Motion {
                 motion.hand_swivels = crate::hand_coordination::plan_with_checks(&inputs, &checks)?;
             }
         }
+        motion
+            .plan
+            .diagnostics
+            .extend(motion.count_in.diagnostics.clone());
+        motion.inspect_equipment_path();
         // Assignment/reach success does not certify collision-free motion.
         // Aggregate remaining actual impact-pose proxy failures without changing
         // source notes or flooding the plan with one warning per mesh segment.
@@ -724,11 +757,132 @@ impl Motion {
         Ok(motion)
     }
 
+    fn pose_equipment_clearance(&self, time: f64, pose: &[f32]) -> Option<f64> {
+        let ctx = self.equipment.as_ref()?;
+        let profile = self
+            .profile
+            .as_ref()?
+            .turned(crate::body_motion::at(&self.body_turns, time));
+        let mut minimum = f64::INFINITY;
+        for limb in 0..2 {
+            let offset = limb * 12;
+            let rotation = 57 + limb * 4;
+            let point = |at: usize| [pose[at] as f64, pose[at + 1] as f64, pose[at + 2] as f64];
+            let hand = crate::rig::HandSolution {
+                middle: point(offset + 3),
+                end: point(offset + 6),
+                tip: point(offset + 9),
+                rotation: std::array::from_fn(|i| pose[rotation + i] as f64),
+                reachable: true,
+            };
+            minimum = minimum.min(crate::equipment_motion::hand_clearance(
+                &profile,
+                limb,
+                &hand,
+                ctx,
+                self.contact_piece_at(limb, time),
+            ));
+        }
+        Some(minimum)
+    }
+    fn inspect_equipment_path(&mut self) {
+        let Some(ctx) = &self.equipment else {
+            return;
+        };
+        if !ctx.geometry.unresolved_piece_ids.is_empty() {
+            self.plan.diagnostics.push(Diagnostic::new("EQUIPMENT_LAYOUT_CLEARANCE",format!("악기·받침대 배치 확인 필요: {}. 표시된 배치는 충돌 없음이 확인되지 않았습니다.",ctx.geometry.unresolved_piece_ids.join(", "))));
+        }
+        let mut times: Vec<_> = self.equipment_path.iter().map(|s| s.time).collect();
+        times.extend(crate::count_in::control_times_for_plan(&self.plan));
+        times.sort_by(f64::total_cmp);
+        times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        let (mut failures, mut worst, mut first) = (0, 0.0f64, None);
+        for time in times {
+            let pose = self.evaluate_rig(time);
+            if let Some(clear) = self.pose_equipment_clearance(time, &pose) {
+                if clear < -0.00001 {
+                    failures += 1;
+                    worst = worst.max(-clear);
+                    first.get_or_insert(time.max(0.));
+                }
+            }
+        }
+        if failures > 0 {
+            let mut d=Diagnostic::new("EQUIPMENT_PATH_CLEARANCE",format!("준비·타격·회수·종료 경로 표본 {failures}곳에서 팔·스틱과 악기/받침대의 대리 형상 겹침이 남았습니다(최대 {:.1} mm). 원본 시각과 타점은 유지합니다.",worst*1000.));
+            d.time = first;
+            self.plan.diagnostics.push(d);
+        }
+    }
+    fn prepare_equipment_path(&mut self) -> Result<(), String> {
+        let (Some(ctx), Some(profile)) = (&self.equipment, &self.profile) else {
+            return Ok(());
+        };
+        let times = prepared::equipment_times(&self.plan)?;
+        let mut track = Vec::with_capacity(times.len());
+        for time in times {
+            let mut lift = [0.; 2];
+            let mut pitch = [0.; 2];
+            for limb in 0..2 {
+                let (tip, p) = self.raw_stroke_at(limb, time);
+                let impact = self.limbs[limb]
+                    .binary_search_by(|id| self.plan.hits[*id].time.total_cmp(&time))
+                    .is_ok();
+                (lift[limb], pitch[limb]) = crate::equipment_motion::correction(
+                    profile,
+                    ctx,
+                    limb,
+                    tip,
+                    -p,
+                    impact,
+                    self.contact_piece_at(limb, time),
+                );
+            }
+            track.push(crate::equipment_motion::PathSample { time, lift, pitch });
+        }
+        crate::equipment_motion::limit_rates(
+            &mut track,
+            &std::array::from_fn(|limb| {
+                self.limbs[limb]
+                    .iter()
+                    .map(|id| self.plan.hits[*id].time)
+                    .collect()
+            }),
+        );
+        self.equipment_path = track;
+        Ok(())
+    }
     fn stroke_at(&self, limb: usize, time: f64) -> (Vec3, f64) {
+        if limb >= 2 {
+            return self.raw_stroke_at(limb, time);
+        }
+        let mut samples = [self.raw_stroke_at(0, time), self.raw_stroke_at(1, time)];
+        for (i, s) in samples.iter_mut().enumerate() {
+            let (lift, pitch) = crate::equipment_motion::sample(&self.equipment_path, time, i);
+            s.0[1] += lift;
+            s.1 -= pitch;
+        }
+        let cue = self
+            .count_in
+            .sample(time, samples.map(|s| s.0), samples.map(|s| -s.1));
+        (cue.tips[limb], -cue.pitches[limb])
+    }
+    fn contact_piece_at(&self, limb: usize, time: f64) -> Option<&str> {
+        if self.count_in.is_active(time) {
+            None
+        } else {
+            self.raw_stroke_with_piece(limb, time).2
+        }
+    }
+    fn raw_stroke_at(&self, limb: usize, time: f64) -> (Vec3, f64) {
+        let sample = self.raw_stroke_with_piece(limb, time);
+        (sample.0, sample.1)
+    }
+    fn raw_stroke_with_piece(&self, limb: usize, time: f64) -> (Vec3, f64, Option<&str>) {
         let hits = &self.limbs[limb];
         let at = hits.partition_point(|id| self.plan.hits[*id].time <= time);
         let previous = at.checked_sub(1).map(|i| &self.plan.hits[hits[i]]);
         let next = hits.get(at).map(|id| &self.plan.hits[*id]);
+        let mut rest_piece = None;
         let rest = self.profile.as_ref().map_or_else(
             || rest_tip(limb),
             |p| {
@@ -739,12 +893,20 @@ impl Motion {
                         .kit
                         .iter()
                         .find(|piece| piece.id == home)
-                        .map(|piece| piece.position)
+                        .map(|piece| {
+                            crate::contact::target(
+                                piece,
+                                if limb == 0 { "center" } else { "closed" },
+                                p.chest,
+                            )
+                        })
                 });
                 if limb < 2 {
                     if let Some(target) = target {
                         let ready = add(target, [0.0, 0.035, 0.0]);
                         if p.reachable(limb, ready) {
+                            rest_piece =
+                                Some(same_piece.map_or(home, |(hit, _)| hit.piece_id.as_str()));
                             return ready;
                         }
                     }
@@ -797,7 +959,9 @@ impl Motion {
             }
         });
         match (previous, next) {
-            (Some(prev), _) if (time - prev.time).abs() < 1e-9 => (prev.target, 0.0),
+            (Some(prev), _) if (time - prev.time).abs() < 1e-9 => {
+                (prev.target, 0.0, Some(prev.piece_id.as_str()))
+            }
             (Some(prev), Some(next)) if next.time - prev.time <= recovery + preparation + 0.02 => {
                 let phase = (time - prev.time) / (next.time - prev.time);
                 let height = max_height
@@ -808,6 +972,11 @@ impl Motion {
                 (
                     tip,
                     envelope * stroke_pitch(next.velocity, next.time - prev.time),
+                    Some(if phase < 0.5 {
+                        prev.piece_id.as_str()
+                    } else {
+                        next.piece_id.as_str()
+                    }),
                 )
             }
             (_, Some(next)) if next.time - time <= preparation => {
@@ -822,6 +991,11 @@ impl Motion {
                             * (0.35 + 0.65 * next.velocity as f64 / 127.0),
                     ),
                     (PI * phase).sin() * stroke_pitch(next.velocity, preparation),
+                    if phase < 0.5 {
+                        rest_piece
+                    } else {
+                        Some(next.piece_id.as_str())
+                    },
                 )
             }
             (Some(prev), _) if time - prev.time < recovery => {
@@ -834,9 +1008,14 @@ impl Motion {
                         (PI * phase).sin() * max_height * 0.22,
                     ),
                     (PI * phase).sin() * stroke_pitch(prev.velocity, recovery) * 0.35,
+                    if phase < 0.5 {
+                        Some(prev.piece_id.as_str())
+                    } else {
+                        rest_piece
+                    },
                 )
             }
-            _ => (rest, 0.0),
+            _ => (rest, 0.0, rest_piece),
         }
     }
 
@@ -896,6 +1075,11 @@ impl Motion {
     }
 
     pub fn inspect_pose(&self, song_time: f64) -> String {
+        let song_time = if song_time.is_finite() {
+            song_time.clamp(-PRE_ROLL, MAX_DURATION + 10.)
+        } else {
+            -PRE_ROLL
+        };
         let pose = self.evaluate_rig(song_time);
         let yaw = crate::body_motion::at(
             &self.body_turns,
@@ -910,8 +1094,46 @@ impl Motion {
             .clone()
             .unwrap_or_else(RigProfile::primitive)
             .turned(yaw);
-        serde_json::to_string(&crate::clearance::inspect(&profile, &pose))
-            .expect("finite inspection")
+        let mut result = serde_json::to_value(crate::clearance::inspect(&profile, &pose))
+            .expect("finite inspection");
+        if let Some(clear) = self
+            .pose_equipment_clearance(song_time, &pose)
+            .filter(|v| v.is_finite())
+        {
+            result["equipmentClearanceMeters"] = serde_json::json!(clear);
+        }
+        let samples = [self.stroke_at(0, song_time), self.stroke_at(1, song_time)];
+        let intended = self
+            .count_in
+            .sample(song_time, samples.map(|s| s.0), samples.map(|s| -s.1))
+            .intended_stick_contact;
+        result["intentionalStickContact"] = serde_json::json!(intended);
+        if intended {
+            let hands: [crate::rig::HandSolution; 2] = std::array::from_fn(|limb| {
+                let at = limb * 12;
+                let q = 57 + limb * 4;
+                let p = |i: usize| [pose[i] as f64, pose[i + 1] as f64, pose[i + 2] as f64];
+                crate::rig::HandSolution {
+                    middle: p(at + 3),
+                    end: p(at + 6),
+                    tip: p(at + 9),
+                    rotation: std::array::from_fn(|i| pose[q + i] as f64),
+                    reachable: true,
+                }
+            });
+            let pair =
+                crate::count_in::contact_pair_clearance(&profile, &hands[0], &hands[1], true);
+            result["stickClearanceMeters"] = serde_json::json!(pair.sticks);
+        }
+        if let Some(cue) = self
+            .count_in
+            .cues
+            .iter()
+            .find(|c| (c.time - song_time).abs() <= 0.002)
+        {
+            result["countIn"] = serde_json::json!({"sourceEventId":cue.source_event_id,"time":cue.time,"contactPoint":cue.contact_point});
+        }
+        serde_json::to_string(&result).expect("finite inspection")
     }
 
     pub fn evaluate(&self, song_time: f64) -> Vec<f32> {

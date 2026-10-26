@@ -25,6 +25,7 @@ export async function prepareAutomaticFit(
     };
   }
   const reasons = [
+    proposal.searchLimitReached ? '배치 탐색 한도 도달' : '',
     proposal.unreachablePieceIds.length ? `도달·자세: ${proposal.unreachablePieceIds.join(', ')}` : '',
     proposal.clearancePieceIds?.length ? `간격: ${proposal.clearancePieceIds.join(', ')}` : '',
   ].filter(Boolean).join(' · ');

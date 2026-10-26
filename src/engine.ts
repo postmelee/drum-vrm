@@ -1,4 +1,5 @@
-import init, { Performance, ready_pose } from './wasm/drum_engine';
+import { Performance, ready_pose } from './wasm/drum_engine';
+import { initializeWasm } from './wasm-runtime';
 import type { PoseInspection, KitPiece, KitFitProposal, MidiInfo, PerformancePlan, RigProfile, Selection } from './types';
 import { applyKitLayout, validateKitLayout } from './kit-calibration';
 import { FitClient } from './fit-client';
@@ -10,7 +11,6 @@ export class EngineClient {
   private reject: ((reason: Error) => void) | null = null;
   private generation = 0;
   private requestId = 0;
-  private ready: Promise<unknown> | null = null;
   private performance: Performance | null = null;
   private sourcePlan: PerformancePlan | null = null;
   private profile: RigProfile | null = null;
@@ -21,8 +21,7 @@ export class EngineClient {
   async fitKit(profile: RigProfile, kit: readonly KitPiece[]): Promise<KitFitProposal> { return this.fitter.fit(profile,validateKitLayout(kit)); }
   cancelFit() { this.fitter.cancel(); }
   private async initialize() {
-    this.ready??=init();
-    try{await this.ready;}catch(error){this.ready=null;throw error;}
+    await initializeWasm();
   }
   async readyPose(profile: RigProfile, kit: readonly KitPiece[]): Promise<Float32Array> {
     await this.initialize();

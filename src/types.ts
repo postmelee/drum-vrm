@@ -34,8 +34,25 @@ export interface KitCapabilities {
   requiredPairsAvailable: boolean; unresolvedRequiredPairs: string[];
   pairs: { leftPieceId: string; rightPieceId: string; status: 'available' | 'not-found' | 'unmeasured' }[];
 }
-export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; capabilities?: KitCapabilities; }
-export interface KitPiece { id: PieceId; instrument?: Instrument; label: string; position: Vec3; radius: number; }
+export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; capabilities?: KitCapabilities; searchCandidates?: number; searchLimitReached?: boolean; }
+/** Measured body bounds and playing surface, relative to the piece's contact.
+ * Radius edits scale every offset/extent by radius / referenceRadius. */
+export interface PieceGeometry {
+  version: 1;
+  referenceRadius: number;
+  source: 'mesh-bounds' | 'procedural';
+  body: { center: Vec3; halfExtents: Vec3 };
+  surface: { center: Vec3; normal: Vec3; radius: number };
+}
+/** Shared Rust equipment geometry in the legacy Y-up planning coordinates. */
+export interface KitGeometry {
+  version: 1;
+  bodies: { pieceId: string; center: Vec3; halfExtents: Vec3 }[];
+  supports: { pieceId: string; start: Vec3; end: Vec3; radius: number }[];
+  pedals: { pieceId: string; kind: 'board' | 'base'; center: Vec3; halfExtents: Vec3 }[];
+  unresolvedPieceIds: string[];
+}
+export interface KitPiece { id: PieceId; instrument?: Instrument; label: string; position: Vec3; radius: number; geometry?: PieceGeometry; }
 export const pieceInstrument = (piece: KitPiece): Instrument => piece.instrument ?? (piece.id === 'crashRight' ? 'crash' : piece.id);
 export const hitPieceId = (hit: Hit): PieceId => hit.pieceId ?? hit.instrument;
 export interface Hit { pieceId?: PieceId; articulation?: string; sourceEventId?: string; eventIndex?: number; timeUs?: number; id: number; time: number; tick: number; track: number; channel: number; note: number; velocity: number; instrument: Instrument; limb: number | null; target: Vec3; }
@@ -67,4 +84,4 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const outputFrameCount = (plan: PerformancePlan) => Math.ceil((PRE_ROLL + plan.duration + TAIL) * FPS);
 export const outputDuration = (plan: PerformancePlan) => outputFrameCount(plan) / FPS;
 
-export interface PoseInspection { scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; crossClearanceMeters?: number; geometrySource?: string; boneLengthErrorMeters: number; poseFloats: number; }
+export interface PoseInspection { equipmentClearanceMeters?:number; intentionalStickContact?:boolean; countIn?:{sourceEventId:string;time:number;contactPoint:Vec3}; scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; crossClearanceMeters?: number; geometrySource?: string; boneLengthErrorMeters: number; poseFloats: number; }

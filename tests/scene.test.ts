@@ -1,12 +1,16 @@
-import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { initSync } from '../src/wasm/drum_engine';
 import { Box3, BoxGeometry, Group, Line, Mesh, MeshStandardMaterial, PerspectiveCamera, Raycaster, Texture, Vector3 } from 'three';
-import { cameraPresetState, createLegacyDisplayRoot, legacyPointToDisplay, PrimitiveRigAdapter, DrumScene } from '../src/scene';
+import { cameraPresetState, createLegacyDisplayRoot, legacyPointToDisplay, PrimitiveRigAdapter, DrumScene, DEFAULT_KIT } from '../src/scene';
 import { cloneModel, createPieceModel, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId } from '../src/model-procedural';
 import { validateSelfContainedGLB } from '../src/model-import';
 import { NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack } from '../src/hit-response';
 import { pieceInstrument, type KitPiece, type Hit, type Vec3 } from '../src/types';
 import { KitHardwareLayer } from '../src/kit-hardware';
+
+beforeAll(() => initSync({ module: readFileSync(new URL('../src/wasm/drum_engine_bg.wasm', import.meta.url)) }));
 
 const pose = () => new Float32Array([
   -.22, 1.35, -.10, -.43, 1.10, .08, -.28, 1.15, .10, -.28, 1.06, .40,
@@ -266,6 +270,39 @@ describe('scene performance lifecycle', () => {
 
 
 describe('project drum appearance restoration',()=>{
+  it('rejects mismatched saved body depth before commit and restores the same fitted geometry', async () => {
+    const hardware = new KitHardwareLayer(), kitGroup = new Group(), stage = new Group(); stage.add(hardware.root, kitGroup);
+    const scene = Object.create(DrumScene.prototype) as DrumScene;
+    Object.assign(scene, { kit: structuredClone(DEFAULT_KIT), plan: null, hardware, kitGroup, scene: stage, libraries: new Map(),
+      preset: 'studio', overrides: new Map(), imported: new Map(), proceduralOverrides: new Set(), pieceLoadVersions: new Map(),
+      selected: null, selectionBox: null, songTime: -.5, editorMode: false, exportMode: false, reducedMotion: { matches: false },
+      hitResponse: { enabled: false, strength: 0 }, loadGeneration: 0, disposed: false });
+    try {
+      Reflect.get(scene, 'rebuildKit').call(scene); await scene.whenEquipmentReady();
+      const saved = scene.getKitLayout(), appearance = saved.filter(piece => !['openHat', 'pedalHat'].includes(piece.id)).map(piece => ({ id: piece.id, settings: scene.getPieceVisual(piece.id) }));
+      const prepared = await scene.prepareProjectAppearance('studio', appearance, new Map()), shown = kitGroup.children[0];
+      const corrupted = structuredClone(saved); corrupted.find(piece => piece.id === 'snare')!.geometry!.body.halfExtents[1] += .05;
+      expect(() => prepared.validateLayout(corrupted)).toThrow('저장한 드럼 형상');
+      expect(kitGroup.children[0]).toBe(shown); expect(scene.getKitLayout()).toEqual(saved);
+      const fitted = structuredClone(saved);
+      for (const piece of fitted) if (!['kick', 'pedalHat'].includes(piece.id)) { piece.radius *= .9; piece.position[1] -= .02; piece.position[2] -= .03; }
+      expect(prepared.validateLayout(fitted)).toEqual(fitted);
+      expect(kitGroup.children[0]).toBe(shown);
+      prepared.apply(fitted); await scene.whenEquipmentReady();
+      expect(scene.getKitLayout()).toEqual(fitted);
+      expect(() => prepared.measureLayout(saved)).toThrow('이미 적용');
+      const rollback = await scene.prepareProjectAppearance('studio', appearance, new Map());
+      scene.setPieceVisual('snare', { model: 'deep', scale: 1.1 }); await scene.whenEquipmentReady();
+      const changed = scene.getKitLayout(), candidate = scene.measureKitLayout(saved);
+      expect(candidate.find(piece => piece.id === 'snare')!.geometry!.body.halfExtents[1]).toBeGreaterThan(saved.find(piece => piece.id === 'snare')!.geometry!.body.halfExtents[1]);
+      expect(scene.getKitLayout()).toEqual(changed); // preflight does not mutate display
+      // An abandoned worker fit restores the old source appearance and layout.
+      rollback.apply(saved); await scene.whenEquipmentReady();
+      expect(scene.getKitLayout()).toEqual(saved);
+      expect(scene.getPieceVisual('snare').model).toBe('standard');
+    } finally { Reflect.set(scene, 'disposed', true); hardware.dispose(); disposeModel(kitGroup); }
+  });
+
   it('preserves original library colors and only restores explicitly chosen tint overrides',async()=>{
     const piece:KitPiece={id:'snare',label:'Snare',position:[-.18,.79,.4],radius:.22};
     const source=new Group(),mesh=new Mesh(new BoxGeometry(.4,.2,.4),new MeshStandardMaterial({color:'#123456'}));
@@ -279,6 +316,7 @@ describe('project drum appearance restoration',()=>{
     const color=()=>((kitGroup.getObjectByName('AuthoredDrum') as Mesh).material as MeshStandardMaterial).color.getHexString();
     try {
       Reflect.get(scene,'rebuildKit').call(scene);
+      await scene.whenEquipmentReady();
       const original=scene.getPieceVisual('snare');expect(original.finishOverride).toBe(false);expect(color()).toBe('123456');
       const prepared=await scene.prepareProjectAppearance('library',[{id:'snare',settings:original}],new Map());prepared.apply();
       expect(color()).toBe('123456');expect(scene.getPieceVisual('snare').finishOverride).toBe(false);
@@ -288,12 +326,13 @@ describe('project drum appearance restoration',()=>{
       expect(color()).toBe('e0c128');expect(scene.getPieceVisual('snare').finishOverride).toBe(true);
       await expect(scene.prepareProjectAppearance('library',[{id:'snare',settings:{...original,source:'imported'}}],new Map())).rejects.toThrow('연결');
       expect(color()).toBe('e0c128');
-    }finally{hardware.dispose();disposeModel(kitGroup);disposeModel(source);}
+      await scene.whenEquipmentReady();
+    }finally{Reflect.set(scene,'disposed',true);hardware.dispose();disposeModel(kitGroup);disposeModel(source);}
   });
 });
 
 describe('independent physical crashes', () => {
-  it('shares a library voice without coupling contacts, feedback, selection or body overrides', () => {
+  it('shares a library voice without coupling contacts, feedback, selection or body overrides', async () => {
     const kit: KitPiece[] = [
       { id: 'crash', instrument: 'crash', label: 'Crash Left', position: [-.6, 1.15, .5], radius: .25 },
       { id: 'crashRight', instrument: 'crash', label: 'Crash Right', position: [.6, 1.1, .5], radius: .28 },
@@ -315,17 +354,28 @@ describe('independent physical crashes', () => {
       hitResponse: { enabled: true, strength: 1 },
     });
     Reflect.get(scene, 'rebuildKit').call(scene);
+    await scene.whenEquipmentReady();
     const visuals = Reflect.get(scene, 'visuals') as { id: string; hits: Hit[]; responseTrack: ReturnType<typeof createHitResponseTrack>; root: Group }[];
     expect(visuals.map(v => [v.id, v.hits.map(h => h.note)])).toEqual([['crash', [49]], ['crashRight', [57]]]);
     expect(visuals.every(v => v.responseTrack.cymbal)).toBe(true);
     expect(visuals[0].root).not.toBe(visuals[1].root);
     const fixed = hardware.root.children[0];
-    scene.setPieceVisual('crashRight', { finish: '#ff0000', scale: .8 });
+    expect(fixed).toBeDefined();
+    scene.setPieceVisual('crashRight', { finish: '#ff0000' });
+    await scene.whenEquipmentReady();
     expect(scene.getPieceVisual('crashRight').finish).toBe('#ff0000');
     expect(scene.getPieceVisual('crash').finish).not.toBe('#ff0000');
     expect(hardware.root.children[0]).toBe(fixed);
+    const oldBounds = scene.getKitLayout().find(piece => piece.id === 'crashRight')!.geometry!;
+    const pending = scene.whenEquipmentReady();
+    scene.setPieceVisual('crashRight', { scale: .8 });
+    const latest = await pending;
+    expect(hardware.root.userData.geometry).toEqual(latest);
+    expect(hardware.root.children[0]).not.toBe(fixed);
+    expect(scene.getKitLayout().find(piece => piece.id === 'crashRight')!.geometry!.body.halfExtents[0]).toBeLessThan(oldBounds.body.halfExtents[0]);
     scene.selectPiece('crashRight'); expect(Reflect.get(scene, 'selected')).toBe('crashRight');
     scene.resetPieceVisual('crashRight'); expect(scene.getPieceVisual('crashRight').finish).toBe(scene.getPieceVisual('crash').finish);
+    await scene.whenEquipmentReady(); Reflect.set(scene,'disposed',true);
     hardware.dispose(); disposeModel(kitGroup); disposeModel(source);
   });
 });

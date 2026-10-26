@@ -10,8 +10,14 @@ describe('local performance review', () => {
     expect(times).toContain(.123456);
     expect(times).toContain(.123456 - .06);
     expect(times[0]).toBe(-.5);
-    expect(times.at(-1)).toBe(.2);
+    expect(times.at(-1)).toBe(.45);
     expect(new Set(times).size).toBe(times.length);
+  });
+  it('includes explicit count-in contact, approach and recovery without adding unmapped cues', () => {
+    const cuePlan={...plan,duration:2,interpretations:[{sourceEventId:'private-note',kind:'countIn'}],sourceEvents:[{...plan.sourceEvents![0],timeUs:712345}]} as PerformancePlan;
+    const times=reviewTimes(cuePlan);
+    for(const time of [.712345,.712345-.22,.712345+.22,2.25])expect(times).toContain(time);
+    expect(reviewTimes({...cuePlan,interpretations:[]})).not.toContain(.712345);
   });
   it('compares shuffled absolute-time evaluation and detects history-dependent or invalid poses', () => {
     const times = reviewTimes(plan), order = reviewOrder(times.length);
@@ -38,5 +44,7 @@ describe('local performance review', () => {
     const result=summarizeProxyReview([0,.1,.2],[sample,{...sample,armClearanceMeters:-.01},{...sample,stickClearanceMeters:-.02}]);
     expect(result).toMatchObject({ firstIntersectionSeconds:.1,intersectingSamples:2,armsMinimumMeters:-.01,sticksMinimumMeters:-.02 });
     expect(()=>summarizeProxyReview([0],[{...sample,torsoClearanceMeters:NaN}])).toThrow(/유효하지/);
+    expect(summarizeProxyReview([0],[{...sample,equipmentClearanceMeters:-.008,crossClearanceMeters:.02}])).toMatchObject({intersectingSamples:1,equipmentMinimumMeters:-.008,crossMinimumMeters:.02});
+    expect(()=>summarizeProxyReview([0],[{...sample,crossClearanceMeters:NaN}])).toThrow(/유효하지/);
   });
 });

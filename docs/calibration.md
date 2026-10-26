@@ -57,7 +57,7 @@ Click a piano-roll note, or use **선택 음표의 연주 편집 → 현재 시�
 
 ## Replace drum bodies while keeping hardware
 
-The shared-hardware workflow keeps stands and pedals when switching drum presets or individual parts. Appearance choices change the shell/head/cymbal; finish, scale, rotation and hit response do not change the musical target or synthesized sound. Deliberately moving a contact point changes the kit layout and its related hardware placement.
+The shared-hardware workflow keeps common stands and pedals when switching drum bodies. Model, scale or rotation changes remeasure the body and automatically prepare a matching layout and performance; associated supports may move during fitting. Finish and hit response remain cosmetic. Original MIDI timing and synthesized sound stay unchanged. Inspect remaining path warnings in **Analysis**; successful static fitting does not guarantee a clear moving stick. See the [equipment/contact contract](../specs/architecture/equipment-contact.md).
 
 For a local replacement, prepare a **body-only, self-contained static `.glb`**, in GLB 2.0 format with embedded resources and a maximum size of **25 MiB**. Skinned models and files without visible geometry are rejected. Convert GLTF, FBX, OBJ or BLEND assets to a self-contained static GLB first. Remove included stands, pedals and unrelated parts in a 3D editor before export. The importer cannot reliably distinguish arbitrary hardware from the playable component; otherwise duplicate hardware may appear. Automatic size fitting is approximate, so inspect the visible surface against its contact point.
 

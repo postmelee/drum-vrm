@@ -32,6 +32,9 @@ pub struct HandCoordinationInput {
     pub profile: RigProfile,
     pub tips: [Vec3; 2],
     pub pitches: [f64; 2],
+    pub equipment: Option<std::sync::Arc<crate::equipment_motion::EquipmentContext>>,
+    pub intended_stick_contact: bool,
+    pub intended_pieces: [Option<String>; 2],
 }
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -62,6 +65,33 @@ fn collision_cost(torso: [f64; 2], pair: clearance::PairClearance) -> f64 {
             0.0
         }
 }
+fn equipment_clearance(
+    input: &HandCoordinationInput,
+    limb: usize,
+    hand: &crate::rig::HandSolution,
+) -> f64 {
+    input.equipment.as_ref().map_or(f64::INFINITY, |ctx| {
+        crate::equipment_motion::hand_clearance(
+            &input.profile,
+            limb,
+            hand,
+            ctx,
+            input.intended_pieces[limb].as_deref(),
+        )
+    })
+}
+fn pair(
+    input: &HandCoordinationInput,
+    left: &crate::rig::HandSolution,
+    right: &crate::rig::HandSolution,
+) -> clearance::PairClearance {
+    crate::count_in::contact_pair_clearance(
+        &input.profile,
+        left,
+        right,
+        input.intended_stick_contact,
+    )
+}
 fn pose_cost(input: &HandCoordinationInput, a: [f64; 2]) -> f64 {
     let hands = std::array::from_fn::<_, 2, _>(|limb| {
         input
@@ -76,10 +106,12 @@ fn pose_cost(input: &HandCoordinationInput, a: [f64; 2]) -> f64 {
     }
     collision_cost(
         [
-            clearance::hand_clearance(&input.profile, 0, &left),
-            clearance::hand_clearance(&input.profile, 1, &right),
+            clearance::hand_clearance(&input.profile, 0, &left)
+                .min(equipment_clearance(input, 0, &left)),
+            clearance::hand_clearance(&input.profile, 1, &right)
+                .min(equipment_clearance(input, 1, &right)),
         ],
-        clearance::pair_clearance(&input.profile, &left, &right),
+        pair(input, &left, &right),
     )
 }
 /// Bounded joint wrist/elbow witness cost for torso and stroke-envelope planning.
@@ -126,7 +158,8 @@ fn node_costs(input: &HandCoordinationInput) -> Vec<f64> {
                         i as f64 * ANGLE_STEP - MAX_SWIVEL,
                     )
                     .map(|h| {
-                        let c = clearance::hand_clearance(&input.profile, limb, &h);
+                        let c = clearance::hand_clearance(&input.profile, limb, &h)
+                            .min(equipment_clearance(input, limb, &h));
                         (h, c)
                     })
             })
@@ -143,10 +176,8 @@ fn node_costs(input: &HandCoordinationInput) -> Vec<f64> {
                 return 1e9;
             }
             let a = angles(state);
-            collision_cost(
-                [lc, rc],
-                clearance::pair_clearance(&input.profile, &left, &right),
-            ) + 0.002 * (a[0] * a[0] + a[1] * a[1])
+            collision_cost([lc, rc], pair(input, &left, &right))
+                + 0.002 * (a[0] * a[0] + a[1] * a[1])
         })
         .collect()
 }
@@ -318,6 +349,9 @@ mod tests {
                         [0.25 - crossing * 0.55, 1.02, 0.50],
                     ],
                     pitches: [0.0; 2],
+                    equipment: None,
+                    intended_stick_contact: false,
+                    intended_pieces: [None, None],
                 }
             })
             .collect();
@@ -382,6 +416,9 @@ mod tests {
                 profile: p.clone(),
                 tips: [[-0.25, 1.0, 0.5], [0.25, 1.0, 0.5]],
                 pitches: [0.0; 2],
+                equipment: None,
+                intended_stick_contact: false,
+                intended_pieces: [None, None],
             })
             .collect();
         let center = (AXIS_STATES - 1) / 2;
@@ -412,6 +449,9 @@ mod tests {
             profile: p.clone(),
             tips: crate::posture::ready_pair(&p, snare, hat),
             pitches: [0.0; 2],
+            equipment: None,
+            intended_stick_contact: false,
+            intended_pieces: [None, None],
         };
         let costs = node_costs(&input);
         let expected = angles(

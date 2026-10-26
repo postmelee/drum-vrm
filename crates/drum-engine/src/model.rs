@@ -66,17 +66,21 @@ pub struct KitPiece {
     pub label: String,
     pub position: Vec3,
     pub radius: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geometry: Option<crate::equipment::PieceGeometry>,
 }
 
 impl<'de> Deserialize<'de> for KitPiece {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
         struct Fields {
             id: String,
             instrument: Option<Instrument>,
             label: String,
             position: Vec3,
             radius: f64,
+            geometry: Option<crate::equipment::PieceGeometry>,
         }
         let fields = Fields::deserialize(deserializer)?;
         // Version-one layouts used the instrument enum as their piece ID.
@@ -92,6 +96,7 @@ impl<'de> Deserialize<'de> for KitPiece {
             label: fields.label,
             position: fields.position,
             radius: fields.radius,
+            geometry: fields.geometry,
         })
     }
 }
@@ -136,6 +141,7 @@ pub fn default_kit() -> Vec<KitPiece> {
         label: label.to_string(),
         position,
         radius,
+        geometry: None,
     })
     .collect()
 }

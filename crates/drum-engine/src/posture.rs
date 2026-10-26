@@ -47,13 +47,38 @@ pub fn pair_solution(
     tips: [Vec3; 2],
     pitches: [f64; 2],
 ) -> Option<[HandSolution; 2]> {
+    pair_solution_with_equipment(profile, tips, pitches, None, [None; 2])
+}
+pub fn pair_solution_with_equipment(
+    profile: &RigProfile,
+    tips: [Vec3; 2],
+    pitches: [f64; 2],
+    equipment: Option<&crate::equipment_motion::EquipmentContext>,
+    intended_ids: [Option<&str>; 2],
+) -> Option<[HandSolution; 2]> {
     let mut right_cache: [Option<Option<HandSolution>>; 5] = [None; 5];
     for left in hand_candidates(profile, 0, tips[0], pitches[0]) {
+        if equipment.is_some_and(|ctx| {
+            crate::equipment_motion::hand_clearance(profile, 0, &left, ctx, intended_ids[0])
+                < MARGIN
+        }) {
+            continue;
+        }
         for (index, &angle) in SWIVELS.iter().enumerate() {
             let right = *right_cache[index]
                 .get_or_insert_with(|| hand_candidate(profile, 1, tips[1], pitches[1], angle));
             if let Some(right) = right {
-                if clearance::pair_clearance(profile, &left, &right).minimum() >= MARGIN {
+                if clearance::pair_clearance(profile, &left, &right).minimum() >= MARGIN
+                    && equipment.is_none_or(|ctx| {
+                        crate::equipment_motion::hand_clearance(
+                            profile,
+                            1,
+                            &right,
+                            ctx,
+                            intended_ids[1],
+                        ) >= MARGIN
+                    })
+                {
                     return Some([left, right]);
                 }
             }
@@ -67,7 +92,12 @@ pub fn pair_available(profile: &RigProfile, tips: [Vec3; 2], pitches: [f64; 2]) 
 /// Ready tips occupy distinct small regions of the same head. This is a fixed
 /// calibration probe, not random strike variation or a mutation of MIDI hits.
 pub fn ready_pair(profile: &RigProfile, left: &KitPiece, right: &KitPiece) -> [Vec3; 2] {
-    let mut tips = [left.position, right.position];
+    let observer =
+        std::array::from_fn(|axis| (profile.roots[0][axis] + profile.roots[1][axis]) * 0.5);
+    let mut tips = [
+        crate::contact::target(left, "center", observer),
+        crate::contact::target(right, "center", observer),
+    ];
     for tip in &mut tips {
         tip[1] += 0.035;
     }
@@ -112,20 +142,38 @@ pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
         return Vec::new();
     };
     let mut missing = Vec::new();
-    if !pair_available(profile, ready_pair(profile, snare, snare), [0.0; 2]) {
+    let ctx = crate::equipment_motion::EquipmentContext::for_kit(kit);
+    if pair_solution_with_equipment(
+        profile,
+        ready_pair(profile, snare, snare),
+        [0.0; 2],
+        ctx.as_deref(),
+        [Some(snare.id.as_str()); 2],
+    )
+    .is_none()
+    {
         missing.push("snare-ready".into());
     }
     if let Some(hat) = kit
         .iter()
         .find(|p| p.instrument == crate::model::Instrument::Hihat)
     {
-        if !pair_available(profile, ready_pair(profile, snare, hat), [0.0; 2]) {
+        if pair_solution_with_equipment(
+            profile,
+            ready_pair(profile, snare, hat),
+            [0.0; 2],
+            ctx.as_deref(),
+            [Some(snare.id.as_str()), Some(hat.id.as_str())],
+        )
+        .is_none()
+        {
             missing.push("crossed-groove".into());
         }
     }
     missing
 }
 pub fn audit(profile: &RigProfile, kit: &[KitPiece]) -> Capabilities {
+    let ctx = crate::equipment_motion::EquipmentContext::for_kit(kit);
     let targets: Vec<_> = kit
         .iter()
         .filter(|p| {
@@ -146,7 +194,15 @@ pub fn audit(profile: &RigProfile, kit: &[KitPiece]) -> Capabilities {
             let tips = ready_pair(profile, left, right);
             let status = if profile.hand_frames.is_none() {
                 "unmeasured"
-            } else if pair_available(profile, tips, [0.0; 2]) {
+            } else if pair_solution_with_equipment(
+                profile,
+                tips,
+                [0.0; 2],
+                ctx.as_deref(),
+                [Some(left.id.as_str()), Some(right.id.as_str())],
+            )
+            .is_some()
+            {
                 "available"
             } else {
                 "not-found"
@@ -159,7 +215,7 @@ pub fn audit(profile: &RigProfile, kit: &[KitPiece]) -> Capabilities {
         }
     }
     Capabilities {
-        scope: "sampled-body-proxies",
+        scope: "sampled-body-equipment-proxies",
         geometry_source: clearance::geometry_source(profile).into(),
         hand_target_checks: targets.len().min(16) * 2,
         pair_checks: pairs.len(),
@@ -178,8 +234,15 @@ pub fn ready_pose(profile: &RigProfile, kit: &[KitPiece]) -> Result<Vec<f32>, St
         .iter()
         .find(|p| p.instrument == crate::model::Instrument::Snare)
         .ok_or("스네어 기준 타점이 없습니다.")?;
-    let hands = pair_solution(profile, ready_pair(profile, snare, snare), [0.0; 2])
-        .ok_or("현재 배치에서 충돌 여유가 있는 양손 준비 자세를 찾지 못했습니다.")?;
+    let ctx = crate::equipment_motion::EquipmentContext::for_kit(kit);
+    let hands = pair_solution_with_equipment(
+        profile,
+        ready_pair(profile, snare, snare),
+        [0.0; 2],
+        ctx.as_deref(),
+        [Some(snare.id.as_str()); 2],
+    )
+    .ok_or("현재 배치에서 충돌 여유가 있는 양손 준비 자세를 찾지 못했습니다.")?;
     let mut pose = Vec::with_capacity(crate::rig::RIG_POSE_FLOATS);
     let mut rotations = profile.contact_rotations;
     for limb in 0..4 {

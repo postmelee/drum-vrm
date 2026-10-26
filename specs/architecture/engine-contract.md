@@ -133,20 +133,28 @@ score before preparation. Rendering, absolute-time evaluation and inexpensive ru
 remain on the main thread.
 
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
-1, containing the plan, numeric profile, torso/elbow tracks and FNV-1a integrity
+2, containing the plan, numeric profile, torso/elbow and equipment-approach tracks,
+and an FNV-1a integrity
 checksum. Installation checks engine/planner versions, expected source/profile
 identity, finite values, ordering, track bounds, exact control times and assigned
-contact/pedal feasibility. The checksum detects stale or damaged data; it is not a
+contact/pedal feasibility. Equipment tracks additionally require bounded lift/pitch,
+rate limits and zero lift at each source impact. Installation uses these validated
+samples without repeating equipment-path search on the main thread. The checksum
+detects stale or damaged data; it is not a
 cryptographic signature. Payloads are capped at 128 MiB. Exact float round trips
 preserve primary poses and numeric inspection. This ephemeral handoff is separate
 from the [saved project format](project-format.md).
 
 The joint motion planner has a separate 6,000-control-time budget, including its
-0.1-second grid and exact assigned hand impacts after deduplication. Exceeding it
+0.1-second grid, exact assigned hand impacts and explicit count-in boundaries after
+deduplication. Original impact times take precedence over almost-equal floating-point
+grid times. Exceeding it
 returns a preparation error before allocating the search tables; shorten the
 selected passage or reduce selected tracks. The 50,000-hit parsing limit does not
 guarantee that a score fits this motion budget. Sampling and memory bounds are
-specified in [calibration](calibration.md).
+specified in [calibration](calibration.md). The independent equipment-approach track
+allows at most 16,000 samples from its 30 Hz grid plus exact assigned hand impacts;
+the same bound is enforced during preparation and transfer deserialization.
 
 ## Deterministic evaluation
 

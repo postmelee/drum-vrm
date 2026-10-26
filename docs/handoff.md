@@ -19,17 +19,16 @@ next worker; contracts own behavior and evidence reports own measured results.
   quality, and [#23](https://github.com/postmelee/drum-vrm/issues/23) owns inspection.
   Keep their broader acceptance open: static feasibility and accurate contact do
   not certify clear skin/clothing throughout a song.
-- After the demo batch, [#18](https://github.com/postmelee/drum-vrm/issues/18) and
-  [#23](https://github.com/postmelee/drum-vrm/issues/23) prioritize one geometry
-  contract for actual drum bodies and every support, playable layout/approach
-  constraints, and arm/tool paths checked against that equipment. Static nominal
-  body separation currently permits vertically obstructed heads and omits broader
-  hardware. Keep posed skin/clothing checks separate and reproduce the remaining
-  fast-transfer crossing before adding strike variation. The final audit
-  retains one observed opposing-arm crossing at 92.55 seconds on AvatarSample B;
-  broader per-frame proxies also report residual conflicts. Do not shrink body
-  proxies, stretch bones or shift MIDI times to make warnings disappear.
-- The next narrow batch adds a selectable `투명소녀1.mid` demo with the owner's
+- The equipment/contact batch follows the demo PR. It measures displayed bodies,
+  shares numeric supports with Rust, checks complete sticks and articulation
+  regions, and adds explicit two-stick count-in. See the
+  [contract](../specs/architecture/equipment-contact.md) and
+  [verification](verification/equipment-contact.md). It is pending review, not
+  deployed. Keep #18/#20/#23 open: Twist has an unresolved bounded fit, and successful
+  fits still leave dynamic body/equipment conflicts. Next, resolve the measured
+  transition/shaft cases and inspect posed skin/clothing before strike variation.
+  Do not shrink collision proxies, stretch bones or shift MIDI times to remove warnings.
+- PR #47 adds a selectable `투명소녀1.mid` demo with the owner's
   explicit repository/Pages distribution permission. It is pending review and is
   not in the deployed batch above. [Provenance](../public/demos/transparent-girl-1-provenance.json)
   owns its exact bytes and permission scope; this is not MIT relicensing or a

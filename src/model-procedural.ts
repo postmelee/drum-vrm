@@ -89,19 +89,30 @@ export interface PieceModel { root: THREE.Group; ring: THREE.Mesh<THREE.RingGeom
 
 /** Procedural models keep the canonical playing surface fixed while changing their silhouette. */
 export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, preset: KitPresetId, kit: readonly KitPiece[], includeHardware = true): PieceModel {
+  const currentPiece = piece;
+  const fitScale = piece.radius / (piece.geometry?.referenceRadius ?? piece.radius);
+  // A measured reference shape scales as a whole during body fitting; shell
+  // depth, rims and lugs must follow the same radius ratio as collision bounds.
+  if (fitScale !== 1) piece = { ...piece, radius: piece.geometry!.referenceRadius };
   const root = new THREE.Group(); root.name = piece.id; root.userData.pieceId = piece.id;
   const finish = (model: PieceModel): PieceModel => {
-    if (!visual.rotation) return model;
-    // Rotate the body around its shared mount; markers, stands and pedal
-    // contacts remain outside this transform.
-    const pivot = new THREE.Group(); pivot.position.set(...pieceAnchors(piece).mount);
-    pivot.rotation.y = THREE.MathUtils.degToRad(visual.rotation);
-    const body = new THREE.Group(); body.position.copy(pivot.position).multiplyScalar(-1);
-    [...root.children].filter(child => child.userData.hitResponseRole !== 'marker' && child.userData.hitResponseRole !== 'hardware').forEach(child => body.add(child));
-    pivot.add(body); root.add(pivot); return model;
+    if (visual.rotation) {
+      const pivot = new THREE.Group(); pivot.position.set(...pieceAnchors(piece).mount);
+      pivot.rotation.y = THREE.MathUtils.degToRad(visual.rotation);
+      const body = new THREE.Group(); body.position.copy(pivot.position).multiplyScalar(-1);
+      [...root.children].filter(child => child.userData.hitResponseRole !== 'marker' && child.userData.hitResponseRole !== 'hardware').forEach(child => body.add(child));
+      pivot.add(body); root.add(pivot);
+    }
+    if (fitScale !== 1) {
+      const pivot = new THREE.Group(); pivot.position.set(...piece.position); pivot.scale.setScalar(fitScale);
+      const body = new THREE.Group(); body.position.copy(pivot.position).multiplyScalar(-1);
+      [...root.children].filter(child => child.userData.hitResponseRole !== 'hardware').forEach(child => body.add(child));
+      pivot.add(body); root.add(pivot);
+    }
+    return model;
   };
   const [x, y, z] = piece.position, instrument = pieceInstrument(piece);
-  if (includeHardware) root.add(createPieceHardware(piece, kit));
+  if (includeHardware) root.add(createPieceHardware(currentPiece, kit));
   const radius = piece.radius * visual.scale;
   const electronic = preset === 'electronic';
   const shell = mat(visual.finish, electronic ? .05 : .16, electronic ? .83 : .4);

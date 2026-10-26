@@ -16,6 +16,7 @@
 | 휴머노이드·좌표·드럼 하드웨어 | [리그 계약](architecture/rig-contract.ko.md) |
 | 오디오 시계와 영상 프레임 | [오디오·출력 계약](architecture/audio-export-contract.ko.md) |
 | 체형·좌석·그립·타점 맞추기 | [보정](architecture/calibration.ko.md) |
+| 악기 본체·하드웨어·주법별 영역 | [장비와 접촉](architecture/equipment-contact.ko.md) |
 | 표준 리그 지원과 측정 범위 | [리그 호환성](architecture/rig-compatibility.ko.md) |
 | 주법과 향후 동작 표현 | [연주 표현](architecture/performance-expression.ko.md) |
 | 실행 환경 구성과 의존성 선택 | [의존성 설계](architecture/dependencies.ko.md) |

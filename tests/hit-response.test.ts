@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { initSync } from '../src/wasm/drum_engine';
 import * as THREE from 'three';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack, evaluateHitResponse, validateHitResponse } from '../src/hit-response';
 import { createPieceModel, disposeModel, resolvePieceVisual } from '../src/model-procedural';
 import type { Hit, Instrument, KitPiece } from '../src/types';
+
+beforeAll(() => initSync({ module: readFileSync(new URL('../src/wasm/drum_engine_bg.wasm', import.meta.url)) }));
 
 const hit = (time: number, id = 0, instrument: Instrument = 'snare', velocity = 100): Hit => ({ id, time, tick: id, track: 0, channel: 9, note: 38, velocity, instrument, limb: 0, target: [0, 1, 0] });
 const settings = { enabled: true, strength: .65 };

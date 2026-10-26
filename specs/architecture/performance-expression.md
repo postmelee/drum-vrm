@@ -73,6 +73,13 @@ alternate available hands during rapid snare repetitions (T07/T09). The
 [engine](engine-contract.md), [calibration](calibration.md) and
 [MIDI interpretation](midi-interpretation.md) contracts own their precise behavior.
 
+[Equipment/contact](equipment-contact.md) adds deterministic articulation regions,
+whole-stick equipment checks and an explicit tip-to-tip count-in gesture. These
+are bounded contact approximations, not complete T08 shaft/rim mechanics or the
+proposed expression budget. [Primary contact research](../../docs/research/articulation-and-tool-contact.md)
+explains why a relaxed setup and region-specific approach take precedence over
+universally raising elbows or moving every target to the nearest edge.
+
 These approximations do not establish measured heel/sole support, biomechanical
 push-pull, collision-safe crossed arms, articulation-specific rim/shaft contact or
 manual sticking styles. Velocity is an input to motion amplitude, not proof of a

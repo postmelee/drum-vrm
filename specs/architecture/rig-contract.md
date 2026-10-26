@@ -140,14 +140,16 @@ applied. Dynamic hair/clothing integration is outside this deterministic contrac
 
 ## Shared hardware and replaceable bodies
 
-[kit-hardware.ts](../../src/kit-hardware.ts) owns stands/pedals and calibrated mounts.
-Appearance adapters swap drum shell/head/cymbal bodies while retaining that hardware.
-Finish, visual scale, rotation and hit response do not change musical targets/audio.
-Deliberate layout calibration may move/rebuild the hardware to follow new contacts.
-Nominal drum-body and hi-hat-rod clearance participate in kit fitting. Other cymbal
-stands can use a bounded mast/boom placement search, but that search may report no
-clear placement and is not part of the fit's `complete` certificate. Exact imported
-meshes, cosmetic overrides and every stand component still need visual inspection.
+[equipment.rs](../../crates/drum-engine/src/equipment.rs) defines common numeric
+bodies, supports and pedal boxes; [kit-hardware.ts](../../src/kit-hardware.ts)
+renders those returned shapes. Appearance adapters replace shell/head/cymbal bodies
+while preserving their role and hardware identity. Displayed static bounds are
+measured for planning; appearance replacement may therefore require a new layout
+transaction, while original MIDI identity and audio remain unchanged. Deliberate
+calibration can move/rebuild hardware with the bodies. The
+[equipment/contact contract](equipment-contact.md) owns geometry validation,
+playable-region targets, whole-tool queries and bounded routing. A completed fit
+does not certify exact triangles, support-to-support crossings, skin or every frame.
 
 Bundled adapters may use source geometry identifiers to normalize a model. Those
 identifiers must not enter the Rust planner or avatar solver. Local GLB authors must

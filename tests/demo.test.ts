@@ -80,14 +80,34 @@ function prepareNative(bytes: Uint8Array, selection: Selection, fitted = false) 
     input.kit = proposal.kit;
     input.hits.forEach(hit => { hit.target = [...proposal.kit.find(piece => piece.id === hit.pieceId)!.position]; });
   }
+  // Mapping/layout input retains semantic anchors. A measured physical plan may
+  // subsequently select an articulation region on the actual playing surface.
+  for (const hit of input.hits) expect(hit.target).toEqual(input.kit.find(piece => piece.id === hit.pieceId)!.position);
   const performance = Performance.from_json_with_profile(JSON.stringify(input), profile);
   const plan = JSON.parse(performance.plan_json()) as PerformancePlan;
   const sourceFacts = (hit: Hit) => [hit.sourceEventId, hit.tick, hit.timeUs, hit.time, hit.note, hit.velocity];
   expect(plan.hits.map(sourceFacts)).toEqual(original.hits.map(sourceFacts));
   for (const [index, hit] of plan.hits.entries()) {
     expect([hit.instrument, hit.pieceId]).toEqual([input.hits[index].instrument, input.hits[index].pieceId]);
-    // JSON's JS/Rust float round trip can change the last representable bit.
-    hit.target.forEach((value, axis) => expect(value).toBeCloseTo(input.hits[index].target[axis], 12));
+    const piece = plan.kit.find(piece => piece.id === hit.pieceId)!, geometry = piece.geometry;
+    if (!geometry || hit.instrument === 'kick' || hit.instrument === 'pedalHat') {
+      // JSON's JS/Rust float round trip can change the last representable bit.
+      hit.target.forEach((value, axis) => expect(value).toBeCloseTo(input.hits[index].target[axis], 12));
+    } else {
+      const scale = piece.radius / geometry.referenceRadius;
+      const center = piece.position.map((value, axis) => value + geometry.surface.center[axis] * scale);
+      const delta = hit.target.map((value, axis) => value - center[axis]);
+      expect(Math.abs(delta.reduce((dot, value, axis) => dot + value * geometry.surface.normal[axis], 0))).toBeLessThan(1e-9);
+      expect(Math.hypot(...delta)).toBeLessThanOrEqual(geometry.surface.radius * scale * .95 + 1e-9);
+      // This demo uses center heads, bow hats and edgeward crash contacts.
+      const fraction = hit.instrument === 'crash' ? .88 : ['hihat', 'openHat'].includes(hit.instrument) ? .62 : 0;
+      expect(Math.hypot(...delta)).toBeCloseTo(geometry.surface.radius * scale * fraction, 10);
+    }
+  }
+  if (fitted) {
+    const repeated = Performance.from_json_with_profile(JSON.stringify(input), profile);
+    try { expect((JSON.parse(repeated.plan_json()) as PerformancePlan).hits).toEqual(plan.hits); }
+    finally { repeated.free(); }
   }
   expect(plan.sourceEvents).toEqual(original.sourceEvents);
   expect(plan.hits.filter(hit => hit.limb === null)).toHaveLength(0);
@@ -105,7 +125,8 @@ it.each([false, true])('the browser demo keeps right-hand hats and left-hand bac
     expect(backbeats.length).toBeGreaterThan(0);
     expect(backbeats.filter(hit => hit.limb !== 0).map(hit => [hit.time, hit.limb])).toEqual([]);
     // These crashes follow a fast floor-tom fill, not an uninterrupted hat beat.
-    // Their existing source surface and timestamp remain unchanged above.
+    // Their source instrument and timestamp remain unchanged above; fitted
+    // geometry chooses an explicit contact region on that instrument.
     const fillCrashes = plan.hits.filter(hit => hit.instrument === 'crash' && hit.time > 0);
     expect(fillCrashes.map(hit => [hit.time, hit.limb])).toEqual([[8, 0], [16, 0], [24, 0]]);
 

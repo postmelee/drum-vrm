@@ -6,7 +6,7 @@ export interface PoseReview {
   nonfiniteValues: number;
   durationSeconds: number;
   proxy?: { scope: 'skeletal-proxies'; samples: number; torsoMinimumMeters: number;
-    armsMinimumMeters: number; sticksMinimumMeters: number; boneLengthMaximumErrorMeters: number;
+    equipmentMinimumMeters?:number; crossMinimumMeters?:number; armsMinimumMeters: number; sticksMinimumMeters: number; boneLengthMaximumErrorMeters: number;
     intersectingSamples: number; firstIntersectionSeconds: number | null };
 }
 
@@ -21,6 +21,9 @@ export function reviewTimes(plan: PerformancePlan, sampleRate = 30): number[] {
     times.add(Math.max(-0.5, hit.time - 0.06));
     times.add(Math.min(plan.duration, hit.time + 0.06));
   }
+  const cues=new Set((plan.interpretations??[]).filter(i=>i.kind==='countIn').map(i=>i.sourceEventId));
+  for(const e of plan.sourceEvents??[])if(cues.has(e.id)){const t=e.timeUs/1e6;times.add(t);times.add(Math.max(-.5,t-.22));times.add(Math.min(plan.duration+.25,t+.22));}
+  times.add(plan.duration+.25);
   return [...times].sort((a, b) => a - b);
 }
 
@@ -62,7 +65,10 @@ export function summarizeProxyReview(times: number[], inspections: readonly Pose
     result.armsMinimumMeters=Math.min(result.armsMinimumMeters,sample.armClearanceMeters);
     result.sticksMinimumMeters=Math.min(result.sticksMinimumMeters,sample.stickClearanceMeters);
     result.boneLengthMaximumErrorMeters=Math.max(result.boneLengthMaximumErrorMeters,sample.boneLengthErrorMeters);
-    if (Math.min(...values.slice(0,3)) < 0) { result.intersectingSamples++;result.firstIntersectionSeconds??=times[index]; }
+    const extra:number[]=[];
+    if(sample.equipmentClearanceMeters!==undefined){if(!Number.isFinite(sample.equipmentClearanceMeters))throw new Error('유효하지 않은 장비 간격입니다.');result.equipmentMinimumMeters=Math.min(result.equipmentMinimumMeters??Infinity,sample.equipmentClearanceMeters);extra.push(sample.equipmentClearanceMeters);}
+    if(sample.crossClearanceMeters!==undefined){if(!Number.isFinite(sample.crossClearanceMeters))throw new Error('유효하지 않은 교차 간격입니다.');result.crossMinimumMeters=Math.min(result.crossMinimumMeters??Infinity,sample.crossClearanceMeters);extra.push(sample.crossClearanceMeters);}
+    if (Math.min(...values.slice(0,3),...extra) < 0) { result.intersectingSamples++;result.firstIntersectionSeconds??=times[index]; }
   });
   return result;
 }
