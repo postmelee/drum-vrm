@@ -15,6 +15,20 @@ Fit the performer and kit by adjusting the seat and instrument contacts, then cu
 
 Changes apply to the current session. Use [project save/open](projects.md) to preserve a setup across reloads; there is no autosave. A local review JSON records settings and measurements for troubleshooting and is separate from a reopenable project. Preparation, character loading and video export may temporarily disable calibration controls to keep the current operation consistent.
 
+## Try a demo score
+
+In **파일 · 오디오 → 데모** (Files / Audio → Demo), choose a score under **데모 선택** (Demo selection), then press **불러오기** (Load).
+
+| Score | Purpose |
+| --- | --- |
+| Studio Groove · 30초 | A short, independently authored groove for a quick playback check. |
+| 연주 검증 패턴 · 8초 | An independently authored pattern for count-in, hi-hat control, fills and explicit event inspection. |
+| 투명소녀1 · 3분 13초 | A full-song example for comparing body fitting, fast fills and transitions with the same score. |
+
+The full-song demo loads explicit Logic Drum Kit Designer GM mapping, note-75 count-in and short open/close hi-hat interpretation at 20%. Its final extra snare is excluded from the arrangement so the ending uses **both crashes and kick**. The original MIDI bytes remain unchanged; inspect the retained note and omission in **분석** (Analysis), or restore it through the note editor. The source has 1,760 positive note-ons; the configured arrangement has 1,720 strikes. This accounting does not certify natural posture or collision-free movement. No recorded WAV or VRM character is included.
+
+The MIDI is included with permission for this project's public distribution, separately from the application's MIT license. See its [provenance](../public/demos/transparent-girl-1-provenance.json) for the exact file and permission scope, and the [MIDI contract](../specs/architecture/midi-interpretation.md#bundled-demo-selections) for the selection boundary. Other uploaded files remain local.
+
 ## Inspect a problem passage
 
 In **분석 → 자세 · 동기화 검수** (Analysis → Pose and synchronization review), enter an exact song time or move to the previous/next hit. **현재 자세 검사** (Inspect pose) shows actual tool/foot marker error and the engine's approximate torso/arm/stick clearance; a negative clearance is a possible proxy intersection, not a measured skin penetration.

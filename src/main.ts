@@ -20,7 +20,7 @@ import { createReviewSnapshot, reviewOrder, reviewTimes, summarizePoseReview, su
 import { loadLocalWav, alignWavToPlan, type LocalWav, type WavAlignmentInfo } from './wav';
 import { SynthesisClient } from './synthesis';
 import { probeExport, exportVideo } from './export';
-import { makeDemo, makeInterpretationDemo } from './demo';
+import { DEMO_CATALOG, loadDemo, type DemoId } from './demo-catalog';
 import { MAX_FILE_BYTES, PRE_ROLL, outputDuration, type PerformancePlan, type MidiInfo, type PieceId, type KitPiece, type KitFitProposal, type PoseInspection, type RigProfile, type Vec3 } from './types';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -63,6 +63,7 @@ let arrangement:Arrangement={omittedSourceEventIds:[],handOverrides:{}};
 let busy = false;
 let exporting = false;
 let loadGeneration = 0;
+let demoController: AbortController | null = null;
 let exportController: AbortController | null = null;
 let downloadUrl: string | null = null;
 let fileName = 'drum-performance';
@@ -254,7 +255,7 @@ for (const button of document.querySelectorAll<HTMLButtonElement>('[data-panel]'
 get('close-panel').onclick=()=>{const previous=activePanel;openPanel(null);document.querySelector<HTMLButtonElement>(`[data-panel="${previous}"]`)?.focus();};
 get('theme').onclick=()=>setTheme(theme==='light'?'dark':'light');
 get('start-upload').onclick=()=>{openPanel('source');get<HTMLInputElement>('file').click();};
-get('start-demo').onclick=()=>{openPanel('source');void loadFile(makeDemo(),'Studio Groove.mid');};
+get('start-demo').onclick=()=>{openPanel('source');void loadSelectedDemo('studio');};
 function refreshCharacterDisplay() {
   const visible=get<HTMLInputElement>('character-visible').checked, model=get<HTMLInputElement>('model-visible').checked, skeleton=get<HTMLInputElement>('skeleton-visible').checked;
   get<HTMLSelectElement>('character-display').value=!visible||(!model&&!skeleton)?'hidden':model?(skeleton?'both':'model'):'skeleton';
@@ -363,7 +364,7 @@ function status(text: string, kind = '') { get('status').className = `status ${k
 function message(text: string, error = false) { const node = get('message'); node.textContent = text; node.classList.toggle('error', error); }
 function controls() {
   for (const id of ['play','reset','seek','export']) (get(id) as HTMLButtonElement).disabled = !plan || busy || exporting || modelBusy;
-  for (const id of ['upload','demo','verification-demo','replan','channel','mapping-profile','wav-import','wav-remove','wav-offset','wav-apply','mute-export','background']) (get(id) as HTMLInputElement).disabled = busy || exporting || modelBusy;
+  for (const id of ['upload','demo-select','demo-load','replan','channel','mapping-profile','wav-import','wav-remove','wav-offset','wav-apply','mute-export','background']) (get(id) as HTMLInputElement).disabled = busy || exporting || modelBusy;
   for (const el of document.querySelectorAll<HTMLInputElement>('#tracks input')) el.disabled = busy || exporting || modelBusy;
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-camera]')) el.disabled = exporting || activePanel==='drums';
   for (const el of document.querySelectorAll<HTMLButtonElement>('[data-panel], #close-panel, #theme, #character-visible')) el.disabled=exporting || modelBusy;
@@ -418,14 +419,17 @@ async function prepare(generation: number,restoreTime=0) {
   if (!tracks.length) throw new Error('연주할 트랙을 하나 이상 선택해 주세요.');
   const selected = get<HTMLSelectElement>('channel').value;
   if(!get<HTMLInputElement>('hihat-openness').reportValidity())throw new Error('하이햇 열림은 5–100% 범위여야 합니다.');
-  message('타격과 손발 동작을 준비하고 있습니다…');
   const selection:DrumProject['selection']={tracks,channel:selected==='all'?null:Number(selected),mappingProfile:get<HTMLSelectElement>('mapping-profile').value as 'gm'|'logicDkdGm',countInNote75:get<HTMLInputElement>('count-in-75').checked,hihatPolicy:get<HTMLInputElement>('hihat-policy').checked?'shortOpenClose':'literal',hihatOpenness:get<HTMLInputElement>('hihat-openness').valueAsNumber/100,...structuredClone(arrangement)};
-  const prepared=await preparePerformance({candidate:()=>engine.plan(bytes!,selection,false),
+  return prepareSelection(bytes!,selection,generation,restoreTime);
+}
+async function prepareSelection(data: Uint8Array, selection: DrumProject['selection'], generation: number, restoreTime=0) {
+  message('타격과 손발 동작을 준비하고 있습니다…');
+  const prepared=await preparePerformance({candidate:()=>engine.plan(data,selection,false),
     audio:async candidate=>{message(wav?'WAV를 연주 시간에 맞추고 있습니다…':'합성 드럼 오디오를 준비하고 있습니다…');
       const aligned=wav?alignWavToPlan(wav.buffer,candidate,wavOffset):null;
       return {buffer:aligned?.buffer??await synthesis.run(candidate),alignment:aligned?.info};},
     commit:candidate=>engine.restorePlan(candidate,scene.getRigProfile(),scene.getKitLayout()),current:()=>generation===loadGeneration});
-  if(!prepared)return;
+  if(!prepared)return false;
   plan = prepared.plan;preparedSelection=selection;arrangement=arrangementOf(plan);
   if(prepared.audio.alignment)showWavInfo(prepared.audio.alignment);
   buffer = prepared.audio.buffer;
@@ -437,6 +441,7 @@ async function prepare(generation: number,restoreTime=0) {
   get('metric-duration').textContent = clockText(plan.duration); get('metric-hits').textContent = plan.hits.length.toLocaleString(); get('metric-tempos').textContent = String(plan.tempoCount);
   get('plan-label').textContent = 'READY'; get('stage-empty').hidden = true;
   poseReview=null;get('review-status').textContent='곡 검수는 30fps와 타격 전후 표본의 재생·임의 탐색 자세를 비교합니다.';get('review-measurement').textContent='';renderDiagnostics();
+  return true;
 }
 function renderDiagnostics() {
   if(!plan)return;
@@ -499,6 +504,47 @@ async function loadFile(data: Uint8Array, name: string) {
     if(generation!==loadGeneration)return;
     message(error instanceof Error ? error.message : String(error),true); status('확인 필요','error');
   } finally { if(generation===loadGeneration){busy=false;controls();} }
+}
+
+async function loadSelectedDemo(id: DemoId) {
+  if(busy||exporting||modelBusy)return;
+  const generation=++loadGeneration,controller=new AbortController();
+  demoController=controller;audio?.pause();busy=true;controls();status('데모 준비 중','working');
+  message('데모 파일을 읽고 있습니다…');
+  try {
+    const demo=await loadDemo(id,undefined,(input,init)=>fetch(input,{...init,signal:controller.signal}));
+    if(generation!==loadGeneration)return;
+    if(demo.bytes.byteLength>MAX_FILE_BYTES)throw new Error('데모 파일이 10 MiB를 초과합니다.');
+    const file=new File([Uint8Array.from(demo.bytes)],demo.filename,{type:'audio/midi'});
+    const reference=await fileReference('midi',file);
+    if(generation!==loadGeneration)return;
+    const info=await engine.inspect(demo.bytes);
+    if(generation!==loadGeneration)return;
+    if(!info.suggestedTracks.length)throw new Error('데모에서 연주할 트랙을 찾지 못했습니다.');
+    const selection:DrumProject['selection']={
+      channel:null,mappingProfile:'gm',countInNote75:false,hihatPolicy:'literal',hihatOpenness:.2,
+      omittedSourceEventIds:[],handOverrides:{},...demo.selection,tracks:info.suggestedTracks,
+    };
+    if(!await prepareSelection(demo.bytes,selection,generation))return;
+    // Source bytes, directives and file references change only after plan/audio preflight.
+    bytes=demo.bytes;fileName=demo.filename;commitProjectFile(reference,file);
+    get('file-name').textContent=demo.filename;
+    get('file-detail').textContent=`${(demo.bytes.byteLength/1024).toFixed(1)} KiB · 데모`;
+    fillSelection(info);
+    get<HTMLSelectElement>('channel').value=selection.channel===null?'all':String(selection.channel);
+    get<HTMLSelectElement>('mapping-profile').value=selection.mappingProfile!;
+    get<HTMLInputElement>('count-in-75').checked=selection.countInNote75!;
+    get<HTMLInputElement>('hihat-policy').checked=selection.hihatPolicy==='shortOpenClose';
+    get<HTMLInputElement>('hihat-openness').value=String(selection.hihatOpenness!*100);
+    get<HTMLSelectElement>('demo-select').value=id;
+  } catch(error) {
+    if(generation!==loadGeneration)return;
+    message(`${error instanceof Error?error.message:String(error)}${plan?' 기존 연주와 설정은 유지됩니다.':''}`,true);
+    status('데모 확인 필요','error');
+  } finally {
+    if(demoController===controller)demoController=null;
+    if(generation===loadGeneration){busy=false;controls();}
+  }
 }
 
 function showWavInfo(info?: WavAlignmentInfo) {
@@ -786,13 +832,14 @@ get<HTMLInputElement>('hihat-policy').onchange=()=>controls();
 get<HTMLSelectElement>('mapping-profile').onchange=()=>{get('mapping-evidence').textContent='매핑을 변경했습니다. 다시 준비하면 선택한 음원 기준의 결과를 확인할 수 있습니다.';controls();};
 get('upload').onclick=()=>get<HTMLInputElement>('file').click();
 get<HTMLInputElement>('file').onchange=async(event)=>{const input=event.target as HTMLInputElement;const file=input.files?.[0]; if(file){if(file.size>MAX_FILE_BYTES){message('10 MiB 이하의 MIDI 파일을 선택해 주세요.',true);}else await loadFile(new Uint8Array(await file.arrayBuffer()),file.name);}input.value='';};
-get('verification-demo').onclick=()=>{get<HTMLSelectElement>('mapping-profile').value='logicDkdGm';get<HTMLInputElement>('count-in-75').checked=true;get<HTMLInputElement>('hihat-policy').checked=true;get<HTMLInputElement>('hihat-openness').value='20';void loadFile(makeInterpretationDemo(),'Interpretation Check.mid');};
-get('demo').onclick=()=>void loadFile(makeDemo(),'Studio Groove.mid');
+for(const demo of DEMO_CATALOG)get<HTMLSelectElement>('demo-select').add(new Option(demo.label,demo.id));
+get<HTMLAnchorElement>('demo-notice').href=`${import.meta.env.BASE_URL}demos/NOTICE.txt`;
+get('demo-load').onclick=()=>void loadSelectedDemo(get<HTMLSelectElement>('demo-select').value as DemoId);
 const dropzone=get('dropzone');
 dropzone.ondragover=e=>{e.preventDefault();if(!busy&&!exporting)dropzone.classList.add('dragging');};
 dropzone.ondragleave=()=>dropzone.classList.remove('dragging');
 dropzone.ondrop=async(e)=>{e.preventDefault();dropzone.classList.remove('dragging');if(busy||exporting||modelBusy)return;const file=e.dataTransfer?.files[0];if(file){if(file.size>MAX_FILE_BYTES){message('10 MiB 이하의 MIDI 파일을 선택해 주세요.',true);return;}await loadFile(new Uint8Array(await file.arrayBuffer()),file.name);}};
-get('cancel-analysis').onclick=()=>{++loadGeneration;++reviewGeneration;engine.cancel();synthesis.cancel();busy=false;showWavInfo();message(reviewRunning?'곡 검수를 취소했습니다.':'준비를 취소했습니다. 기존 연주가 있다면 다시 재생할 수 있습니다.');status(plan?'일시정지':'대기');controls();};
+get('cancel-analysis').onclick=()=>{++loadGeneration;++reviewGeneration;demoController?.abort();demoController=null;engine.cancel();synthesis.cancel();busy=false;showWavInfo();message(reviewRunning?'곡 검수를 취소했습니다.':'준비를 취소했습니다. 기존 연주가 있다면 다시 재생할 수 있습니다.');status(plan?'일시정지':'대기');controls();};
 get('replan').onclick=async()=>{if(!bytes||busy||exporting||modelBusy)return;const generation=++loadGeneration,time=audio?.pause()??0;busy=true;controls();status('준비 중','working');try{await prepare(generation,time);}catch(e){if(generation===loadGeneration){message(`${String(e)} 기존 연주는 유지됩니다. 음표 편집과 변경한 매핑·트랙 선택의 호환성을 확인하세요.`,true);status('확인 필요','error');}}finally{if(generation===loadGeneration){busy=false;controls();}}};
 get('play').onclick=async()=>{
   if(!audio||!plan)return;
@@ -830,4 +877,4 @@ const resizeObserver=new ResizeObserver(()=>{if(!exporting){scene.resize();timel
 let disposed=false;
 function tick(){if(disposed)return;if(!exporting){const time=audio?.currentTime??0;if(plan){updateFrame(time);get<HTMLInputElement>('seek').value=String(time);get('current-time').textContent=clockText(time);timeline.setTime(time);const playing=audio?.playing??false;if(get('play').dataset.icon!==(playing?'pause':'play')){setButtonIcon(get('play'),playing?'pause':'play');get('play').setAttribute('aria-label',playing?'일시정지':'재생');}if(!playing&&get('status').classList.contains('playing'))status(time>=outputDuration(plan)-.02?'연주 완료':'일시정지',time>=outputDuration(plan)-.02?'ready':'');}scene.render();}requestAnimationFrame(tick);}tick();
 controls();timeline.resize();setCharacterDisplay('skeleton');void autoFitCurrent();
-window.addEventListener('beforeunload',()=>{disposed=true;engine.dispose();synthesis.cancel();audio?.dispose();scene.dispose();timeline.dispose();resizeObserver.disconnect();clearTimeout(toastTimer);if(downloadUrl)URL.revokeObjectURL(downloadUrl);});
+window.addEventListener('beforeunload',()=>{disposed=true;demoController?.abort();engine.dispose();synthesis.cancel();audio?.dispose();scene.dispose();timeline.dispose();resizeObserver.disconnect();clearTimeout(toastTimer);if(downloadUrl)URL.revokeObjectURL(downloadUrl);});

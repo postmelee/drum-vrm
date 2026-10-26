@@ -1,0 +1,25 @@
+{
+  "id": "transparent-girl",
+  "title": "투명소녀1.mid",
+  "file": "transparent-girl-1.mid",
+  "filename": "투명소녀1.mid",
+  "bytes": 14209,
+  "sha256": "615127ef5d0bfe7c4e934222349243e8d7c9c8309fa9e1a56e0b19bb0e41f5cf",
+  "providedBy": "postmelee",
+  "source": "File supplied by the project owner",
+  "permissionConfirmedOn": "2026-10-26",
+  "permissionBasis": "The provider explicitly confirmed that they have public distribution and redistribution rights when asked about including this exact MIDI as a downloadable Pages demo.",
+  "distributionScope": "Inclusion in the Drum VRM public repository and its GitHub Pages demo",
+  "licenseStatement": "Distributed with the provider's permission for this project. This MIDI is not covered by the repository's MIT source-code license. No additional downstream reuse license is asserted, and the provider is not identified as the composer or copyright holder by this record.",
+  "unmodifiedBinary": true,
+  "selection": {
+    "channel": null,
+    "mappingProfile": "logicDkdGm",
+    "countInNote75": true,
+    "hihatPolicy": "shortOpenClose",
+    "hihatOpenness": 0.2,
+    "omittedSourceEventIds": ["23:237"],
+    "handOverrides": {}
+  },
+  "arrangementNote": "The owner selected dual crashes plus kick for the final chord at approximately 191.804 seconds. The extra snare event 23:237 remains in the original MIDI and is explicitly omitted only in the demo arrangement. Source timing and velocity remain unchanged."
+}
