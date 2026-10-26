@@ -7,9 +7,9 @@ next worker; contracts own behavior and evidence reports own measured results.
   menus with Analysis, measured skin-weight geometry, common static target-pair
   checks, and coordinated temporal torso/elbow planning. Fitting and planning run
   in cancellable Workers. See [verification and limits](verification/body-clearance-measurements.md).
-- Pages publishes `2f9ca06cfa9fa19b493608e3e8f6881ac41257dc`, the owner's
-  approved #47/#48/#50 batch: public demo, equipment/contact/count-in and an
-  English-default interface with live Korean switching. [Publication evidence](verification/pages-english-interface.md)
+- Pages publishes `d23a9400abc9461633f26a9b805659026626a633`, the owner's
+  approved #47/#48/#50/#52 batch: selectable official VRM samples, public demo, equipment/contact/count-in and an
+  English-default interface with live Korean switching. [Publication evidence](verification/character-presets.md#pages-publication)
   records the exact candidate, workflow and actual checks. [Approval history](approval.md)
   retains the scope. No tag or GitHub Release was requested or created.
 - [#44](https://github.com/postmelee/drum-vrm/issues/44) owns automatic-fit/menu
@@ -39,7 +39,7 @@ next worker; contracts own behavior and evidence reports own measured results.
   playback remain independent of the language. PR #42's historical evidence was
   already incorporated by #45, so the duplicate PR was closed without restoring
   stale deployment labels.
-- Character preset work under [#17](https://github.com/postmelee/drum-vrm/issues/17)
+- Merged [PR #52](https://github.com/postmelee/drum-vrm/pull/52) under [#17](https://github.com/postmelee/drum-vrm/issues/17)
   adds on-demand official AvatarSample_B, Seed-san and Twist downloads through the
   same importer/automatic-fit transaction as local VRM files. Each reviewed public
   file has `public/characters/*-provenance.json`; generated notices preserve model

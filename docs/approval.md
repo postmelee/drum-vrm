@@ -89,3 +89,18 @@ open for the deferred motion-quality work.
 
 The approved main candidate was published by [Pages run 40281668719](https://github.com/postmelee/drum-vrm/actions/runs/40281668719).
 The publication record verifies the served files against that workflow's artifact.
+
+## 2026-10-26 — Official character preset batch
+
+The owner explicitly requested that the previously local test VRMs be made
+selectable from a website dropdown and deployed on Pages. The reviewed scope is
+[PR #52](https://github.com/postmelee/drum-vrm/pull/52): unchanged official
+AvatarSample_B, Seed-san and Twist samples, their recorded distribution terms,
+on-demand selection through the existing importer, and bilingual guidance.
+Other private/user models are not authorized by this artifact review.
+
+Tested head `e16fee1a700cc851a18786cf415722239b108ac6` and integrated main candidate
+`d23a9400abc9461633f26a9b805659026626a633` have identical trees. Publication evidence
+belongs to the [preset verification record](verification/character-presets.md).
+This approval does not cover a release/tag or further motion changes; Twist fit
+and approach-contact limitations remain explicit.
