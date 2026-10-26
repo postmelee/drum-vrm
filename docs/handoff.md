@@ -19,7 +19,8 @@ next worker; contracts own behavior and evidence reports own measured results.
   quality, and [#23](https://github.com/postmelee/drum-vrm/issues/23) owns inspection.
   Keep their broader acceptance open: static feasibility and accurate contact do
   not certify clear skin/clothing throughout a song.
-- The equipment/contact batch follows the demo PR. It measures displayed bodies,
+- Draft [PR #48](https://github.com/postmelee/drum-vrm/pull/48) follows demo PR #47.
+  It measures displayed bodies,
   shares numeric supports with Rust, checks complete sticks and articulation
   regions, and adds explicit two-stick count-in. See the
   [contract](../specs/architecture/equipment-contact.md) and

@@ -157,6 +157,45 @@ The slightly different sample sets explain the different counts. This batch adds
 checks and bounded avoidance; it does **not** establish collision-free completion
 of the reference song.
 
+### Attribution of remaining full-song equipment failures
+
+A second probe reproduced every negative equipment sample with the common Rust
+primitive checks; its decomposed minimum matched the inspector exactly. Almost all
+failures were the shaft against its intended surface. No **other-tom** shaft
+intersection was reported in this native/Studio sample set. That result does not
+cover every preset, imported rig or unsampled instant.
+
+Nine selected poses were also applied to the actual native adapter. Its measured
+profile matched the audit profile exactly, and rendered tool-marker errors stayed
+below 0.0001 mm. The rendered tapered stick triangles were checked against the
+static Studio body triangles in both edge directions, excluding markers. Triangle
+pair counts indicate surface crossings, not penetration depth or independent
+contacts; cosmetic hit response and continuous swept volumes were not tested.
+
+| Song time | Motion and proxy result | Actual rendered geometry |
+| --- | --- | --- |
+| 42.366667 s | Left crash preparation, 7.76 ms before its hit; −7.88 mm | Three intersecting triangle pairs, about 31 mm behind the tip; the conservative proxy overstates the surface overlap but it is not wholly a false positive |
+| 10.066667 s | First high-tom preparation, 99.78 ms before its hit; −2.26 mm | 84 intersecting pairs against the intended rim/head, 0.3–25.2 mm behind the tip; the shaft centerline itself crosses the rim |
+| 141.366667 s | Right-hand open-hat → snare transfer; −6.00 mm against the other hi-hat | 13 intersecting pairs near the final 2.1–8.1 mm of the stick |
+| 31.466667 s | Crash → hi-hat transfer; −6.00 mm against the other crash | No triangle crossing; the 6 mm shaft capsule has 31.2 mm clearance from the actual mesh, identifying empty space inside the conservative box |
+
+Two further other-crash warnings also had more than 31 mm actual capsule clearance;
+the lone forearm/other-hi-hat warning had 89 mm. Conversely, selected intended
+low-tom and crash recovery poses retained real surface crossings. The evidence
+therefore supports neither ignoring all proxy warnings nor claiming the full song
+is geometrically clear.
+
+The remaining work is phase-aware surface approach/recovery and a coupled,
+rate-constrained tool trajectory: equipment corrections are currently chosen
+before torso/elbow planning, then rate-limited, so their individually feasible
+witnesses need not survive the final pose. Validation must use that final shaft,
+including its butt and the intended body's rim. Follow-up acceptance must retain
+original hit times, distinguish permitted terminal impact contact from preparatory
+or recovery penetration, and recheck after all rate constraints. Do not conceal
+failures by shifting source events, widening the contact exception, or exempting
+an entire intended body. A tighter geometric check can separately resolve empty
+AABB corners without weakening these requirements.
+
 ## Repository and browser verification
 
 - `cargo test --workspace --locked`: 115 passed, none ignored.
@@ -177,6 +216,9 @@ of the reference song.
   visible (142 samples, maximum 8.6 mm); ten body-failing impacts remain. Browser
   error logs were empty. These Innerscene results are not the Studio audit above.
 
-The candidate is on `codex/equipment-contact-planning`, stacked after PR #47.
+Implementation commit: `ddc17be06a2819995d6c1e48e6aa792b096fa37c`.
+Draft [PR #48](https://github.com/postmelee/drum-vrm/pull/48) is on
+`codex/equipment-contact-planning`, stacked after PR #47. Subsequent report/index
+updates do not change the measured implementation or WASM above.
 No merge, Pages deployment, release tag or GitHub Release was performed for this
 batch. These measurements do not establish what the public application runs.
