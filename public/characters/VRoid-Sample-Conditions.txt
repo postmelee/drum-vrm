@@ -1,0 +1,42 @@
+VRoidPreset_A - Z — sample-model conditions
+Source: https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z
+Source updated: December 26, 2024. Retrieved: October 26, 2026.
+The following conditions are reproduced from the official English source.
+
+The license to these sample models is not CC0.
+Make sure to use this model in conformity with its conditions of use.
+
+Conditions of use for this sample model
+
+This model's .vroid and VRM files can be used by anyone in any kind of activity, be it for-profit or not.
+There is no need to credit the original creator when using this sample model.
+
+A few examples of what you can do with this sample model:
+
+- Import and use as an avatar or character on apps and platforms supporting the VRM format.
+- Take pictures and videos while using it.
+- Edit its texture and parameters, and create an original 3D character.
+- Edit its texture and parameters, upload it to VRoid Hub, and redistribute it.
+- Edit its texture and parameters, upload it to BOOTH for sale to others.
+
+And so much more. You can use this model in any way unless it is clearly prohibited under Prohibited Conduct. However, it's possible that the conditions of use may be limited if there are incidents that cause issues that make it difficult to keep the sample models public.
+
+Prohibited Conduct
+
+When using this sample model, please note that the following acts are prohibited:
+
+- Distributing a sample model or its VRM file to a third party by setting the "Redistribution and alteration" conditions of use to "Copyright Disclaimer (CC0)".
+- Development of a character creation service using data contained in the sample model, or diversion of data contained in the sample model to an existing character creation service.
+- Redistributing the .vroid or VRM file of the sample model (or other data such as image data within the model) in exchange for a fee.
+- Acts that can lure people into thinking that the Company supports or recommends some product/event.
+- Acts that are connected or may be connected to fraud or other crimes.
+- Acts that pixiv inc. deems to be in violation of Japanese or foreign law, public order and morals, or to infringe on the rights of others.
+- Acts that glorify or promote discrimination based on race, ethnicity, gender, age, or ideology.
+- Acts that glorify or promote extreme ideology or antisocial acts.
+- Acts that glorify or promote cult-like religious activities or excessive political activities.
+- Any other actions that pixiv inc. deems inappropriate.
+
+If a user is determined to have violated the conditions of use detailed above for sample models, or if it is otherwise deemed necessary by our company, we may take appropriate action in regards to that user's violations as detailed in Article 15 of the Terms of Use for pixiv Inc.'s Services.
+https://policies.pixiv.net/
+
+Conditions of use may be subject to change in the future.

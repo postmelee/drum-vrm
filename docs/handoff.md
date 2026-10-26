@@ -39,6 +39,12 @@ next worker; contracts own behavior and evidence reports own measured results.
   playback remain independent of the language. PR #42's historical evidence was
   already incorporated by #45, so the duplicate PR was closed without restoring
   stale deployment labels.
+- Character preset work under [#17](https://github.com/postmelee/drum-vrm/issues/17)
+  adds on-demand official AvatarSample_B, Seed-san and Twist downloads through the
+  same importer/automatic-fit transaction as local VRM files. Each reviewed public
+  file has `public/characters/*-provenance.json`; generated notices preserve model
+  conditions and Seed-san credit. [Model guidance](models.md) describes selection
+  and limits. Preset availability does not resolve Twist fitting or approach contacts.
 - [Outcome sequence](plan.md#outcome-sequence) routes M3 browser quality, M4 advanced
   expression/platforms and M5 production outputs. WAV preview remains the audio
   priority; expanded video/interchange output stays deferred.

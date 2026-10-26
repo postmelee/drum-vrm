@@ -11,6 +11,7 @@ import { NativeHumanoidRigAdapter, type HumanoidCalibration } from './rig-humano
 import { moveKitTarget } from './kit-calibration';
 import { VRMHumanoidRigAdapter } from './rig-vrm';
 import { loadLocalVRM, type VRMInspection } from './vrm-import';
+import { CHARACTER_PRESETS, characterAssetUrl, loadCharacterPreset, type CharacterPreset } from './character-presets';
 import { VRMUtils } from '@pixiv/three-vrm';
 import type { KitPresetId } from './model-procedural';
 import { EngineClient } from './engine';
@@ -83,6 +84,8 @@ function commitProjectFile(reference:ProjectAsset,file:File) {
 type Panel = 'character' | 'drums' | 'source' | 'analysis' | 'export';
 let activePanel: Panel | null = null;
 let modelBusy = false;
+let characterDownload: AbortController | null = null;
+let committedCharacter = 'native';
 let fitRunning = false;
 let setupRunning = false;
 let idlePoseGeneration = 0;
@@ -282,9 +285,10 @@ function setCharacterDisplay(value:string) {
   scene.setCharacterVisible(visible);scene.setSkeletonVisible(skeleton);scene.setModelVisible(model);refreshCharacterDisplay();
 }
 get<HTMLSelectElement>('character-display').onchange=e=>setCharacterDisplay((e.target as HTMLSelectElement).value);
-function showModelInfo(info: VRMInspection | null) {
+function showModelInfo(info: VRMInspection | null, preset?: CharacterPreset) {
   const host = get('character-info'); host.replaceChildren(); if (!info) return;
   const name=document.createElement('strong');bindText(name, raw(info.name));host.append(name);
+  if(preset){const credit=document.createElement('p');credit.className='hint';bindText(credit,msg('By {0}', '제작: {0}',raw(preset.creator)));host.append(credit);}
   const metadata=document.createElement('details'),label=document.createElement('summary');bindText(label, msg("Model details / terms", "모델 정보 · 이용 조건"));metadata.append(label);host.append(metadata);
   for (const text of [msg("VRM {0} · model {1} · required bones {2}/15", "VRM {0} · 모델 {1} · 필수 본 {2}/15", raw(info.version), raw(info.modelVersion), info.required), msg("Finger bones L {0}/15 · R {1}/15", "손가락 본 L {0}/15 · R {1}/15", info.fingers.left, info.fingers.right), msg("Author: {0}", "제작자: {0}", info.authors.length ? raw(info.authors.join(', ')) : msg("Not specified", "미기재"))]) {
     const p = document.createElement('p'); p.className='hint'; bindText(p, text); metadata.append(p);
@@ -295,6 +299,14 @@ function showModelInfo(info: VRMInspection | null) {
   for (const [label, value] of info.terms) { const p=document.createElement('p'); p.className='hint'; bindText(p, msg('{0}: {1}', '{0}: {1}', label, raw(value))); details.append(p); }
   for(const reference of info.references) { const p=document.createElement('p'); p.className='hint'; bindText(p, msg("Reference: {0}", "참고: {0}", raw(reference))); details.append(p); }
   metadata.append(details);
+  if(preset){
+    const sources=document.createElement('p');sources.className='hint';
+    for(const [label,url] of [[msg('Source', '출처'),preset.source],[msg('License', '라이선스'),preset.licenseUrl],[msg('Distribution record', '배포 기록'),characterAssetUrl(preset.provenanceFile)]] as const){
+      if(sources.childNodes.length)sources.append(' · ');
+      const link=document.createElement('a');bindText(link,label);link.href=url;link.target='_blank';link.rel='noreferrer';sources.append(link);
+    }
+    metadata.append(sources);
+  }
 }
 async function adoptRig(adapter: NativeHumanoidRigAdapter | VRMHumanoidRigAdapter) {
   const oldKit=scene.getKitLayout(),palmOrientation=scene.getCalibration().palmOrientation;
@@ -313,28 +325,52 @@ async function adoptRig(adapter: NativeHumanoidRigAdapter | VRMHumanoidRigAdapte
   preFitSetup=result.applied?{seat:{...adapter.getAutomaticCalibration(oldKit),palmOrientation},kit:oldKit}:null;
   poseReview=null;showFitResult(result);invalidateVideo();refreshCalibration();refreshTarget();await refreshIdlePose();
 }
-get('character-import').onclick=()=>get<HTMLInputElement>('character-file').click();
-get<HTMLInputElement>('character-file').onchange=async e=>{
-  const input=e.target as HTMLInputElement, file=input.files?.[0]; input.value=''; if(!file||busy||exporting||modelBusy)return;
-  audio?.pause(); modelBusy=true;controls();bindText(get('character-message'), msg("Inspecting VRM…", "VRM을 검사하고 있습니다…"));
+function refreshCharacterPreset() {
+  const select=get<HTMLSelectElement>('character-preset');
+  select.replaceChildren(uiOption(msg('Default skeleton', '기본 스켈레톤'),'native'),...CHARACTER_PRESETS.map(preset=>uiOption(preset.label,preset.id)));
+  if(committedCharacter==='local')select.append(uiOption(msg('Local VRM', '로컬 VRM'),'local'));
+  select.value=committedCharacter;
+}
+refreshCharacterPreset();
+async function importCharacter(fileOrPreset: File | CharacterPreset) {
+  if(busy||exporting||modelBusy){refreshCharacterPreset();return;}
+  audio?.pause(); modelBusy=true;
+  const preset=fileOrPreset instanceof File?undefined:fileOrPreset;
+  characterDownload=preset?new AbortController():null;
+  controls();bindText(get('character-message'), preset?msg('Downloading character…', '캐릭터를 내려받고 있습니다…'):msg("Inspecting VRM…", "VRM을 검사하고 있습니다…"));
   let candidate: Awaited<ReturnType<typeof loadLocalVRM>> | null = null;
   let adapter: VRMHumanoidRigAdapter | null = null;
   try {
+    const file=preset?await loadCharacterPreset(preset.id,characterDownload!.signal):fileOrPreset as File;
+    characterDownload=null;controls();bindText(get('character-message'), msg("Inspecting VRM…", "VRM을 검사하고 있습니다…"));
     candidate=await loadLocalVRM(file);
     const reference=await fileReference('vrm',file),info=candidate.info;
     adapter=new VRMHumanoidRigAdapter(candidate.vrm,`vrm1:${reference.sha256}`); await adoptRig(adapter);
     candidate=null; adapter=null;
-    commitProjectFile(reference,file);showModelInfo(info);
+    const matchedPreset=CHARACTER_PRESETS.find(entry=>entry.sha256===reference.sha256);
+    committedCharacter=matchedPreset?.id??'local';
+    commitProjectFile(reference,file);showModelInfo(info,matchedPreset);
     bindText(get('character-message'), raw(file.name));setCharacterDisplay('model');
-  } catch(error) { if(adapter)adapter.dispose();else if(candidate)VRMUtils.deepDispose(candidate.vrm.scene); bindText(get('character-message'), uiError(error)); }
-  finally{modelBusy=false;controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
+  } catch(error) { if(adapter)adapter.dispose();else if(candidate)VRMUtils.deepDispose(candidate.vrm.scene); bindText(get('character-message'), characterDownload?.signal.aborted?msg('Character download canceled.', '캐릭터 다운로드를 취소했습니다.'):uiError(error)); }
+  finally{characterDownload=null;modelBusy=false;refreshCharacterPreset();controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
+}
+get('character-import').onclick=()=>get<HTMLInputElement>('character-file').click();
+get<HTMLInputElement>('character-file').onchange=e=>{
+  const input=e.target as HTMLInputElement,file=input.files?.[0];input.value='';if(file)void importCharacter(file);
 };
-get('character-reset').onclick=async()=>{
+get('character-cancel').onclick=()=>characterDownload?.abort();
+async function resetCharacter(){
   if(busy||exporting||modelBusy)return;audio?.pause();modelBusy=true;controls();
   const adapter=new NativeHumanoidRigAdapter();let adopted=false;
-  try{await adoptRig(adapter);adopted=true;sourceReferences=sourceReferences.filter(ref=>ref.kind!=='vrm');showModelInfo(null);bindText(get('character-message'), msg("Default skeleton", "기본 스켈레톤"));setCharacterDisplay('skeleton');}
+  try{await adoptRig(adapter);adopted=true;committedCharacter='native';sourceReferences=sourceReferences.filter(ref=>ref.kind!=='vrm');showModelInfo(null);bindText(get('character-message'), msg("Default skeleton", "기본 스켈레톤"));setCharacterDisplay('skeleton');}
   catch(error){if(!adopted)adapter.dispose();bindText(get('character-message'), uiError(error));}
-  finally{modelBusy=false;controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
+  finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
+}
+get<HTMLSelectElement>('character-preset').onchange=e=>{
+  const id=(e.target as HTMLSelectElement).value;
+  if(id===committedCharacter)return;
+  if(id==='native')void resetCharacter();
+  else {const preset=CHARACTER_PRESETS.find(entry=>entry.id===id);if(preset)void importCharacter(preset);else refreshCharacterPreset();}
 };
 async function synchronizeEquipmentAppearance() {
   await scene.whenEquipmentReady();
@@ -416,6 +452,7 @@ function controls() {
   for (const el of document.querySelectorAll<HTMLInputElement>('#panel-drums input, #panel-drums select, #panel-drums button')) el.disabled=busy || exporting || modelBusy;
   for (const id of ['start-upload','start-demo']) get<HTMLButtonElement>(id).disabled=busy || exporting || modelBusy;
   for (const el of document.querySelectorAll<HTMLInputElement>('#panel-character input, #panel-character select, #panel-character button')) el.disabled=busy || exporting || modelBusy;
+  get<HTMLButtonElement>('character-cancel').disabled=!characterDownload;get('character-cancel').hidden=!characterDownload;
   get<HTMLInputElement>('hit-strength').disabled = exporting || modelBusy || !get<HTMLInputElement>('hit-response').checked;
   get<HTMLButtonElement>('export').disabled = !plan || busy || exporting || modelBusy;
   get<HTMLInputElement>('count-in-75').disabled = busy || exporting || modelBusy;
@@ -846,7 +883,9 @@ async function restorePendingProject() {
     get<HTMLInputElement>('hit-response').checked=project.hitResponse.enabled;get<HTMLInputElement>('hit-strength').value=String(project.hitResponse.strength);responseChosen=true;scene.setHitResponse(project.hitResponse);
     get<HTMLInputElement>('timeline-zoom').value=String(project.view.timelineZoom);timeline.setZoom(project.view.timelineZoom);
     scene.setViewState(project.camera);for(const button of document.querySelectorAll<HTMLButtonElement>('[data-camera]'))button.setAttribute('aria-pressed',String(button.dataset.camera===project.camera.view));
-    scene.setPlan(plan);timeline.setPlan(plan);replaceAudio(nextBuffer,project.outputTime);showWavInfo(aligned?.info);showModelInfo(modelInfo);
+    const characterPreset=CHARACTER_PRESETS.find(entry=>entry.sha256===project.assets.find(asset=>asset.kind==='vrm')?.sha256);
+    committedCharacter=project.rig==='native'?'native':characterPreset?.id??'local';refreshCharacterPreset();
+    scene.setPlan(plan);timeline.setPlan(plan);replaceAudio(nextBuffer,project.outputTime);showWavInfo(aligned?.info);showModelInfo(modelInfo,characterPreset);
     bindText(get('character-message'), project.rig==='vrm'?msg("Project VRM · original file and body settings restored", "프로젝트 VRM · 같은 원본 파일과 체형 설정 복원"):msg("Default rig · project body settings restored", "기본 리그 · 프로젝트 체형 설정 복원"));
     get<HTMLInputElement>('seek').max=String(outputDuration(plan));bindText(get('duration'), clockText(outputDuration(plan)));
     bindText(get('metric-duration'), clockText(plan.duration));bindText(get('metric-hits'), plan.hits.length.toLocaleString());bindText(get('metric-tempos'), String(plan.tempoCount));bindText(get('plan-label'), 'READY');get('stage-empty').hidden=true;

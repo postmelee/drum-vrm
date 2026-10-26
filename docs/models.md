@@ -2,7 +2,26 @@
 
 **English** · [한국어](models.ko.md) · [Documentation](README.md) · [Open the app](https://postmelee.github.io/drum-vrm/?lang=en)
 
-Load a local VRM 1.0 character, inspect its terms and fit it to the drum kit. This guide describes the repository build; see [version availability](../README.md#which-version-am-i-using) before using the public app. No external avatar is bundled.
+Choose a bundled VRM 1.0 sample or load your own character, inspect its terms and fit it to the drum kit. This guide describes the repository build; see [version availability](../README.md#which-version-am-i-using) before using the public app.
+
+## Bundled character presets
+
+Open **Character** and choose a sample from the dropdown. Its file downloads only
+when selected; the initial skeleton needs no model download. The app uses the same
+import checks, measured-body solver and automatic fitting as a local VRM. Use
+**Cancel download** to keep the current model while stopping a preset download.
+
+| Preset | Creator and terms | Purpose |
+| --- | --- | --- |
+| [AvatarSample_B](../public/characters/avatar-sample-b-provenance.json) | VRoid Project; VRM Public License and additional VRoid sample conditions | General character test; the pinned ChatVRM file is VRM 1.0. |
+| [Seed-san](../public/characters/seed-san-provenance.json) | VirtualCast, Inc.; VRM Public License; **credit required** | A different body and bone-constraint configuration. |
+| [Twist sample](../public/characters/twist-provenance.json) | pixiv Inc.; VRM Public License | Constraint test; **automatic fitting remains limited**. |
+
+The linked provenance records identify the exact unchanged files, original sources
+and conditions. These models are not MIT or CC0. Selection does not certify natural
+contact or collision-free motion. Check **Analysis** for fitting and motion warnings.
+For Seed-san videos, include the required creator credit; choosing a preset does not
+automatically insert credit into exported video. The app does not export avatar files.
 
 ## Supported files
 
@@ -20,11 +39,11 @@ VRM 0.x needs conversion or re-export as VRM 1.0 where the model's terms permit 
 
 ## Import and inspect
 
-1. Open **Character**, choose **Import VRM…**, and select one `.vrm`. The app processes it in the browser without uploading it.
+1. Choose a **Character** preset, or use **Character → Import VRM…** to select your own `.vrm`. Local files are processed in the browser without uploading them.
 2. Open **Model details / terms** for the name, author, version, required-bone and finger-bone counts and terms. Missing optional rights fields are identified with the VRM 1.0 specification default; absence is not treated as permission. Metadata links are not opened or fetched automatically.
 3. Load a demo or MIDI and choose **Model**, **Skeleton**, **Model + skeleton** or **Hidden** in the display selector. The adapter measures limb lengths and uses the same semantic-bone solver as the built-in skeleton. Available finger bones receive a grip pose; missing optional fingers do not prevent import.
 4. The app automatically attempts a body-fit layout. Inspect its result and, if needed, [adjust the seat and targets](calibration.md), then compare playback and arbitrary forward/backward seeks. Check the visible grip, attached stick tips, feet and pedals. Contact measurements use tool/foot sockets, not all skin, glove or shoe vertices.
-5. Choose **Default rig** to restore the skeleton. Import and reset replan the current MIDI for the selected body without changing original hit times.
+5. Choose **Default skeleton** in the preset selector to restore the skeleton. Import and reset replan the current MIDI for the selected body without changing original hit times.
 
 Spring motion is reset for each evaluated pose so seeking and output are repeatable. Dynamic hair/clothing simulation, collision-free seating, precise skin/sole calibration and natural wrists at every target are not established by a successful import. Use a [local project](projects.md) to retain model/calibration choices across sessions; the same model file must be relinked.
 
@@ -39,7 +58,7 @@ Spring motion is reset for each evaluated pose so seeking and output are repeata
 
 The inspected Hub entries for [AvatarSample_A](https://hub.vroid.com/en/characters/2843975675147313744/models/5644550979324015604) and [AvatarSample_B](https://hub.vroid.com/en/characters/7939147878897061040/models/2292219474373673889) were VRM 0.0, with [custom sample conditions](https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z), not CC0. Verify the actual downloaded version.
 
-For developers, the pinned [ChatVRM AvatarSample_B](https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm), [Twist sample](https://github.com/vrm-c/vrm-specification/tree/master/samples/VRM1_Constraint_Twist_Sample) and [Seed-san](https://github.com/vrm-c/vrm-specification/tree/master/samples/Seed-san) are VRM 1.0 test candidates. The inspected files contain the required bones and both hands' finger bones. Twist has separate VRM Public License settings; it does not inherit three-vrm's MIT license. Seed-san requires credit. Exact file identities, terms and test outcomes are preserved in the [model research record](research/vrm-models.md).
+For developers, the pinned [ChatVRM AvatarSample_B](https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm), [Twist sample](https://github.com/vrm-c/vrm-specification/tree/master/samples/VRM1_Constraint_Twist_Sample) and [Seed-san](https://github.com/vrm-c/vrm-specification/tree/master/samples/Seed-san) are the sources of the bundled VRM 1.0 presets. The inspected files contain the required bones and both hands' finger bones. Twist has separate VRM Public License settings; it does not inherit three-vrm's MIT license. Seed-san requires credit. Exact file identities, terms and test outcomes are preserved in the [model research record](research/vrm-models.md).
 
 ## Keep an editing source and runtime export
 
@@ -64,7 +83,7 @@ This controlled pair is a documented test procedure, not a completed compatibili
 
 Read embedded terms together with the source page. The [VRM Public License](https://vrm.dev/licenses/1.0/) incorporates per-model settings; clothing, textures and presets may have additional terms. See [VRoid model-use guidance](https://vroid.pixiv.help/hc/en-us/articles/4405813333657-Can-I-use-the-models-created-with-VRoid-Studio-Stable-Ver-for-commercial-purposes). This project's MIT license does not apply to your avatar. The exporter does not insert model credits automatically; include required credit in the published video or accompanying attribution as the terms require.
 
-Keep acquired models outside the repository's tracked/public files. `.local/vrm-test-models/` is an ignored local storage option, not a source of redistributable fixtures.
+Keep other acquired models outside the repository's tracked/public files unless their exact distribution rights have been reviewed and recorded. `.local/vrm-test-models/` is an ignored local storage option; placing a file there does not authorize redistribution. The bundled presets are separately reviewed exceptions.
 
 ## What has been verified?
 

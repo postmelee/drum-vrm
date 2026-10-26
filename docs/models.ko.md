@@ -2,7 +2,26 @@
 
 [English](models.md) · **한국어** · [문서 안내](README.ko.md) · [앱 열기](https://postmelee.github.io/drum-vrm/?lang=ko)
 
-로컬 VRM 1.0 캐릭터를 불러오고, 이용 조건을 확인한 뒤 드럼 키트에 맞춥니다. 이 안내는 저장소 빌드를 설명하므로 공개 앱을 사용한다면 [버전별 제공 범위](../README.ko.md#어떤-버전을-사용하고-있나요)를 먼저 확인하세요. 외부 아바타는 배포물에 포함하지 않습니다.
+포함된 VRM 1.0 샘플을 선택하거나 자신의 캐릭터를 불러오고, 이용 조건을 확인한 뒤 드럼 키트에 맞춥니다. 이 안내는 저장소 빌드를 설명하므로 공개 앱을 사용한다면 [버전별 제공 범위](../README.ko.md#어떤-버전을-사용하고-있나요)를 먼저 확인하세요.
+
+## 포함된 캐릭터 프리셋
+
+**캐릭터**를 열고 드롭다운에서 샘플을 고릅니다. 선택할 때만 파일을 내려받으며,
+처음 표시되는 스켈레톤에는 모델 다운로드가 필요 없습니다. 로컬 VRM과 같은
+불러오기 검사·실측 체형 계산·자동 배치를 사용합니다. **다운로드 취소**로 현재
+모델을 유지하면서 프리셋 다운로드를 중단할 수 있습니다.
+
+| 프리셋 | 제작자와 조건 | 용도 |
+| --- | --- | --- |
+| [AvatarSample_B](../public/characters/avatar-sample-b-provenance.json) | VRoid Project, VRM Public License와 추가 VRoid 샘플 조건 | 일반 캐릭터 검사. 고정된 ChatVRM 파일은 VRM 1.0입니다. |
+| [Seed-san](../public/characters/seed-san-provenance.json) | VirtualCast, Inc., VRM Public License, **크레딧 필수** | 다른 체형과 본 제약 구성 검사. |
+| [Twist 샘플](../public/characters/twist-provenance.json) | pixiv Inc., VRM Public License | 제약 검사. **자동 배치에는 여전히 제한이 있습니다.** |
+
+연결된 출처 기록에 수정하지 않은 정확한 파일·원본 출처·이용 조건이 있습니다.
+이 모델들은 MIT나 CC0가 아닙니다. 선택만으로 자연스러운 접촉이나 충돌 없는 동작이
+보장되지는 않습니다. 배치·동작 경고는 **분석**에서 확인하세요. Seed-san 영상에는
+제작자 크레딧을 표시해야 하며, 프리셋을 선택해도 내보낸 영상에 크레딧이 자동으로
+삽입되지는 않습니다. 앱은 아바타 파일을 내보내지 않습니다.
 
 ## 지원 파일
 
@@ -20,11 +39,11 @@ VRM 0.x는 모델 조건이 허용하는 범위에서 VRM 1.0으로 변환하거
 
 ## 불러오고 확인하기
 
-1. **캐릭터**에서 **VRM 불러오기…**를 누르고 `.vrm` 하나를 고릅니다. 앱은 파일을 업로드하지 않고 브라우저에서 처리합니다.
+1. **캐릭터** 프리셋을 고르거나 **캐릭터 → VRM 불러오기…**에서 자신의 `.vrm`을 선택합니다. 로컬 파일은 업로드하지 않고 브라우저에서 처리합니다.
 2. **모델 정보 · 이용 조건**을 열어 모델명·제작자·버전·필수 본·손가락 본 수와 이용 조건을 읽습니다. 선택적인 권리 항목이 빠졌다면 미기재 상태와 VRM 1.0 명세의 기본값을 표시하며, 누락을 허용으로 해석하지 않습니다. 메타데이터 링크는 자동으로 열거나 조회하지 않습니다.
 3. 데모 또는 MIDI를 열고 표시 선택에서 모델·뼈대·모델 + 뼈대·숨김을 고릅니다. 어댑터는 팔다리 길이를 측정하고 기본 스켈레톤과 같은 시맨틱 본 계산을 사용합니다. 손가락 본이 있으면 그립 자세를 적용하며, 선택적인 손가락 본이 없어도 불러올 수 있습니다.
 4. 자동 체형 배치 결과를 확인하고 필요하면 [좌석과 타점을 조절](calibration.ko.md)하고 재생·앞뒤 임의 탐색을 비교합니다. 실제 그립, 손에 붙은 스틱 끝, 발과 페달을 확인하세요. 접촉 계측은 도구·발 소켓 기준이며 모든 피부·장갑·신발 정점을 검사하지 않습니다.
-5. **기본 리그**를 누르면 스켈레톤으로 돌아갑니다. 불러오기와 복원은 원본 타격 시각을 유지하면서 선택한 체형에 맞춰 현재 MIDI를 다시 계획합니다.
+5. 프리셋 선택에서 **기본 스켈레톤**를 고르면 스켈레톤으로 돌아갑니다. 불러오기와 복원은 원본 타격 시각을 유지하면서 선택한 체형에 맞춰 현재 MIDI를 다시 계획합니다.
 
 탐색과 출력의 재현성을 위해 매 자세 평가에서 스프링 상태를 초기화합니다. 불러오기 성공만으로 동적인 머리카락·의상 시뮬레이션, 충돌 없는 착석, 정밀 피부·발바닥 보정이나 모든 타점에서 자연스러운 손목이 검증되지는 않습니다. 모델·보정 선택을 다음 세션에도 유지하려면 [로컬 프로젝트](projects.ko.md)를 사용하고 같은 모델 파일을 다시 연결하세요.
 
@@ -39,7 +58,7 @@ VRM 0.x는 모델 조건이 허용하는 범위에서 VRM 1.0으로 변환하거
 
 확인했던 Hub의 [AvatarSample_A](https://hub.vroid.com/en/characters/2843975675147313744/models/5644550979324015604)와 [AvatarSample_B](https://hub.vroid.com/en/characters/7939147878897061040/models/2292219474373673889)는 VRM 0.0이었으며, CC0가 아닌 [별도 샘플 조건](https://vroid.pixiv.help/hc/en-us/articles/4402394424089-VRoidPreset-A-Z)이 적용됩니다. 실제 내려받은 파일의 버전을 확인하세요.
 
-개발용으로는 고정된 [ChatVRM AvatarSample_B](https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm), [Twist 샘플](https://github.com/vrm-c/vrm-specification/tree/master/samples/VRM1_Constraint_Twist_Sample), [Seed-san](https://github.com/vrm-c/vrm-specification/tree/master/samples/Seed-san)이 VRM 1.0 테스트 후보입니다. 검사한 파일에는 필수 본과 양손 손가락 본이 있습니다. Twist에는 별도 VRM Public License 설정이 적용되며 three-vrm 코드의 MIT를 따르는 모델이 아닙니다. Seed-san은 크레딧 표시가 필요합니다. 정확한 파일 식별값·조건·검사 결과는 [모델 조사 기록](research/vrm-models.md)에 보존합니다.
+개발용으로는 고정된 [ChatVRM AvatarSample_B](https://github.com/pixiv/ChatVRM/blob/b542aa00e19dccf9fc48ba340cf7eee011d2329a/public/AvatarSample_B.vrm), [Twist 샘플](https://github.com/vrm-c/vrm-specification/tree/master/samples/VRM1_Constraint_Twist_Sample), [Seed-san](https://github.com/vrm-c/vrm-specification/tree/master/samples/Seed-san)이 포함된 VRM 1.0 프리셋의 출처입니다. 검사한 파일에는 필수 본과 양손 손가락 본이 있습니다. Twist에는 별도 VRM Public License 설정이 적용되며 three-vrm 코드의 MIT를 따르는 모델이 아닙니다. Seed-san은 크레딧 표시가 필요합니다. 정확한 파일 식별값·조건·검사 결과는 [모델 조사 기록](research/vrm-models.md)에 보존합니다.
 
 ## 편집 원본과 실행 파일 보관하기
 
@@ -64,7 +83,7 @@ VRM 0.x는 모델 조건이 허용하는 범위에서 VRM 1.0으로 변환하거
 
 내장 조건과 배포 페이지를 함께 읽으세요. [VRM Public License](https://vrm.dev/licenses/1.0/)에는 모델별 설정이 적용되며, 의상·텍스처·프리셋에 추가 조건이 있을 수 있습니다. [VRoid 모델 이용 안내](https://vroid.pixiv.help/hc/en-us/articles/4405813333657-Can-I-use-the-models-created-with-VRoid-Studio-Stable-Ver-for-commercial-purposes)도 참고하세요. 프로젝트의 MIT는 아바타에 적용되지 않습니다. 내보내기는 모델 크레딧을 자동 삽입하지 않으므로 조건에 따라 공개 영상이나 함께 제공하는 출처 표기에 필요한 크레딧을 넣으세요.
 
-확보한 모델은 저장소의 추적·공개 파일에 넣지 마세요. `.local/vrm-test-models/`는 Git에서 제외한 로컬 보관 위치이며 재배포 가능한 fixture 보관소가 아닙니다.
+다른 모델은 정확한 재배포 권한을 검토하고 기록하기 전까지 저장소의 추적·공개 파일에 넣지 마세요. `.local/vrm-test-models/`는 Git에서 제외한 로컬 보관 위치이며, 파일을 보관한다고 재배포가 허용되지는 않습니다. 포함된 프리셋은 별도로 검토한 예외입니다.
 
 ## 무엇을 검증했나요?
 

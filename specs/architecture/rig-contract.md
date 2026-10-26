@@ -77,6 +77,23 @@ implemented. External resource references are rejected; metadata links are displ
 without automatically fetching them. File metadata and source terms govern asset
 use, independent of the application's MIT license.
 
+### Bundled character selection
+
+`public/characters/*-provenance.json` owns each bundled VRM's exact file identity,
+creator, source and distribution terms. The preset selector fetches only the chosen
+same-origin file, verifies its byte size and SHA-256, and passes it through the same
+preflight, adapter and automatic-fit transaction as a local import. Bundled status does not bypass size/resource checks,
+alter bone lengths, or select avatar-specific motion rules. The default skeleton
+requires no VRM download; local uploads remain local.
+
+AvatarSample_B, Seed-san and the Twist sample retain their embedded VRM Public
+License settings and any additional terms. Model details expose those conditions;
+Seed-san requires credit in applicable published outputs. The application does not
+export modified avatar data. A preset is a reproducible input, not a compatibility
+certificate: the Twist bounded-fit limitation and approach-contact warnings remain
+visible. The [model guide](../../docs/models.md#bundled-character-presets) links the
+individual provenance records.
+
 ## Calibration
 
 [kit-calibration.ts](../../src/kit-calibration.ts) validates contact layouts;
