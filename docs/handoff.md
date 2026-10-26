@@ -10,7 +10,9 @@ next worker; contracts own behavior and evidence reports own measured results.
 - The owner authorized implementation, necessary PR merges and Pages publication
   through the stage **before randomized strike-location variation**. No release
   tag or GitHub Release is authorized. [Approval history](approval.md) retains the
-  exact scope; the verification report records publication when completed.
+  exact scope. PR #45 is merged and Pages publishes `dc581d2`;
+  [publication evidence](verification/body-clearance-measurements.md#pages-publication)
+  records the exact commit, workflow and public checks.
 - [#44](https://github.com/postmelee/drum-vrm/issues/44) owns automatic-fit/menu
   acceptance. [#18](https://github.com/postmelee/drum-vrm/issues/18) owns common body
   calibration, [#20](https://github.com/postmelee/drum-vrm/issues/20) owns motion
