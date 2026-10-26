@@ -71,3 +71,21 @@ The approved batch was merged as `dc581d203f7416b34388bca309f496c07e8d241d` thro
 and published by [Pages run 40261433421](https://github.com/postmelee/drum-vrm/actions/runs/40261433421).
 The tested head and merge tree match; [publication verification](verification/body-clearance-measurements.md#pages-publication)
 records actual artifact and browser checks. No tag or GitHub Release was created.
+
+## 2026-10-26 — English interface, demo and contact batch
+
+The owner explicitly requested an English-default website, a simple language
+switch and matching English/Korean README links, then merge and Pages publication:
+“그 다음 병합 및 pages 배포해줘.” The same instruction defers unresolved tom/cymbal
+approach contacts and Twist automatic fitting until after deployment.
+
+This covers #47 (public demo), #48 (equipment/contact/count-in) and #50 (English
+interface). Tested UI head `28b2c246fc24ca9236283a825bf73256569cbca9` and integrated
+candidate `2f9ca06cfa9fa19b493608e3e8f6881ac41257dc` have identical trees. The
+[batch record](verification/pages-english-interface.md) records checks, publication
+and retained limits. This is one batch's Pages approval, not permission for a
+version bump, release tag, GitHub Release or later deployment. #18/#20/#23 remain
+open for the deferred motion-quality work.
+
+The approved main candidate was published by [Pages run 40281668719](https://github.com/postmelee/drum-vrm/actions/runs/40281668719).
+The publication record verifies the served files against that workflow's artifact.

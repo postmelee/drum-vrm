@@ -7,36 +7,38 @@ next worker; contracts own behavior and evidence reports own measured results.
   menus with Analysis, measured skin-weight geometry, common static target-pair
   checks, and coordinated temporal torso/elbow planning. Fitting and planning run
   in cancellable Workers. See [verification and limits](verification/body-clearance-measurements.md).
-- The owner authorized implementation, necessary PR merges and Pages publication
-  through the stage **before randomized strike-location variation**. No release
-  tag or GitHub Release is authorized. [Approval history](approval.md) retains the
-  exact scope. PR #45 is merged and Pages publishes `dc581d2`;
-  [publication evidence](verification/body-clearance-measurements.md#pages-publication)
-  records the exact commit, workflow and public checks.
+- Pages publishes `2f9ca06cfa9fa19b493608e3e8f6881ac41257dc`, the owner's
+  approved #47/#48/#50 batch: public demo, equipment/contact/count-in and an
+  English-default interface with live Korean switching. [Publication evidence](verification/pages-english-interface.md)
+  records the exact candidate, workflow and actual checks. [Approval history](approval.md)
+  retains the scope. No tag or GitHub Release was requested or created.
 - [#44](https://github.com/postmelee/drum-vrm/issues/44) owns automatic-fit/menu
   acceptance. [#18](https://github.com/postmelee/drum-vrm/issues/18) owns common body
   calibration, [#20](https://github.com/postmelee/drum-vrm/issues/20) owns motion
   quality, and [#23](https://github.com/postmelee/drum-vrm/issues/23) owns inspection.
   Keep their broader acceptance open: static feasibility and accurate contact do
   not certify clear skin/clothing throughout a song.
-- Draft [PR #48](https://github.com/postmelee/drum-vrm/pull/48) follows demo PR #47.
-  It measures displayed bodies,
-  shares numeric supports with Rust, checks complete sticks and articulation
-  regions, and adds explicit two-stick count-in. See the
+- Merged [PR #48](https://github.com/postmelee/drum-vrm/pull/48) measures displayed
+  bodies, shares numeric supports with Rust, checks complete sticks and
+  articulation regions, and adds body-front two-stick count-in. See the
   [contract](../specs/architecture/equipment-contact.md) and
-  [verification](verification/equipment-contact.md). It is pending review, not
-  deployed. Keep #18/#20/#23 open: Twist has an unresolved bounded fit, and successful
-  fits still leave dynamic body/equipment conflicts. Next, resolve the measured
-  transition/shaft cases and inspect posed skin/clothing before strike variation.
-  Do not shrink collision proxies, stretch bones or shift MIDI times to remove warnings.
-- PR #47 adds a selectable `투명소녀1.mid` demo with the owner's
-  explicit repository/Pages distribution permission. It is pending review and is
-  not in the deployed batch above. [Provenance](../public/demos/transparent-girl-1-provenance.json)
-  owns its exact bytes and permission scope; this is not MIT relicensing or a
-  composer attribution. The [demo contract](../specs/architecture/midi-interpretation.md#bundled-demo-selections)
-  preserves the original score and applies the approved final-snare omission as
-  explicit selection data. Existing private benchmark reports retain their
-  historical scope; no VRM or WAV is bundled with this demo.
+  [verification](verification/equipment-contact.md). The owner explicitly defers
+  the remaining tom/cymbal approach contacts and Twist bounded-fit failure until
+  after this publication. These remain the next motion work before strike
+  variation. Do not shrink proxies, stretch bones or shift MIDI times to remove
+  warnings; inspect posed skin/clothing as well as numeric clearance.
+- Merged [PR #47](https://github.com/postmelee/drum-vrm/pull/47) supplies the
+  selectable full-song demo. [Provenance](../public/demos/transparent-girl-1-provenance.json)
+  owns its exact bytes and distribution permission; this is not MIT relicensing
+  or composer attribution. The [demo contract](../specs/architecture/midi-interpretation.md#bundled-demo-selections)
+  preserves the score and applies the approved final-snare omission as explicit
+  selection data. No VRM or WAV is bundled with it.
+- Merged [PR #50](https://github.com/postmelee/drum-vrm/pull/50) localizes UI and
+  diagnostics at the presentation boundary. [Locale contract](../specs/architecture/overview.md#interface-language)
+  owns URL/preference behavior; source events, uploaded metadata, plans and
+  playback remain independent of the language. PR #42's historical evidence was
+  already incorporated by #45, so the duplicate PR was closed without restoring
+  stale deployment labels.
 - [Outcome sequence](plan.md#outcome-sequence) routes M3 browser quality, M4 advanced
   expression/platforms and M5 production outputs. WAV preview remains the audio
   priority; expanded video/interchange output stays deferred.
