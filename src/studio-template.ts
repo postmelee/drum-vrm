@@ -76,7 +76,7 @@ export const studioTemplate = `  <header class="toolbar">
         <label class="field">WAV 시작 위치 (초 · MIDI 기준)<input id="wav-offset" type="number" min="-300" max="300" step="0.001" value="0"/></label><button id="wav-apply">오프셋 적용</button>
         <p id="wav-info" class="hint" role="status">합성 드럼 오디오 · WAV를 불러오면 이 소리를 대체합니다.</p><details><summary>오디오 · 파일 안내</summary><p class="hint">양수는 WAV를 늦게 시작합니다. 준비 0.5초는 자동으로 더해집니다. 곡 범위 밖은 잘리고, 부족한 부분은 무음입니다. PCM / float WAV · 모노·스테레오 · 최대 100 MiB / 5분. 프로젝트에는 MIDI 노트·계획이 포함되며 WAV·VRM·GLB 원본은 별도로 보관하세요.</p></details>
         <button id="cancel-analysis" hidden>준비 취소</button>
-        <details><summary>데모</summary><div class="button-row"><button id="demo">30초 데모</button><button id="verification-demo">연주 검증 패턴</button></div></details>
+        <details><summary>데모</summary><label class="field">데모 선택<select id="demo-select"></select></label><button id="demo-load">불러오기</button><p class="hint"><a id="demo-notice" target="_blank" rel="noreferrer">데모 출처 · 이용 조건</a></p></details>
         <p class="hint">파일은 브라우저 안에서 처리됩니다.</p>
       </section>
       <section id="panel-analysis" class="panel" hidden>

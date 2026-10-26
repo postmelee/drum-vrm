@@ -19,15 +19,24 @@ next worker; contracts own behavior and evidence reports own measured results.
   quality, and [#23](https://github.com/postmelee/drum-vrm/issues/23) owns inspection.
   Keep their broader acceptance open: static feasibility and accurate contact do
   not certify clear skin/clothing throughout a song.
-- Next motion work should reproduce the remaining fast-transfer crossing with
-  bounded posed-surface evidence before adding strike variation. The final audit
+- After the demo batch, [#18](https://github.com/postmelee/drum-vrm/issues/18) and
+  [#23](https://github.com/postmelee/drum-vrm/issues/23) prioritize one geometry
+  contract for actual drum bodies and every support, playable layout/approach
+  constraints, and arm/tool paths checked against that equipment. Static nominal
+  body separation currently permits vertically obstructed heads and omits broader
+  hardware. Keep posed skin/clothing checks separate and reproduce the remaining
+  fast-transfer crossing before adding strike variation. The final audit
   retains one observed opposing-arm crossing at 92.55 seconds on AvatarSample B;
   broader per-frame proxies also report residual conflicts. Do not shrink body
   proxies, stretch bones or shift MIDI times to make warnings disappear.
-- The private benchmark revision supplied as `투명소녀1.mid` removes early
-  hi-hat/crash conflicts. The owner explicitly chose dual crashes plus kick for
-  its final three-hand chord. Preserve the source MIDI and use the generic
-  source-event omission layer for the extra snare; never branch on filenames.
+- The next narrow batch adds a selectable `투명소녀1.mid` demo with the owner's
+  explicit repository/Pages distribution permission. It is pending review and is
+  not in the deployed batch above. [Provenance](../public/demos/transparent-girl-1-provenance.json)
+  owns its exact bytes and permission scope; this is not MIT relicensing or a
+  composer attribution. The [demo contract](../specs/architecture/midi-interpretation.md#bundled-demo-selections)
+  preserves the original score and applies the approved final-snare omission as
+  explicit selection data. Existing private benchmark reports retain their
+  historical scope; no VRM or WAV is bundled with this demo.
 - [Outcome sequence](plan.md#outcome-sequence) routes M3 browser quality, M4 advanced
   expression/platforms and M5 production outputs. WAV preview remains the audio
   priority; expanded video/interchange output stays deferred.

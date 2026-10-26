@@ -240,6 +240,23 @@ interpretation still requires a defining profile. Confirmed policy and source-ev
 edits persist with the [project format](project-format.md). These controls do not
 imply support for additional instrument maps or controllers.
 
+## Bundled demo selections
+
+[src/demo-catalog.ts](../../src/demo-catalog.ts) owns the selectable demos and their
+explicit `Selection` values. Choosing a demo applies those values through the same
+import and planning interfaces as an uploaded score; its name never selects a
+special motion algorithm. Generated examples use their declared mapping and channel.
+A published MIDI asset is checked against its recorded byte length and SHA-256
+before import; source and permission metadata remain in its provenance record.
+
+The [full-song demo](../../public/demos/transparent-girl-1-provenance.json) selects
+`logicDkdGm`, `countInNote75: true`, `hihatPolicy: "shortOpenClose"`,
+`hihatOpenness: 0.2`, and `omittedSourceEventIds: ["23:237"]`. That source snare is
+retained but omitted from the final dual-crash/kick arrangement, visible in Analysis
+and reversible through the event editor. These are reviewed selection data, not DAW
+or playing-intent inference. Original bytes, timestamps and velocity are unchanged.
+See the [demo guide](../../docs/calibration.md#try-a-demo-score) for using the examples.
+
 ## Compatibility and verification
 
 Schema 1 plans can only supply the information they already contain. Migration can
@@ -261,8 +278,10 @@ Acceptance separates event accounting from performance quality:
 - Actual tool/foot contact, wrist posture, reach and clearance are measured separately.
   An accurate target or zero unassigned hits alone does not establish natural playing.
 
-Use independently authored small fixtures for public regression tests. Private full-song
-checks can retain aggregate results and model/setup identifiers in verification records;
+Use independently authored small fixtures for public regression tests. Additional
+published demo assets require recorded permission for their distribution; that
+permission does not make unrelated uploads public. Private full-song checks can
+retain aggregate results and model/setup identifiers in verification records; other
 uploaded MIDI, WAV and VRM files remain local. Task status and measured commits belong
 in issues and evidence reports rather than this contract.
 
