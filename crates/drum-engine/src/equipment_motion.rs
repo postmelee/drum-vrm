@@ -31,8 +31,148 @@ pub fn stick_segment(profile: &RigProfile, limb: usize, hand: &HandSolution) -> 
     let grip = add(hand.end, rotate(hand.rotation, profile.grip_offsets[limb]));
     let axis = sub(hand.tip, grip);
     let len = distance(axis, [0.; 3]).max(1e-9);
-    (sub(grip, mul(axis, 0.105 / len)), hand.tip)
+    (
+        sub(
+            grip,
+            mul(axis, crate::stick_geometry::profile().butt_length / len),
+        ),
+        hand.tip,
+    )
 }
+/// Exact minimum of the clipped-box support-plane bound minus a linear
+/// taper radius. Each interval is a maximum of seven affine functions, so its
+/// minimum occurs at an endpoint or at an intersection of two functions.
+fn tapered_surface_interval(
+    start: Vec3,
+    end: Vec3,
+    radii: [f64; 2],
+    body: &equipment::EquipmentBox,
+    surface: &equipment::Surface,
+) -> f64 {
+    let mut lines = [(0.0, 0.0); 7];
+    for axis in 0..3 {
+        for side in 0..2 {
+            let sign = if side == 0 { -1.0 } else { 1.0 };
+            lines[axis * 2 + side] = (
+                sign * (start[axis] - body.center[axis]) - body.half_extents[axis] - radii[0],
+                sign * (end[axis] - start[axis]) - (radii[1] - radii[0]),
+            );
+        }
+    }
+    let dot = |a: Vec3, b: Vec3| a.iter().zip(b).map(|(x, y)| x * y).sum::<f64>();
+    lines[6] = (
+        dot(sub(start, surface.center), surface.normal) - radii[0],
+        dot(sub(end, start), surface.normal) - (radii[1] - radii[0]),
+    );
+    let value = |t: f64| {
+        lines
+            .iter()
+            .map(|(a, b)| a + b * t)
+            .fold(f64::NEG_INFINITY, f64::max)
+    };
+    let mut best = value(0.).min(value(1.));
+    for i in 0..lines.len() {
+        for j in i + 1..lines.len() {
+            let denominator = lines[i].1 - lines[j].1;
+            if denominator.abs() > 1e-12 {
+                let t = (lines[j].0 - lines[i].0) / denominator;
+                if (0.0..=1.0).contains(&t) {
+                    best = best.min(value(t));
+                }
+            }
+        }
+    }
+    best
+}
+fn tapered_surface_clearance(
+    butt: Vec3,
+    tip: Vec3,
+    body: &equipment::EquipmentBox,
+    surface: &equipment::Surface,
+    terminal_contact: bool,
+) -> f64 {
+    let length = distance(butt, tip).max(1e-9);
+    let axis = mul(sub(butt, tip), 1.0 / length);
+    let profile = &crate::stick_geometry::profile().terminal;
+    let mut best = f64::INFINITY;
+    // Existing axis-endpoint pose format approximates a rounded commercial tip.
+    // Its last 20 mm is the declared intended-contact region, not a certificate
+    // of tangent contact for that cap. The remaining measured taper is tested.
+    let terminal = if terminal_contact { 0.02 } else { 0.0 };
+    for pair in profile.windows(2) {
+        if pair[0][0] >= length {
+            break;
+        }
+        let start = pair[0][0].max(terminal);
+        let end = pair[1][0].min(length);
+        if start >= end {
+            continue;
+        }
+        let radius = |d: f64| {
+            pair[0][1] + (pair[1][1] - pair[0][1]) * (d - pair[0][0]) / (pair[1][0] - pair[0][0])
+        };
+        best = best.min(tapered_surface_interval(
+            add(tip, mul(axis, start)),
+            add(tip, mul(axis, end)),
+            [radius(start), radius(end)],
+            body,
+            surface,
+        ));
+    }
+    let last = profile.last().expect("tool profile");
+    if length > last[0] {
+        best = best.min(tapered_surface_interval(
+            add(tip, mul(axis, last[0])),
+            butt,
+            [last[1]; 2],
+            body,
+            surface,
+        ));
+    }
+    best
+}
+
+fn segment_bounds(start: Vec3, end: Vec3) -> [Vec3; 2] {
+    [
+        std::array::from_fn(|axis| start[axis].min(end[axis])),
+        std::array::from_fn(|axis| start[axis].max(end[axis])),
+    ]
+}
+
+/// The boxes enclose the segment axes, so their distance is a lower bound
+/// on capsule clearance. Prune against the running minimum, never a fixed
+/// collision threshold: negative penetration depths and pose costs must survive.
+fn support_minimum(
+    segments: [(Vec3, Vec3, f64); 4],
+    supports: &[equipment::EquipmentCapsule],
+    mut minimum: f64,
+) -> f64 {
+    let bounds = segments.map(|(start, end, _)| segment_bounds(start, end));
+    for rod in supports {
+        let obstacle = segment_bounds(rod.start, rod.end);
+        for (index, &(start, end, radius)) in segments.iter().enumerate() {
+            // Keep a conservative 1 nm band for floating-point boundary cases.
+            // This only requests more exact queries; it never changes clearance.
+            let threshold = minimum + radius + rod.radius + 1e-9;
+            let lower_squared: f64 = (0..3)
+                .map(|axis| {
+                    (bounds[index][0][axis] - obstacle[1][axis])
+                        .max(obstacle[0][axis] - bounds[index][1][axis])
+                        .max(0.0)
+                        .powi(2)
+                })
+                .sum();
+            if threshold <= 0.0 || lower_squared >= threshold * threshold {
+                continue;
+            }
+            minimum = minimum.min(
+                clearance::segment_distance(start, end, rod.start, rod.end) - radius - rod.radius,
+            );
+        }
+    }
+    minimum
+}
+
 pub fn hand_clearance(
     profile: &RigProfile,
     limb: usize,
@@ -43,6 +183,10 @@ pub fn hand_clearance(
     let radii = clearance::arm_radii(profile, limb);
     let (hs, he, hr) = clearance::hand_volume(profile, limb, hand);
     let (butt, tip) = stick_segment(profile, limb, hand);
+    let shaft_radius = crate::stick_geometry::profile()
+        .terminal
+        .last()
+        .expect("tool profile")[1];
     let arm = [
         (profile.roots[limb], hand.middle, radii[0]),
         (hand.middle, hand.end, radii[1]),
@@ -70,67 +214,77 @@ pub fn hand_clearance(
         for &(a, b, r) in &arm {
             minimum = minimum.min(equipment::segment_box_clearance(a, b, r, body));
         }
-        // Only the last 20 mm may touch the designated measured surface. The
-        // remaining shaft (including the butt) still checks that SAME body.
-        let surface = ctx
-            .kit
-            .iter()
-            .find(|p| p.id == body.piece_id)
-            .map(contact::surface);
+        // An intended striking surface permits physical tangent contact, while
+        // every unrelated body retains the free-obstacle margin. Test the
+        // authored tapered tool, including its butt. Only the existing 20 mm
+        // terminal contact region is exempt for an exact intended impact.
+        // Only the intended body can use a surface-contact exception. Avoid
+        // projecting the tip onto every unrelated radial/tilted surface; their
+        // complete-shaft box query below is independent of that projection.
+        let piece = if intended_body == Some(body.piece_id.as_str()) {
+            ctx.kit.iter().find(|p| p.id == body.piece_id)
+        } else {
+            None
+        };
+        let surface = piece.map(|piece| {
+            let (center, normal) = contact::project_surface(piece, tip);
+            let (_, _, radius) = contact::surface(piece);
+            (center, normal, radius)
+        });
         let approach = intended_body == Some(body.piece_id.as_str())
-            && surface.is_some_and(|(center, normal, radius)| {
+            && surface.is_some_and(|(point, normal, radius)| {
+                let (center, _, _) = contact::surface(piece.expect("surface owner"));
                 let d = sub(tip, center);
                 let height = d.into_iter().zip(normal).map(|(a, b)| a * b).sum::<f64>();
-                height >= -0.012 && distance(sub(d, mul(normal, height)), [0.; 3]) <= radius * 0.96
-            });
-        let contact = approach
-            && surface.is_some_and(|(center, normal, _)| {
-                sub(tip, center)
+                let actual_height = sub(tip, point)
                     .into_iter()
                     .zip(normal)
                     .map(|(a, b)| a * b)
-                    .sum::<f64>()
-                    .abs()
-                    <= 0.012
+                    .sum::<f64>();
+                actual_height >= -0.000_000_1
+                    && distance(sub(d, mul(normal, height)), [0.; 3]) <= radius * 0.96
             });
-        let end = if contact {
-            add(
-                tip,
-                mul(sub(butt, tip), 0.02 / distance(butt, tip).max(0.02)),
-            )
-        } else {
-            tip
-        };
         let value = if approach {
             let (center, normal, radius) = surface.expect("approach surface");
-            equipment::segment_surface_box_clearance(
+            let contact_height = sub(tip, center)
+                .iter()
+                .zip(normal)
+                .map(|(a, b)| a * b)
+                .sum::<f64>();
+            let clear = tapered_surface_clearance(
                 butt,
-                end,
-                0.006,
+                tip,
                 body,
                 &equipment::Surface {
                     center,
                     normal,
                     radius,
+                    radial_profile: None,
+                    motion: None,
                 },
-            )
+                contact_height.abs() <= 0.012,
+            );
+            // The 0.1 nm numerical allowance handles a tangent point represented
+            // through different coordinate transforms; it cannot hide a mesh gap.
+            (if clear.abs() < 1e-10 { 0.0 } else { clear }) + crate::posture::MARGIN
         } else {
-            equipment::segment_box_clearance(butt, end, 0.006, body)
+            equipment::segment_box_clearance(butt, tip, shaft_radius, body)
         };
         minimum = minimum.min(value);
     }
     for pedal in &ctx.geometry.pedals {
-        for &(a, b, r) in arm.iter().chain(std::iter::once(&(butt, tip, 0.006))) {
+        for &(a, b, r) in arm
+            .iter()
+            .chain(std::iter::once(&(butt, tip, shaft_radius)))
+        {
             minimum = minimum.min(equipment::segment_box_clearance(a, b, r, pedal));
         }
     }
-    for rod in &ctx.geometry.supports {
-        for &(a, b, r) in arm.iter().chain(std::iter::once(&(butt, tip, 0.006))) {
-            minimum =
-                minimum.min(clearance::segment_distance(a, b, rod.start, rod.end) - r - rod.radius);
-        }
-    }
-    minimum
+    support_minimum(
+        [arm[0], arm[1], arm[2], (butt, tip, shaft_radius)],
+        &ctx.geometry.supports,
+        minimum,
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -221,6 +375,20 @@ pub fn correction(
     impact: bool,
     intended_piece: Option<&str>,
 ) -> (f64, f64) {
+    correction_search::<true>(profile, ctx, limb, tip, pitch, impact, intended_piece)
+}
+
+// The unpruned instantiation is used by the differential regression to verify
+// that pruning retains the original exhaustive winner and tie order.
+fn correction_search<const PRUNE: bool>(
+    profile: &RigProfile,
+    ctx: &EquipmentContext,
+    limb: usize,
+    tip: Vec3,
+    pitch: f64,
+    impact: bool,
+    intended_piece: Option<&str>,
+) -> (f64, f64) {
     let mut best = (f64::INFINITY, 0., 0.);
     let lifts = if impact {
         &[0.][..]
@@ -229,6 +397,12 @@ pub fn correction(
     };
     for &lift in lifts {
         for delta in PITCH_OFFSETS {
+            // Collision and comfort terms are nonnegative. A candidate whose
+            // fixed cost cannot beat the current strict-< winner cannot change
+            // the result, including exact ties. No geometry check is weakened.
+            if PRUNE && lift * 0.1 + delta.abs() * 0.005 >= best.0 {
+                continue;
+            }
             let target = add(tip, [0., lift, 0.]);
             for swivel in crate::posture::SWIVELS {
                 let Some(hand) =
@@ -245,7 +419,8 @@ pub fn correction(
                 let cost = penalty * penalty * 10_000.
                     + if penalty > 0. { 1. } else { 0. }
                     + lift * 0.1
-                    + delta.abs() * 0.005;
+                    + delta.abs() * 0.005
+                    + crate::posture::comfort_cost(profile, limb, target, &hand);
                 if cost < best.0 {
                     best = (cost, lift, delta);
                 }
@@ -261,6 +436,100 @@ pub fn correction(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn exhaustive_support_minimum(
+        segments: [(Vec3, Vec3, f64); 4],
+        supports: &[equipment::EquipmentCapsule],
+        mut minimum: f64,
+    ) -> f64 {
+        for rod in supports {
+            for (start, end, radius) in segments {
+                minimum = minimum.min(
+                    clearance::segment_distance(start, end, rod.start, rod.end)
+                        - radius
+                        - rod.radius,
+                );
+            }
+        }
+        minimum
+    }
+
+    #[test]
+    fn support_broadphase_preserves_exact_minima_for_seeded_and_degenerate_segments() {
+        let mut seed = 0x71e8_a34d_2f69_u64;
+        let mut sample = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((seed >> 32) as f64 / u32::MAX as f64) * 4. - 2.
+        };
+        for case in 0..256 {
+            let segments = std::array::from_fn(|i| {
+                let start = [sample(), sample(), sample()];
+                let end = if (case + i) % 7 == 0 {
+                    start
+                } else {
+                    add(start, [sample() * 0.25, sample() * 0.25, sample() * 0.25])
+                };
+                (start, end, sample().abs() * 0.02 + 0.003)
+            });
+            let supports: Vec<_> = (0..224)
+                .map(|i| {
+                    let start = [sample(), sample(), sample()];
+                    let end = match i % 5 {
+                        0 => start,
+                        1 => add(start, [0., sample(), 0.]),
+                        _ => add(start, [sample(), sample(), sample()]),
+                    };
+                    equipment::EquipmentCapsule {
+                        piece_id: "test-hardware".into(),
+                        role: "rod",
+                        start,
+                        end,
+                        radius: sample().abs() * 0.015 + 0.005,
+                    }
+                })
+                .collect();
+            for minimum in [f64::INFINITY, 0.2, 0.005, 0., -0.01, -0.10] {
+                assert_eq!(
+                    support_minimum(segments, &supports, minimum),
+                    exhaustive_support_minimum(segments, &supports, minimum),
+                    "case {case}, initial minimum {minimum}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn support_broadphase_keeps_tangent_near_tangent_and_deeper_negative_witnesses() {
+        let segments = [
+            ([-0.5, 0., 0.], [0.5, 0., 0.], 0.02),
+            ([2., -0.5, 0.], [2., 0.5, 0.], 0.015),
+            ([2.25, 0., 0.], [2.25, 0., 0.], 0.03),
+            ([0.5, 0., 0.], [-0.5, 0., 0.], 0.006),
+        ];
+        let mut supports = Vec::new();
+        for separation in [0.05 + 1e-10, 0.05, 0.05 - 1e-10, 0.02, 0.] {
+            supports.push(equipment::EquipmentCapsule {
+                piece_id: "test-hardware".into(),
+                role: "rod",
+                start: [-0.5, separation, 0.],
+                end: [0.5, separation, 0.],
+                radius: 0.03,
+            });
+            for minimum in [f64::INFINITY, 0., -0.001, -0.04, -0.10] {
+                assert_eq!(
+                    support_minimum(segments, &supports, minimum),
+                    exhaustive_support_minimum(segments, &supports, minimum)
+                );
+            }
+        }
+        assert_eq!(support_minimum(segments, &supports, -0.01), -0.05);
+        supports.reverse();
+        assert_eq!(
+            support_minimum(segments, &supports, f64::INFINITY),
+            exhaustive_support_minimum(segments, &supports, f64::INFINITY)
+        );
+    }
+
     #[test]
     fn shaft_middle_and_butt_are_obstacles_even_when_the_tip_is_clear() {
         let mut profile = RigProfile::primitive();
@@ -285,6 +554,7 @@ mod tests {
                 }],
                 supports: Vec::new(),
                 pedals: Vec::new(),
+                mechanisms: Vec::new(),
                 unresolved_piece_ids: Vec::new(),
             },
         };
@@ -292,6 +562,7 @@ mod tests {
         ctx.geometry.bodies.clear();
         ctx.geometry.supports.push(equipment::EquipmentCapsule {
             piece_id: "stand".into(),
+            role: "rod",
             start: [-0.1, 1., -0.08],
             end: [0.1, 1., -0.08],
             radius: 0.01,
@@ -338,6 +609,7 @@ mod tests {
                 }],
                 supports: vec![],
                 pedals: vec![],
+                mechanisms: vec![],
                 unresolved_piece_ids: vec![],
             },
         };
@@ -351,6 +623,82 @@ mod tests {
         // An OpenHat label alone cannot alias another instrument's location.
         ctx.kit[1].position[0] += 0.5;
         assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("open-articulation")) < -0.005);
+    }
+    #[test]
+    fn intended_taper_accepts_shallow_approach_without_exempting_other_bodies() {
+        let body = equipment::EquipmentBox {
+            piece_id: "snare".into(),
+            center: [0., -0.1, 0.],
+            half_extents: [0.2, 0.1, 0.2],
+            kind: "body",
+        };
+        let surface = equipment::Surface {
+            center: [0.; 3],
+            normal: [0., 1., 0.],
+            radius: 0.18,
+            radial_profile: None,
+            motion: None,
+        };
+        let angle = 14_f64.to_radians();
+        let butt = [0., 0.4 * angle.sin(), -0.4 * angle.cos()];
+        let tip = [0.; 3];
+        assert!(tapered_surface_clearance(butt, tip, &body, &surface, true) > 0.0005);
+        // The tip convention remains an approximation; demanding the pointed
+        // cap itself tangent would reject this shallow real stick approach.
+        assert!(tapered_surface_clearance(butt, tip, &body, &surface, false) < 0.);
+        // An unrelated body receives the unchanged complete-shaft test.
+        assert!(equipment::segment_box_clearance(butt, tip, 0.006, &body) < 0.);
+        let buried = [0., -0.03, 0.];
+        assert!(tapered_surface_clearance(butt, buried, &body, &surface, true) < -0.01);
+    }
+    #[test]
+    fn bounded_search_preserves_exhaustive_winners_for_impacts_and_transfers() {
+        let mut profile = RigProfile::primitive();
+        for limb in 0..2 {
+            profile.roots[limb] = [if limb == 0 { -0.19 } else { 0.19 }, 1.235, 0.06];
+            profile.lengths[limb] = [0.3, 0.27];
+        }
+        let frame = crate::rig::HandControlFrame {
+            forearm: [0.0, 0.0, 1.0],
+            palm: [0.0, 1.0, 0.0],
+            desired_palm: [0.0, 1.0, 0.0],
+        };
+        profile.hand_frames = Some([frame.clone(), frame]);
+        let kit = default_kit();
+        let ctx = EquipmentContext {
+            geometry: equipment::kit_geometry(&kit),
+            kit,
+        };
+        let mut non_neutral = 0;
+        for (id, limb, impact, pitch) in [
+            ("snare", 0, true, 0.0),
+            ("snare", 1, false, -0.2),
+            ("hihat", 1, true, 0.0),
+            ("tomMid", 1, false, -0.2),
+            ("tomLow", 0, false, 0.0),
+            ("crash", 0, true, -0.2),
+        ] {
+            let piece = ctx.kit.iter().find(|piece| piece.id == id).unwrap();
+            let target = contact::target(piece, "center", profile.chest);
+            for intended in [Some(id), None] {
+                let expected = correction_search::<false>(
+                    &profile, &ctx, limb, target, pitch, impact, intended,
+                );
+                let actual = correction(&profile, &ctx, limb, target, pitch, impact, intended);
+                assert_eq!(
+                    actual, expected,
+                    "{id}, limb {limb}, impact {impact}, intended {intended:?}"
+                );
+                non_neutral += usize::from(expected != (0.0, 0.0));
+                if impact {
+                    assert_eq!(actual.0, 0.0);
+                }
+            }
+        }
+        assert!(
+            non_neutral > 0,
+            "exercise more than the zero-cost early exit"
+        );
     }
     #[test]
     fn bounded_corrections_keep_exact_impact_lift_and_random_access() {

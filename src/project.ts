@@ -66,7 +66,7 @@ export function parseProject(json:string):DrumProject {
   const calibration=record(input.calibration),selection=record(input.selection),appearance=record(input.appearance),audio=record(input.audio),view=record(input.view);
   if(!Array.isArray(selection.tracks)||!selection.tracks.length||selection.tracks.length>512)throw new Error(msg("Invalid project track selection.", "프로젝트 트랙 선택이 잘못되었습니다."));
   const tracks=selection.tracks.map(track=>{const n=number(track,0,511);if(!Number.isInteger(n))throw new Error(msg("Track numbers must be integers.", "트랙 번호가 정수가 아닙니다."));return n;});
-  const mappingProfile=choice(selection.mappingProfile,['gm','logicDkdGm']),hihatPolicy=choice(selection.hihatPolicy,['literal','shortOpenClose']);
+  const mappingProfile=choice(selection.mappingProfile,['gm','logicDkdGm','songsterrDownloader']),hihatPolicy=choice(selection.hihatPolicy,['literal','shortOpenClose']);
   const countInNote75=bool(selection.countInNote75),hihatOpenness=number(selection.hihatOpenness,.05,1);
   const omittedInput=selection.omittedSourceEventIds??[],handInput=record(selection.handOverrides??{});
   if(!Array.isArray(omittedInput)||omittedInput.length>50000||Object.keys(handInput).length>50000)throw new Error(msg("The project contains too many note edits.", "프로젝트 음표 편집이 너무 큽니다."));
@@ -105,12 +105,12 @@ export function parseProject(json:string):DrumProject {
     if(id==='openHat'||id==='pedalHat'||ids.has(id))throw new Error(msg("The drum appearance list contains duplicates.", "드럼 외형이 중복됩니다."));ids.add(id);
     const settings=record(p.settings),source=choice(settings.source,['procedural','library','imported']);
     if((source==='imported')!==assetIds.has(`drumPart:${id}`))throw new Error(msg("A drum model asset reference is missing or inconsistent.", "드럼 모델 파일 참조가 누락되었거나 일치하지 않습니다."));
-    return {id,settings:{...resolvePieceVisual(preset,id,{finish:color(settings.finish),model:choice(settings.model,['standard','deep','compact']),scale:number(settings.scale,.65,1.4),rotation:number(settings.rotation,-360,360)}),finishOverride:bool(settings.finishOverride??false),source}};
+    return {id,settings:{...resolvePieceVisual(preset,id,{finish:color(settings.finish),model:choice(settings.model,['standard','deep','compact']),scale:number(settings.scale,.65,1.4),rotation:number(settings.rotation,-360,360),tilt:number(settings.tilt??0,-30,30)}),finishOverride:bool(settings.finishOverride??false),source}};
   });
   if(pieces.length!==kit.filter(piece=>!['openHat','pedalHat'].includes(piece.id)).length)throw new Error(msg("Drum appearance settings are missing.", "드럼 외형 설정이 누락되었습니다."));
   const engineModuleSha256=text(input.engineModuleSha256);if(!/^[0-9a-f]{64}$/.test(engineModuleSha256))throw new Error(msg("Invalid engine identifier.", "엔진 식별자가 잘못되었습니다."));
   return {format:'drum-vrm-project',schemaVersion:1,engineModuleSha256,plan,profile:record(input.profile) as unknown as RigProfile,kit,rig,assets,...(fbx?{fbx}:{}),
-    calibration:{seatHeight:number(calibration.seatHeight,.3,1.2),seatForward:number(calibration.seatForward,-.5,.5),palmOrientation:choice(calibration.palmOrientation,['up','inward','down'])},
+    calibration:{seatHeight:number(calibration.seatHeight,.3,1.2),seatForward:number(calibration.seatForward,-.5,.5),palmOrientation:choice(calibration.palmOrientation,['natural','up','inward','down'])},
     selection:{tracks,channel,mappingProfile,countInNote75,hihatPolicy,hihatOpenness,omittedSourceEventIds,handOverrides},appearance:{preset,pieces},camera:validateProjectView(input.camera),
     hitResponse:validateHitResponse(record(input.hitResponse) as unknown as HitResponseSettings),
     audio:{source:audioSource,offsetSeconds:number(audio.offsetSeconds,-300,300),volume:number(audio.volume,0,1)},

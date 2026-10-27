@@ -7,6 +7,7 @@ import { createPieceModel, disposeModel, resolvePieceVisual } from '../src/model
 import { alignInstrumentBody, measureInstrumentGeometry } from '../src/instrument-body';
 import { applyHitResponse, bindHitResponse } from '../src/hit-response';
 import type { KitPiece } from '../src/types';
+import { createHardwarePart } from '../src/hardware-parts';
 import { DEFAULT_KIT } from '../src/scene';
 
 beforeAll(() => initSync({ module: readFileSync(new URL('../src/wasm/drum_engine_bg.wasm', import.meta.url)) }));
@@ -24,12 +25,58 @@ function snapshot(root: THREE.Object3D) {
 }
 
 describe('shared numeric hardware rendering', () => {
-  it('renders every Rust support capsule and pedal box with the same physical dimensions', () => {
+  it('routes the measured Studio kit and connects its snare basket to the mast', () => {
+    const kit = measuredKit(), geometry = solveKitGeometry(kit), hardware = new KitHardwareLayer();
+    hardware.setGeometry(kit, geometry);
+    const snare = hardware.root.getObjectByName('Hardware/snare')!;
+    const segments = snare.children.flatMap(node => node.userData.segment ? [node.userData.segment] : []);
+    const mast = segments.find(segment => segment.role === 'tubeUpper');
+    const neck = segments.find(segment => segment.role === 'basketNeck');
+    const basket = segments.filter(segment => segment.role === 'basketArm');
+    const grips = segments.filter(segment => segment.role === 'basketGrip');
+    expect(mast).toBeDefined(); expect(neck).toBeDefined(); expect(basket).toHaveLength(3);
+    expect(grips).toHaveLength(3);
+    expect(neck.start).toEqual(mast.end);
+    expect(new THREE.Vector3(...neck.start).distanceTo(new THREE.Vector3(...neck.end))).toBeLessThanOrEqual(.10);
+    const normal = new THREE.Vector3(...kit.find(piece => piece.id === 'snare')!.geometry!.surface.normal);
+    for (const [index, arm] of basket.entries()) {
+      expect(arm.start).toEqual(neck.end);
+      const grip = grips[index], start = new THREE.Vector3(...grip.start), end = new THREE.Vector3(...grip.end);
+      expect(end.clone().sub(start).normalize().distanceTo(normal)).toBeLessThan(1e-7);
+      expect(new THREE.Line3(start, end).closestPointToPoint(new THREE.Vector3(...arm.end), true, new THREE.Vector3()).distanceTo(new THREE.Vector3(...arm.end))).toBeLessThan(1e-7);
+    }
+    hardware.dispose();
+    expect(geometry.unresolvedPieceIds).toEqual([]);
+  });
+
+  it('aligns native tilted cymbal spindles with the measured radial axis, not the bow normal', () => {
     const kit = measuredKit(), geometry = solveKitGeometry(kit), hardware = new KitHardwareLayer();
     hardware.setGeometry(kit, geometry); hardware.root.updateMatrixWorld(true);
-    const supports: THREE.Mesh[] = [], pedals: THREE.Mesh[] = [];
+    for (const id of ['crash', 'crashRight', 'ride']) {
+      const piece = kit.find(value => value.id === id)!, profile = piece.geometry!.surface.radialProfile!;
+      expect(profile).toBeDefined();
+      const axis = new THREE.Vector3(0, 1, 0).applyQuaternion(new THREE.Quaternion(...profile.rotation));
+      expect(axis.distanceTo(new THREE.Vector3(0, 1, 0))).toBeGreaterThan(.1);
+      expect(axis.distanceTo(new THREE.Vector3(...piece.geometry!.surface.normal))).toBeGreaterThan(.01);
+      const sleeve = geometry.supports.find(segment => segment.pieceId === id && segment.role === 'cymbalSleeve')!;
+      expect(sleeve).toBeDefined();
+      const start = new THREE.Vector3(...sleeve.start), end = new THREE.Vector3(...sleeve.end);
+      expect(end.clone().sub(start).normalize().distanceTo(axis)).toBeLessThan(1e-7);
+      const ratio = piece.radius / piece.geometry!.referenceRadius;
+      const mount = new THREE.Vector3(...profile.origin).multiplyScalar(ratio).add(new THREE.Vector3(...piece.position));
+      expect(new THREE.Line3(start, end).closestPointToPoint(mount, true, new THREE.Vector3()).distanceTo(mount)).toBeLessThan(1e-7);
+      const rendered = hardware.root.getObjectByName(`Hardware/${id}`)!.children.find(node => node.userData.segment?.role === 'cymbalSleeve')!;
+      expect(new THREE.Vector3(0, 1, 0).applyQuaternion(rendered.getWorldQuaternion(new THREE.Quaternion())).distanceTo(axis)).toBeLessThan(1e-7);
+    }
+    hardware.dispose();
+  });
+
+  it('renders every Rust support inside its shared collision capsule and keeps pedal dimensions', () => {
+    const kit = measuredKit(), geometry = solveKitGeometry(kit), hardware = new KitHardwareLayer();
+    hardware.setGeometry(kit, geometry); hardware.root.updateMatrixWorld(true);
+    const supports: THREE.Object3D[] = [], pedals: THREE.Mesh[] = [];
     hardware.root.traverse(node => {
-      if (node instanceof THREE.Mesh && node.userData.segment) supports.push(node);
+      if (node.userData.segment) supports.push(node);
       if (node instanceof THREE.Mesh && node.userData.box) pedals.push(node);
     });
     expect(supports.length).toBe(geometry.supports.length); expect(pedals.length).toBe(geometry.pedals.length);
@@ -38,7 +85,8 @@ describe('shared numeric hardware rendering', () => {
       expect(mesh.getWorldPosition(new THREE.Vector3()).distanceTo(a.clone().add(b).multiplyScalar(.5))).toBeLessThan(1e-9);
       const extent = new THREE.Vector3(segment.radius, segment.radius, segment.radius);
       const allowed = new THREE.Box3(a.clone().min(b).sub(extent), a.clone().max(b).add(extent)).expandByScalar(1e-7);
-      const actual = new THREE.Box3().setFromObject(mesh, true);
+      const saved = mesh.userData.renderBounds;
+      const actual = saved ? new THREE.Box3(new THREE.Vector3(...saved.min), new THREE.Vector3(...saved.max)) : new THREE.Box3().setFromObject(mesh, true);
       expect(allowed.containsBox(actual)).toBe(true);
       if (a.distanceTo(b) > 1e-8) expect(new THREE.Vector3(0, 1, 0).applyQuaternion(mesh.quaternion).distanceTo(b.sub(a).normalize())).toBeLessThan(1e-7);
     }
@@ -48,6 +96,49 @@ describe('shared numeric hardware rendering', () => {
       bounds.getSize(new THREE.Vector3()).toArray().forEach((value, axis) => expect(value / 2).toBeCloseTo(descriptor.halfExtents[axis], 7));
     }
     hardware.dispose();
+  });
+
+  it('batches fixed support detail while keeping mechanisms independently movable', () => {
+    const kit = measuredKit(), geometry = solveKitGeometry(kit), hardware = new KitHardwareLayer();
+    hardware.setGeometry(kit, geometry);
+    hardware.root.traverse(node => {
+      if (!node.name.startsWith('Hardware/')) return;
+      const batch = node.children.filter(child => child.name === 'FixedHardwareBatch');
+      expect(batch.length).toBeLessThanOrEqual(3);
+      const fixed = node.children.filter(child => child.userData.renderBounds);
+      if (fixed.length) {
+        const source = new THREE.Box3();
+        for (const part of fixed) source.union(new THREE.Box3(new THREE.Vector3(...part.userData.renderBounds.min), new THREE.Vector3(...part.userData.renderBounds.max)));
+        const merged = new THREE.Box3();
+        batch.forEach(mesh => merged.union(new THREE.Box3().setFromObject(mesh, true)));
+        expect(source.min.distanceTo(merged.min)).toBeLessThan(1e-6);
+        expect(source.max.distanceTo(merged.max)).toBeLessThan(1e-6);
+      }
+    });
+    const beater = hardware.root.getObjectByName('KickBeaterPivot')!;
+    expect(beater.children.length).toBeGreaterThan(0);
+    expect(beater.children.every(child => !child.userData.renderBounds)).toBe(true);
+    hardware.dispose();
+  });
+
+  it('keeps every mechanical detail inside its capsule, including joints and double braces', () => {
+    const material = new THREE.MeshBasicMaterial();
+    const roles = ['tubeLower', 'tubeMiddle', 'tubeUpper', 'collar', 'memoryLock', 'tripodLeg', 'tripodBrace', 'rubberFoot', 'boom', 'boomTail', 'boomPivot', 'cymbalTilter', 'cymbalSleeve', 'tomPost', 'tomSocket', 'tomYoke', 'tomBall', 'tomArm', 'tomClamp', 'basketNeck', 'basketTilter', 'basketArm', 'basketGrip', 'suspensionBracket', 'floorLeg', 'cymbalFelt', 'pedalLink', 'rod'];
+    for (const role of roles) for (const length of [0, .025, .35]) {
+      const part = createHardwarePart({pieceId: 'crash', role, start: [0, 0, 0], end: [0, length, 0], radius: .025}, {chrome: material, dark: material, rubber: material});
+      part.updateMatrixWorld(true);
+      part.traverse(node => {
+        if (!(node instanceof THREE.Mesh)) return;
+        const vertices = node.geometry.getAttribute('position');
+        for (let i = 0; i < vertices.count; i++) {
+          const point = new THREE.Vector3().fromBufferAttribute(vertices, i).applyMatrix4(node.matrixWorld);
+          const closest = new THREE.Vector3(0, THREE.MathUtils.clamp(point.y, 0, length), 0);
+          expect(point.distanceTo(closest), `${role}/${length}`).toBeLessThanOrEqual(.02500001);
+        }
+        node.geometry.dispose();
+      });
+    }
+    material.dispose();
   });
 
   it('retains hardware identity during finish/hit feedback, but refreshes after a body depth change', () => {

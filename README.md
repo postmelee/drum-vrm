@@ -9,7 +9,7 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 ## Features
 
 - Upload MIDI, select tracks and channels, and review a piano roll with bars, beats and notes.
-- Select General MIDI or Logic Drum Kit Designer (GM mode) mapping, retain source events, and inspect count-in, hi-hat control and unassigned-hit diagnostics.
+- Automatically compare General MIDI, Logic Drum Kit Designer (GM mode), and Songsterr Downloader mappings on MIDI import, or select one manually, retain source events, and inspect count-in, hi-hat control and unassigned-hit diagnostics.
 - Play, pause, reset and seek with synthesized drums or a local WAV replacement.
 - Choose a reference skeleton, a bundled VRM 1.0 sample from the character dropdown, or your own local VRM or FBX; all use the same measured-body motion solver.
 - Automatically fit the seat and hand-played kit when loading a character; undo or adjust contact points and palm direction manually. Replace drum bodies while keeping shared stands and pedals.
@@ -25,7 +25,7 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 | Version | Availability |
 | --- | --- |
 | Repository / local build | Includes VRM 0.0/1.0 and mapped FBX local import and the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. See the separate Pages row for the public build. |
-| [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed batch [`d23a940`](https://github.com/postmelee/drum-vrm/commit/d23a9400abc9461633f26a9b805659026626a633): Selectable official VRM samples, English/Korean interface, full-song demo, measured equipment/contact planning and two-stick count-in, plus automatic fitting, MIDI/WAV preview and local projects. [Deployment verification and known limits](docs/verification/character-presets.md#pages-publication). |
+| [Pages build](https://postmelee.github.io/drum-vrm/) | Manually published, separately from repository changes. [Current batch verification and publication record](docs/verification/detailed-hardware.md) identifies the tested build, deployment and known limits; [previous public batch](docs/verification/character-presets.md#pages-publication) retains its exact commit. |
 | [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
 The guides describe this repository build. Check the deployed commit before assuming a newer local change is public; detailed development checks remain in the linked [verification records](docs/README.md#verification).
@@ -34,8 +34,8 @@ The guides describe this repository build. Check the deployed commit before assu
 
 The interface defaults to English and remembers your language choice when browser storage is available. Use **EN / 한국어** in the toolbar to switch languages without reloading your files or losing the current playback position. Direct links: [English](https://postmelee.github.io/drum-vrm/?lang=en) · [한국어](https://postmelee.github.io/drum-vrm/?lang=ko).
 
-1. Open **Files / Audio** and choose a `.mid`/`.midi` file, or expand **Demo**, choose a [demo score](docs/calibration.md#try-a-demo-score), and press **Load**. The initial **Prepare demo** button uses Studio Groove.
-2. Review tracks, channels and mapping under **MIDI settings**; diagnostics are in **Analysis**. Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **Apply settings** after changes.
+1. Open **Files / Audio** and choose a `.mid`/`.midi` file, or expand **Demo**, choose a [demo score](docs/calibration.md#try-a-demo-score), and press **Load**. The initial **Prepare demo** button uses the 12-second Posture study; [review it with the three public characters](docs/models.md#compare-the-same-performance-across-models).
+2. Review tracks, channels and mapping under **MIDI settings**; diagnostics are in **Analysis**. Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **Apply settings** after changes. New uploads compare all supported mappings by playable-note coverage and prepare with the best candidate. Equivalent ties prefer GM; conflicting ties are marked provisional for review. You can override the choice here. Songsterr Downloader combined/separate named tracks both work; use channel 10 and only the drum tracks. This is a compatibility heuristic, not exporter identification or link importing; see the [mapping limits](specs/architecture/midi-interpretation.md#songsterr-downloader-compatibility).
 3. Press **Play**. Seek on the timeline and use the viewpoint buttons or drag/scroll to adjust the camera. **Player** view locks rotation, panning and zoom; closing drum editing restores the previous view.
 4. Open **Character** and choose a bundled sample from the dropdown, or use **Import VRM / FBX…** for your own file. [Model choices and terms](docs/models.md); [seat, contact-point and drum-part fitting](docs/calibration.md).
 5. In **Files / Audio → Performance audio**, [load a WAV and adjust its start offset](docs/export.md). Play and seek to review its synchronization.
@@ -54,7 +54,7 @@ Drum appearance changes do not change the sound, and the app does not reproduce 
 
 Humanoid motion preparation has a separate [6,000-control-time budget](specs/architecture/engine-contract.md#preparation-and-worker-boundary); dense scores may reach it before the MIDI input limits. Setup replanning can be cancelled without losing the current setup.
 
-SMF 2, SMPTE timing and malformed files are rejected with a reason. Unmapped notes are reported and excluded from drum synthesis; supported hits the rig cannot perform retain their original sound, time and target highlight. The planner does not move notes or stretch bones to hide reach problems.
+SMF 2, SMPTE timing and malformed files are rejected with a reason. Unmapped notes are reported and excluded from drum synthesis; supported hits the rig cannot perform retain their original sound, time and source-note display, but do not show an impact effect. The planner does not move notes or stretch bones to hide reach problems.
 
 Motion is rule-based. Dense hits, distant targets, body proportions and clothing can still produce awkward poses or intersections. The [model guide](docs/models.md) distinguishes input acceptance from measured compatibility. Generic humanoid GLB mapping, detailed collision/skin calibration, explicit playing styles, expression controls, higher resolutions and 3D motion export remain future work. Save a project to retain appearance and calibration across sessions; source files must be relinked and exact replay requires the same engine build.
 

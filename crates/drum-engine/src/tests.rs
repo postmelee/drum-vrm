@@ -758,7 +758,7 @@ fn idle_feet_use_calibrated_pedals_even_without_pedal_notes() {
 }
 
 #[test]
-fn pedal_strokes_rotate_only_at_ankles_and_preserve_contacts_through_seek() {
+fn pedal_strokes_follow_board_hinges_and_preserve_contacts_through_seek() {
     let plan = plan_for(vec![
         (0, note(36, 120, 9)),
         (0, note(44, 80, 9)),
@@ -780,13 +780,39 @@ fn pedal_strokes_rotate_only_at_ankles_and_preserve_contacts_through_seek() {
         for i in [8, 3, 6, 0, 7, 4, 1, 5, 2] {
             assert_eq!(poses[i], motion.evaluate_rig(times[i]));
             for limb in 2..4 {
-                // The complete hip/knee/ankle chain remains planted, including
-                // preparation and quick repetitions, rather than flying to it.
-                assert_eq!(
-                    &poses[i][limb * 12..limb * 12 + 9],
-                    &idle[limb * 12..limb * 12 + 9]
-                );
+                // The hip stays seated while the real-length leg follows the
+                // footboard hinge. A moving board needs a small knee/ankle
+                // correction; pinning the ankle would make the sole slide.
+                assert_eq!(pose_point(&poses[i], limb, 0), pose_point(&idle, limb, 0));
+                for joint in 0..2 {
+                    assert!(
+                        (distance(
+                            pose_point(&poses[i], limb, joint),
+                            pose_point(&poses[i], limb, joint + 1)
+                        ) - profile.lengths[limb][joint])
+                            .abs()
+                            < 1e-6
+                    );
+                }
+                let piece = motion
+                    .plan
+                    .kit
+                    .iter()
+                    .find(|p| {
+                        p.instrument
+                            == if limb == 2 {
+                                Instrument::PedalHat
+                            } else {
+                                Instrument::Kick
+                            }
+                    })
+                    .unwrap();
                 let q = std::array::from_fn(|j| poses[i][57 + limb * 4 + j] as f64);
+                let base = profile.contact_rotations[limb];
+                let local_x = base[3] * q[0] - base[0] * q[3] - base[1] * q[2] + base[2] * q[1];
+                let local_w = base.iter().zip(q).map(|(a, b)| a * b).sum::<f64>();
+                let expected = crate::equipment::pedal_contact(piece, 2.0 * local_x.atan2(local_w));
+                assert!(distance(expected, pose_point(&poses[i], limb, 3)) < 1e-6);
                 let rendered = motion::add(pose_point(&poses[i], limb, 2), profile.offset(limb, q));
                 assert!(distance(rendered, pose_point(&poses[i], limb, 3)) < 1e-6);
             }

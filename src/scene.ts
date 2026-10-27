@@ -6,6 +6,13 @@ import { createRestRigPose, NativeHumanoidRigAdapter, type HumanoidRigAdapter, t
 import { validateKitLayout } from './kit-calibration';
 import { canonicalPieceId, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
 import { loadLocalGLB } from './model-import';
+import { KitMechanismLayer } from './kit-mechanisms';
+import { createStickGeometry } from './stick-geometry';
+import { DEFAULT_KIT } from './kit-default';
+export { DEFAULT_KIT } from './kit-default';
+import { contactFeedbackEvents, latestContactEvent, measurePlannedContact, resolveContactEvent, sampleHihatOpening } from './contact-events';
+import { createContactResponseTrack, placeContactMarker } from './hit-response';
+import type { ContactEvent } from './types';
 import { KitHardwareLayer, solveKitGeometry } from './kit-hardware';
 import { createMeasuredInstrumentBody } from './instrument-body';
 import { initializeWasm } from './wasm-runtime';
@@ -63,19 +70,6 @@ const POINT = new THREE.Vector3();
 const END = new THREE.Vector3();
 const DELTA = new THREE.Vector3();
 const MID = new THREE.Vector3();
-export const DEFAULT_KIT: KitPiece[] = [
-  { id: 'kick', label: 'Kick', position: [.20, .08, .62], radius: .254 },
-  { id: 'snare', label: 'Snare', position: [-.18, .79, .36], radius: .1778 },
-  { id: 'hihat', label: 'Hi-hat', position: [-.52, .96, .35], radius: .1778 },
-  { id: 'openHat', label: 'Open hi-hat', position: [-.52, .96, .35], radius: .1778 },
-  { id: 'pedalHat', label: 'Hi-hat pedal', position: [-.22, .08, .55], radius: .12 },
-  { id: 'tomHigh', label: 'High tom', position: [-.26, 1, .72], radius: .1524 },
-  { id: 'tomMid', label: 'Mid tom', position: [.18, .98, .74], radius: .1651 },
-  { id: 'tomLow', label: 'Floor tom', position: [.62, .80, .42], radius: .2032 },
-  { id: 'crash', instrument: 'crash', label: 'Crash Left', position: [-.66, 1.26, .68], radius: .2032 },
-  { id: 'crashRight', instrument: 'crash', label: 'Crash Right', position: [.58, 1.20, .64], radius: .2286 },
-  { id: 'ride', label: 'Ride', position: [.70, .99, .39], radius: .254 },
-];
 
 function material(color: THREE.ColorRepresentation, metalness = 0, roughness = .55): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, metalness, roughness });
@@ -140,7 +134,8 @@ export class PrimitiveRigAdapter implements RigAdapter {
       const joint = sphere(.021, this.jointMaterial, this.root);
       const rootJoint = sphere(.022, this.jointMaterial, this.root);
       const end = sphere(.019, this.jointMaterial, this.root);
-      const effector = cylinder(arm ? .006 : .012, 1, arm ? stickMaterial : this.boneMaterial, this.root, arm ? .004 : .012, 10);
+      const effector = arm ? mesh(createStickGeometry(Math.hypot(.09, .30)), stickMaterial, this.root) : cylinder(.012, 1, this.boneMaterial, this.root, .012, 10);
+      if (arm) effector.userData.tipLength = Math.hypot(.09, .30);
       effector.name = ['leftStick', 'rightStick', 'leftFoot', 'rightFoot'][index];
       this.limbs.push({ upper, lower, joint, rootJoint, end, effector });
     }
@@ -168,8 +163,15 @@ export class PrimitiveRigAdapter implements RigAdapter {
       limb.rootJoint.position.copy(POINT); limb.joint.position.copy(END); connect(limb.upper, POINT, END);
       POINT.copy(END); END.fromArray(pose, offset + 6); connect(limb.lower, POINT, END); limb.end.position.copy(END);
       POINT.copy(END); END.fromArray(pose, offset + 9);
-      if (index < 2) POINT.addScaledVector(MID.subVectors(POINT, END), .17);
-      connect(limb.effector, POINT, END);
+      if (index < 2) {
+        DELTA.subVectors(END, POINT); const length = DELTA.length();
+        // Legacy v1 poses specify grip/contact points without a rotating-tool
+        // profile. Rebuild only when their actual length meaningfully changes.
+        if (Math.abs(length - limb.effector.userData.tipLength) > 1e-6) {
+          limb.effector.geometry.dispose(); limb.effector.geometry = createStickGeometry(length); limb.effector.userData.tipLength = length;
+        }
+        limb.effector.position.copy(POINT); limb.effector.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), length > 1e-10 ? DELTA.normalize() : new THREE.Vector3(0, 0, 1));
+      } else connect(limb.effector, POINT, END);
     });
     POINT.fromArray(pose, 48); END.fromArray(pose, 51);
     this.hips.position.copy(POINT); this.chest.position.copy(END); connect(this.torso, POINT, END);
@@ -202,7 +204,7 @@ function defaultPose(): Float32Array {
   ]);
 }
 
-type KitVisual = PieceModel & { id: PieceId; instrument: Instrument; hits: Hit[]; response: HitResponseBinding; responseTrack: HitResponseTrack; };
+type KitVisual = PieceModel & { id: PieceId; instrument: Instrument; hits: Hit[]; contacts: ContactEvent[]; response: HitResponseBinding; responseTrack: HitResponseTrack; };
 type CameraTransition = { from: CameraState; to: CameraState; started: number };
 type ImportedModel = { root: THREE.Group; name: string; approximate: boolean };
 
@@ -218,6 +220,8 @@ export class DrumScene {
   private readonly kitGroup = new THREE.Group();
   private readonly stickTrace = new THREE.Group();
   private readonly hardware = new KitHardwareLayer();
+  private mechanisms: KitMechanismLayer | null = null;
+  private lastPose: Float32Array | undefined;
   private readonly grid = new THREE.GridHelper(5, 20, 0xb9bec5, 0xd9dde2);
   private readonly raycaster = new THREE.Raycaster();
   private readonly resizeObserver: ResizeObserver;
@@ -290,21 +294,23 @@ export class DrumScene {
   clearPlan(): void {
     this.setStickTrace(null);
     this.plan = null; this.songTime = -.5;
-    for (const visual of this.visuals) { visual.hits = []; visual.responseTrack = createHitResponseTrack([], visual.instrument); }
-    this.rig.applyPose(createRestRigPose(this.rig.getProfile())); this.updateHitResponses();
+    for (const visual of this.visuals) { visual.hits = []; visual.contacts = []; visual.responseTrack = createHitResponseTrack([], visual.instrument); }
+    this.lastPose = createRestRigPose(this.rig.getProfile()); this.rig.applyPose(this.lastPose); this.mechanisms?.setHits([]); this.updateHitResponses();
   }
   setRig(adapter: HumanoidRigAdapter): void {
     if (adapter === this.rig) return;
     // Configure the candidate before transferring ownership. A calibration or
     // pose failure must not dispose the currently displayed character.
     adapter.calibrate(this.kit);
-    if (!this.plan) adapter.applyPose(createRestRigPose(adapter.getProfile()));
+    const readyPose = !this.plan ? createRestRigPose(adapter.getProfile()) : null;
+    if (readyPose) adapter.applyPose(readyPose);
     adapter.root.visible = this.characterVisible && !this.editorMode;
     adapter.setSkeletonVisible(this.skeletonVisible); adapter.setModelVisible(this.modelVisible);
     adapter.setVisualOptions({ bodyColor: this.theme === 'light' ? '#5c626b' : '#c3c9d1' });
     adapter.setFirstPerson?.(!this.editorMode && this.cameraView === 'player');
     const previous = this.rig;
     this.scene.add(adapter.root); this.rig = adapter;
+    if (readyPose) { this.lastPose = readyPose; this.songTime = -.5; }
     this.setStickTrace(null); previous.dispose();
     if (!this.editorMode && this.cameraView === 'player') this.setCamera('player');
   }
@@ -312,7 +318,7 @@ export class DrumScene {
   applyReadyPose(pose: Float32Array): void {
     if(this.plan)return;
     if(pose.length!==77||!pose.every(Number.isFinite))throw new Error(msg("Invalid ready-pose data.", "기본 자세 데이터가 잘못되었습니다."));
-    this.rig.applyPose(pose);this.songTime=-.5;this.updateHitResponses();
+    this.rig.applyPose(pose);this.lastPose=pose;this.songTime=-.5;this.updateHitResponses();
   }
   getRigProfile(): RigProfile { return this.rig.getProfile(); }
   getKitLayout(): KitPiece[] { return structuredClone(this.kit) as KitPiece[]; }
@@ -338,16 +344,21 @@ export class DrumScene {
     this.equipmentPromise = initializeWasm().then(() => solveKitGeometry(kit)).then(geometry => {
       if (!this.disposed && generation === this.equipmentGeneration) {
         this.hardware.setGeometry(kit, geometry); this.equipmentResult = geometry;
+        this.bindMechanisms(geometry);
       }
       return geometry;
     }).catch(error => {
       if (!this.disposed && generation === this.equipmentGeneration) {
         this.equipmentError = error instanceof Error ? error.message : String(error);
-        this.equipmentResult = null; this.hardware.clear(); this.equipmentKey = '';
+        this.equipmentResult = null; this.mechanisms = null; this.hardware.clear(); this.equipmentKey = '';
       }
       throw error;
     });
     return this.equipmentPromise;
+  }
+  private bindMechanisms(geometry: KitGeometry): void {
+    this.mechanisms = new KitMechanismLayer(this.hardware.root, this.visuals, geometry);
+    this.mechanisms.setHits(this.plan?.hits??[]); this.updateHitResponses();
   }
   async whenEquipmentReady(): Promise<KitGeometry> {
     for (;;) {
@@ -371,11 +382,25 @@ export class DrumScene {
   }
   setCalibration(value: Parameters<HumanoidRigAdapter['setCalibration']>[0]): RigProfile {
     const profile = this.rig.setCalibration(value, this.kit);
-    if (!this.plan) this.rig.applyPose(createRestRigPose(profile));
+    if (!this.plan) this.applyReadyPose(createRestRigPose(profile));
     if (!this.editorMode && this.cameraView === 'player') this.setCamera('player');
     return profile;
   }
   getRigContactSamples(): RigContactSample[] { return this.rig.getContactSamples(); }
+  /** Compare the same impact records used by feedback with rendered markers.
+   * Only exact impact times have a surface-contact expectation. */
+  getImpactMeasurements() {
+    const samples = this.rig.getContactSamples();
+    return (this.plan?.contactEvents ?? []).filter(event => event.status === 'planned' && Math.abs(event.time - this.songTime) < .002).flatMap(event => {
+      const marker = event.toolPart === 'beater'
+        ? this.mechanisms?.actualContact(event.pieceId ?? '')
+        : samples.find(sample => sample.limb === event.limb)?.actual;
+      if (!marker) return [];
+      const actual = event.toolPart === 'beater' ? marker : legacyPointToDisplay(marker);
+      const measured = measurePlannedContact(event, this.kit, actual, this.plan?.hihatMotion);
+      return measured ? [{ ...measured, toolPart: event.toolPart, limb: event.limb, pieceId: event.pieceId }] : [];
+    });
+  }
   /** World-space trajectories measured from actual hand-local stick markers. */
   setStickTrace(paths:readonly [readonly Vec3[],readonly Vec3[]]|null):void {
     for(const child of [...this.stickTrace.children]){this.stickTrace.remove(child);disposeModel(child);}
@@ -485,7 +510,7 @@ export class DrumScene {
         const target = kit ? validateKitLayout(kit) : undefined;
         ++this.loadGeneration;
         const discarded=[...this.imported.values()];this.imported.clear();this.overrides.clear();this.proceduralOverrides.clear();this.preset=preset;
-        for(const piece of pieces){const {finish,finishOverride,model,scale,rotation}=piece.settings;this.overrides.set(piece.id,{...(finishOverride?{finish}:{}),model,scale,rotation});if(piece.settings.source==='procedural')this.proceduralOverrides.add(piece.id);}
+        for(const piece of pieces){const {finish,finishOverride,model,scale,rotation,tilt}=piece.settings;this.overrides.set(piece.id,{...(finishOverride?{finish}:{}),model,scale,rotation,tilt});if(piece.settings.source==='procedural')this.proceduralOverrides.add(piece.id);}
         imported.forEach((model,id)=>this.imported.set(id,model));consumed=true;
         if (target) this.kit = target;
         this.rebuildKit();discarded.forEach(model=>disposeModelSource(model.root));
@@ -537,18 +562,20 @@ export class DrumScene {
     this.selected = canonical; this.updateSelection(); this.onPieceSelect?.(canonical);
   }
   applyPose(pose: Float32Array, songTime: number): void {
-    this.rig.applyPose(pose); this.songTime = songTime; this.updateHitResponses();
+    this.rig.applyPose(pose); this.lastPose = pose; this.songTime = songTime; this.updateHitResponses();
   }
   private updateHitResponses(): void {
     for (const visual of this.visuals) {
-      let low = 0, high = visual.hits.length;
-      while (low < high) { const mid = (low + high) >>> 1; if (visual.hits[mid].time <= this.songTime) low = mid + 1; else high = mid; }
-      const hit = visual.hits[low - 1], age = hit ? this.songTime - hit.time : Infinity;
-      const envelope = this.hitResponse.enabled && age >= 0 && age < .35 ? Math.exp(-age * 12) * (hit!.velocity / 127) * this.hitResponse.strength : 0;
-      visual.ring.material.opacity = this.editorMode && this.imported.has(visual.id) ? .7 : envelope * .7;
-      visual.ring.visible = !this.exportMode && this.editorMode && this.imported.has(visual.id) || envelope > .002;
-      applyHitResponse(visual.response, evaluateHitResponse(visual.responseTrack, this.songTime, this.hitResponse, this.reducedMotion.matches || this.editorMode, visual.response.fallback));
+      const contact = latestContactEvent(visual.contacts, this.songTime);
+      const resolved = contact && this.plan ? resolveContactEvent(contact, this.kit, this.plan.hihatMotion, this.songTime) : null;
+      const age = contact ? this.songTime - contact.time : Infinity;
+      const envelope = this.hitResponse.enabled && age >= 0 && age < .35 ? Math.exp(-age * 12) * (contact!.velocity / 127) * this.hitResponse.strength : 0;
+      if (resolved?.normal) placeContactMarker(visual.ring, visual.root, resolved.position, resolved.normal);
+      visual.ring.material.opacity = envelope * .7;
+      visual.ring.visible = !!resolved && envelope > .002;
+      applyHitResponse(visual.response, evaluateHitResponse(visual.responseTrack, this.songTime, this.hitResponse, this.reducedMotion.matches || this.editorMode || visual.instrument === 'hihat', visual.response.fallback), visual.instrument === 'hihat' ? undefined : resolved?.position);
     }
+    this.mechanisms?.apply(this.songTime, sampleHihatOpening(this.plan?.hihatMotion, this.songTime), this.lastPose);
   }
   render(): void {
     if (!this.exportMode) { this.updateCameraTransition(); this.controls.update(); }
@@ -682,12 +709,14 @@ export class DrumScene {
       // their selection, hardware, contact and feedback are always independent.
       const instrument = pieceInstrument(piece);
       const hits = this.plan?.hits.filter(hit => canonicalPieceId(hitPieceId(hit)) === piece.id).sort((a, b) => a.time - b.time) ?? [];
-      visuals.push({ ...built, id: piece.id, instrument, hits, response, responseTrack: createHitResponseTrack(hits, instrument) });
+      const contacts = this.plan ? contactFeedbackEvents(this.plan, piece.id) : [];
+      visuals.push({ ...built, id: piece.id, instrument, hits, contacts, response, responseTrack: createContactResponseTrack(contacts, instrument) });
     }} catch (error) { disposeModel(nextGroup); throw error; }
     const hihat = nextKit.find(piece => piece.id === 'hihat'), openHat = nextKit.find(piece => piece.id === 'openHat');
     if (hihat?.geometry && openHat) openHat.geometry = structuredClone(hihat.geometry);
     this.clearSelection(); disposeModel(this.kitGroup); this.kitGroup.add(...[...nextGroup.children]);
     this.kit = nextKit; this.visuals = visuals;
+    if (this.equipmentResult && this.equipmentKey === JSON.stringify(nextKit)) this.bindMechanisms(this.equipmentResult);
     // Rejections remain observable through whenEquipmentReady/diagnostics even
     // for synchronous appearance edits; never report an unhandled background error.
     void this.refreshEquipmentGeometry().catch(() => {});

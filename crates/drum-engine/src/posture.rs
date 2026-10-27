@@ -9,11 +9,59 @@ use serde::Serialize;
 pub const MARGIN: f64 = 0.002;
 pub const SWIVELS: [f64; 5] = [0.0, -0.4, 0.4, -0.8, 0.8];
 
+/// Common geometric posture measures, independent of the avatar's bone axes.
+/// These are animation priors, not clinical limits or proof of skin clearance.
+#[derive(Clone, Copy, Debug)]
+pub struct ArmPosture {
+    /// Zero hangs down; pi/2 is a horizontal upper arm.
+    pub elevation: f64,
+    /// Interior elbow angle; pi is straight.
+    pub elbow: f64,
+    pub forearm_slope: f64,
+}
+pub fn arm_posture(profile: &RigProfile, limb: usize, hand: &HandSolution) -> ArmPosture {
+    let upper = crate::motion::sub(hand.middle, profile.roots[limb]);
+    let lower = crate::motion::sub(hand.end, hand.middle);
+    let a = profile.lengths[limb][0];
+    let b = profile.lengths[limb][1];
+    ArmPosture {
+        elevation: (-upper[1] / a).clamp(-1.0, 1.0).acos(),
+        elbow: (-upper.iter().zip(lower).map(|(x, y)| x * y).sum::<f64>() / (a * b))
+            .clamp(-1.0, 1.0)
+            .acos(),
+        forearm_slope: (lower[1] / b).clamp(-1.0, 1.0).asin(),
+    }
+}
+fn elevation_allowance(profile: &RigProfile, limb: usize, target: Vec3) -> f64 {
+    // A low snare/hat should not require shrugging. Higher cymbal preparation
+    // legitimately raises the arm, with a continuous target-height allowance.
+    ((target[1] - profile.roots[limb][1]) / profile.lengths[limb][0] + 0.6).clamp(0.0, 1.0)
+}
+/// Shared by layout, ready pose, equipment routing, torso and elbow planning.
+/// Bounded below 0.4 per arm so a relaxed pose cannot buy a collision clearance.
+pub fn comfort_cost(profile: &RigProfile, limb: usize, target: Vec3, hand: &HandSolution) -> f64 {
+    let p = arm_posture(profile, limb, hand);
+    let allowance = elevation_allowance(profile, limb, target);
+    let excess = (p.elevation - (35.0 + 55.0 * allowance).to_radians()).max(0.0);
+    let folded = (80_f64.to_radians() - p.elbow).max(0.0);
+    let extended = (p.elbow - 140_f64.to_radians()).max(0.0);
+    let downward = (-p.forearm_slope - 20_f64.to_radians()).max(0.0);
+    (0.22 * excess.powi(2)
+        + 0.12 * folded.powi(2)
+        + 0.06 * extended.powi(2)
+        + 0.06 * downward.powi(2))
+    .min(0.39)
+}
+
 pub fn anatomical(profile: &RigProfile, limb: usize, target: Vec3, hand: &HandSolution) -> bool {
     let root = profile.roots[limb];
     let [upper, lower] = profile.lengths[limb];
+    let posture = arm_posture(profile, limb, hand);
     hand.reachable
-        && (target[1] > root[1] || hand.middle[1] <= root[1] + upper * 0.1)
+        && posture.elevation
+            <= (70.0 + 45.0 * elevation_allowance(profile, limb, target)).to_radians()
+        && posture.elbow >= 55_f64.to_radians()
+        && posture.elbow <= 165_f64.to_radians()
         && hand.middle[2] >= root[2] - upper * 0.35
         && hand.end[2] >= root[2] + lower * 0.15
 }
@@ -56,35 +104,46 @@ pub fn pair_solution_with_equipment(
     equipment: Option<&crate::equipment_motion::EquipmentContext>,
     intended_ids: [Option<&str>; 2],
 ) -> Option<[HandSolution; 2]> {
-    let mut right_cache: [Option<Option<HandSolution>>; 5] = [None; 5];
-    for left in hand_candidates(profile, 0, tips[0], pitches[0]) {
-        if equipment.is_some_and(|ctx| {
-            crate::equipment_motion::hand_clearance(profile, 0, &left, ctx, intended_ids[0])
-                < MARGIN
-        }) {
-            continue;
-        }
-        for (index, &angle) in SWIVELS.iter().enumerate() {
-            let right = *right_cache[index]
-                .get_or_insert_with(|| hand_candidate(profile, 1, tips[1], pitches[1], angle));
-            if let Some(right) = right {
-                if clearance::pair_clearance(profile, &left, &right).minimum() >= MARGIN
-                    && equipment.is_none_or(|ctx| {
-                        crate::equipment_motion::hand_clearance(
-                            profile,
-                            1,
-                            &right,
-                            ctx,
-                            intended_ids[1],
-                        ) >= MARGIN
-                    })
-                {
-                    return Some([left, right]);
+    let candidates = |limb: usize| {
+        let mut choices = Vec::new();
+        for delta in crate::equipment_motion::PITCH_OFFSETS {
+            for hand in hand_candidates(profile, limb, tips[limb], pitches[limb] + delta) {
+                if equipment.is_some_and(|ctx| {
+                    crate::equipment_motion::hand_clearance(
+                        profile,
+                        limb,
+                        &hand,
+                        ctx,
+                        intended_ids[limb],
+                    ) < MARGIN
+                }) {
+                    continue;
                 }
+                let cost = comfort_cost(profile, limb, tips[limb], &hand) + 0.015 * delta * delta;
+                choices.push((cost, hand));
+            }
+        }
+        choices.sort_by(|a, b| a.0.total_cmp(&b.0));
+        choices
+    };
+    let left = candidates(0);
+    let right = candidates(1);
+    let mut best: Option<(f64, [HandSolution; 2])> = None;
+    for &(a, left) in &left {
+        if best.as_ref().is_some_and(|(cost, _)| a >= *cost) {
+            break;
+        }
+        for &(b, right) in &right {
+            if best.as_ref().is_some_and(|(cost, _)| a + b >= *cost) {
+                break;
+            }
+            if clearance::pair_clearance(profile, &left, &right).minimum() >= MARGIN {
+                best = Some((a + b, [left, right]));
+                break;
             }
         }
     }
-    None
+    best.map(|(_, hands)| hands)
 }
 pub fn pair_available(profile: &RigProfile, tips: [Vec3; 2], pitches: [f64; 2]) -> bool {
     pair_solution(profile, tips, pitches).is_some()
@@ -94,10 +153,15 @@ pub fn pair_available(profile: &RigProfile, tips: [Vec3; 2], pitches: [f64; 2]) 
 pub fn ready_pair(profile: &RigProfile, left: &KitPiece, right: &KitPiece) -> [Vec3; 2] {
     let observer =
         std::array::from_fn(|axis| (profile.roots[0][axis] + profile.roots[1][axis]) * 0.5);
-    let mut tips = [
-        crate::contact::target(left, "center", observer),
-        crate::contact::target(right, "center", observer),
-    ];
+    let target = |piece: &KitPiece| {
+        let articulation = match piece.instrument {
+            crate::model::Instrument::Crash => "crash",
+            crate::model::Instrument::Ride => "outer",
+            _ => "center",
+        };
+        crate::contact::target(piece, articulation, observer)
+    };
+    let mut tips = [target(left), target(right)];
     for tip in &mut tips {
         tip[1] += 0.035;
     }
@@ -132,6 +196,23 @@ pub struct Capabilities {
     pub pairs: Vec<PairCapability>,
 }
 pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
+    if profile.hand_frames.is_none()
+        || !kit
+            .iter()
+            .any(|p| p.instrument == crate::model::Instrument::Snare)
+    {
+        return Vec::new();
+    }
+    let ctx = crate::equipment_motion::EquipmentContext::for_kit(kit);
+    required_pairs_with_equipment(profile, kit, ctx.as_deref())
+}
+
+/// Reuse the immutable geometry already routed for this exact fit candidate.
+pub(crate) fn required_pairs_with_equipment(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    ctx: Option<&crate::equipment_motion::EquipmentContext>,
+) -> Vec<String> {
     if profile.hand_frames.is_none() {
         return Vec::new();
     }
@@ -142,12 +223,11 @@ pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
         return Vec::new();
     };
     let mut missing = Vec::new();
-    let ctx = crate::equipment_motion::EquipmentContext::for_kit(kit);
     if pair_solution_with_equipment(
         profile,
         ready_pair(profile, snare, snare),
         [0.0; 2],
-        ctx.as_deref(),
+        ctx,
         [Some(snare.id.as_str()); 2],
     )
     .is_none()
@@ -162,12 +242,42 @@ pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
             profile,
             ready_pair(profile, snare, hat),
             [0.0; 2],
-            ctx.as_deref(),
+            ctx,
             [Some(snare.id.as_str()), Some(hat.id.as_str())],
         )
         .is_none()
         {
             missing.push("crossed-groove".into());
+        }
+    }
+    let crashes: Vec<_> = kit
+        .iter()
+        .filter(|p| p.instrument == crate::model::Instrument::Crash)
+        .take(2)
+        .collect();
+    if crashes.len() == 2 {
+        let valid = [false, true].iter().any(|&swap| {
+            let a = crashes[usize::from(swap)];
+            let b = crashes[usize::from(!swap)];
+            let ready = ready_pair(profile, a, b);
+            // A raised pair alone does not prove that both sticks can contact
+            // their surfaces simultaneously. Require the same hand assignment
+            // at impact and ready; intermediate trajectories remain a separate
+            // runtime check.
+            [0.035, 0.0].into_iter().all(|lower| {
+                let tips = ready.map(|tip| [tip[0], tip[1] - lower, tip[2]]);
+                pair_solution_with_equipment(
+                    profile,
+                    tips,
+                    [0.0; 2],
+                    ctx,
+                    [Some(a.id.as_str()), Some(b.id.as_str())],
+                )
+                .is_some()
+            })
+        });
+        if !valid {
+            missing.push("dual-crash".into());
         }
     }
     missing
@@ -283,4 +393,67 @@ pub fn ready_pose(profile: &RigProfile, kit: &[KitPiece]) -> Result<Vec<f32>, St
     }
     pose.extend([0.0, 0.0, 0.0, 1.0]);
     Ok(pose)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn relaxed_low_target_is_preferred_without_banning_high_accents() {
+        let mut p = RigProfile::primitive();
+        p.roots[0] = [0.0, 1.2, 0.0];
+        p.lengths[0] = [0.3, 0.27];
+        let low = HandSolution {
+            middle: [0.0, 0.9, 0.0],
+            end: [0.0, 0.9, 0.27],
+            tip: [0.0, 0.9, 0.58],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            reachable: true,
+        };
+        let high = HandSolution {
+            middle: [-0.3, 1.2, 0.0],
+            end: [-0.3, 0.93, 0.0],
+            ..low
+        };
+        assert!(comfort_cost(&p, 0, low.tip, &low) < comfort_cost(&p, 0, low.tip, &high));
+        assert!(anatomical(&p, 0, low.tip, &low));
+        assert!(!anatomical(&p, 0, low.tip, &high));
+        // A deliberate cymbal accent may elevate the upper arm; the same
+        // raised arm must not become the normal low-snare ready posture.
+        let forward_high = HandSolution {
+            end: [-0.3, 1.2, 0.27],
+            ..high
+        };
+        assert!(anatomical(&p, 0, [0.0, 1.4, 0.58], &forward_high));
+    }
+    #[test]
+    fn comfort_is_dimensionless_and_reflection_invariant() {
+        let p = RigProfile::primitive();
+        let hand = HandSolution {
+            middle: [-0.3, 0.95, 0.1],
+            end: [-0.3, 0.95, 0.37],
+            tip: [-0.3, 0.95, 0.68],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+            reachable: true,
+        };
+        let cost = comfort_cost(&p, 0, hand.tip, &hand);
+        let mut scaled = p.clone();
+        scaled.roots = p.roots.map(|v| v.map(|x| x * 0.7));
+        scaled.lengths = p.lengths.map(|v| v.map(|x| x * 0.7));
+        let small = HandSolution {
+            middle: hand.middle.map(|x| x * 0.7),
+            end: hand.end.map(|x| x * 0.7),
+            tip: hand.tip.map(|x| x * 0.7),
+            ..hand
+        };
+        assert!((cost - comfort_cost(&scaled, 0, small.tip, &small)).abs() < 1e-12);
+        let mirror = |v: Vec3| [-v[0], v[1], v[2]];
+        let reflected = HandSolution {
+            middle: mirror(hand.middle),
+            end: mirror(hand.end),
+            tip: mirror(hand.tip),
+            ..hand
+        };
+        assert!((cost - comfort_cost(&p, 1, reflected.tip, &reflected)).abs() < 1e-12);
+    }
 }

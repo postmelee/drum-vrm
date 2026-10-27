@@ -28,6 +28,7 @@ A verification record describes one environment and tested revision, not univers
 
 | Scope | Evidence |
 | --- | --- |
+| Detailed tom holders, cymbal stands and multi-view layout | [Hardware checks](verification/detailed-hardware.md) |
 | Automatic fit, measured body clearance and temporal coordination | [Body-clearance checks](verification/body-clearance-measurements.md) |
 | Published browser batches | [Pages deployment evidence](verification/pages-browser-performance.md) |
 | Public MIDI-to-video workflow | [v0.2 studio checks](verification/studio-0.2.md) |

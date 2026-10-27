@@ -76,7 +76,8 @@ when relating results across interpretations of the same file.
 
 ## Mapping profiles and physical pieces
 
-`Selection.mappingProfile` explicitly chooses `gm` or `logicDkdGm`; omission means
+`Selection.mappingProfile` explicitly chooses `gm`, `logicDkdGm` or
+`songsterrDownloader`; omission means
 `gm`. The plan records `mappingProfile`, `mappingVersion` (currently `"1"`) and the
 count-in choice. Do not infer a profile
 from the filename, a track name, an avatar or the presence of one familiar note.
@@ -111,7 +112,7 @@ surface; `pedalHat` addresses its separate foot contact. These aliases are not t
 independent hi-hat cymbals. Contact-region-specific rimshot mechanics are separate
 from identifying an event as a rimshot.
 
-`Selection.countInNote75` is false by default. In either supported profile, enabling it
+`Selection.countInNote75` is false by default. In any supported profile, enabling it
 explicitly interprets note 75 as a count-in cue. The source event is retained, but
 no drum hit, limb assignment or synthesized strike is added. A different file can
 use that note as played percussion, so this choice must remain visible and reversible.
@@ -120,6 +121,50 @@ It is not automatic count-in detection. The
 can bring both actual tips together when the hands and body/equipment constraints
 permit it. This separate presentation track does not create a drum `Hit` or change
 the source cue; failed gestures remain diagnostics.
+
+## Songsterr Downloader compatibility
+
+`songsterrDownloader`, mapping version `"1"`, is an explicit compatibility subset
+for [Songsterr Downloader revision 1a2c0b4](https://github.com/Metaphysics0/songsterr-downloader/blob/1a2c0b42faf716cb609ee7c0fbb855d32ba4a4a7/src/lib/server/services/converter/songsterr-to-alphatab.converter.ts)
+using alphaTab 1.8.1. That converter assigns GP7 articulation indices to notes but
+does not attach the corresponding track articulation definitions before MIDI export.
+The [alphaTab MIDI generator](https://github.com/CoderLine/alphaTab/blob/8a2102fe7ee7dcf4b50c3a4198fbb8c0d5c0fda3/packages/alphatab/src/midi/MidiFileGenerator.ts)
+then treats them as articulation IDs, or emits the raw value when no definition
+exists. This is not a general Songsterr numbering standard.
+
+The supported output numbers below have verified, unambiguous drum meanings in
+this export path. Rust interprets them without rewriting source messages or
+`Hit.note`; source IDs, times and velocities stay unchanged.
+
+| Exported MIDI number | Instrument / articulation | GM sound reference |
+| --- | --- | --- |
+| 0 / 1 / 2 | Snare center / side stick / rimshot | 38 / 37 / 38 |
+| 3 / 5 / 6 | Hi-hat closed / open / foot close | 42 / 46 / 44 |
+| 7 / 8 | Kick | 35 / 36 |
+| 9 / 10 | High tom | 50 / 48 |
+| 11 / 12 | Mid tom | 47 / 45 |
+| 13 / 87 | Low tom | 43 / 41 |
+| 14 / 15 / 16 | Ride edge / outer / bell | 51 / 51 / 53 |
+| 18 / 20 | Splash / china on the left crash piece | 55 / 52 |
+| 22 / 24 | Left / right crash | 49 / 57 |
+
+This table is an independently implemented factual correspondence, checked against
+the pinned [articulation definitions](https://github.com/CoderLine/alphaTab/blob/8a2102fe7ee7dcf4b50c3a4198fbb8c0d5c0fda3/packages/alphatab/src/model/PercussionMapper.ts)
+and actual alphaTab export. No downloader or alphaTab runtime/source is bundled.
+Articulation labels do not add new skin/contact mechanics or sampled sounds.
+Half-open hi-hat 4, chokes 17/19/21/23/25 and all other numbers remain unmapped
+unless explicitly omitted or selected as source-note-75 count-in. There is no GM
+fallback: other percussion indices can collide with alphaTab IDs and cannot be
+recovered reliably by blindly reversing the entire list.
+
+New uploads compare this profile with the other supported mappings as described
+below. To override the candidate, open **MIDI settings**, choose
+**Songsterr Downloader (alphaTab 1.8.1)** and press **Apply settings**. A planning
+failure after successful file inspection opens these settings for recovery.
+Use channel 10 and only the intended drum tracks; combined format 0 and separate
+named format 1 files use the same mapping. Filenames never select it; automatic selection is based on supported-note coverage. Fixed/new exporter versions that output normal GM notes
+must use `gm`. Project save/reopen retains this choice. Link fetching and a
+server integration are not part of this profile.
 
 ## Explicit arrangement edits
 
@@ -161,7 +206,7 @@ an applicable continuous controller or an explicit user instruction, a short gap
 does not uniquely identify aperture.
 
 `Selection.hihatPolicy` and the corresponding plan field choose `literal` (default)
-or `shortOpenClose`. The latter is an explicit choice in either supported mapping,
+or `shortOpenClose`. The latter is an explicit choice in any supported mapping,
 not automatic intent detection. It pairs mapped positive foot-close events with the
 nearest preceding unpaired open-hi-hat on the same channel, including across selected
 tracks. A mapped closed hi-hat cancels the pending open; another open replaces it.
@@ -234,7 +279,7 @@ The controls separate instrument mapping from performance intent, following the
 [research](../../docs/research/ergonomics-and-sticking.md).
 Standard MIDI Files do not guarantee a producer identifier, and one DAW can export
 different instrument maps. The browser shows note-based mapping evidence, without
-asserting that a file came from Logic or automatically selecting a profile.
+asserting that a file came from Logic. New uploads use the candidate comparison below.
 
 Under **Drum sound mapping / Interpretation**, count-in candidates and applicable
 hi-hat control choices are shown from the prepared selection. Short-open-close
@@ -243,6 +288,37 @@ automatically a partial opening, nor is note 75 always count-in. Controller
 interpretation still requires a defining profile. Confirmed policy and source-event
 edits persist with the [project format](project-format.md). These controls do not
 imply support for additional instrument maps or controllers.
+
+## Automatic mapping for new uploads
+
+Rust inspection returns `MidiInfo.suggestedChannel` and `mappingAnalysis` alongside
+`suggestedTracks`. Positive channel-10 note-ons take priority for track/channel
+suggestion. Without those, suggest tracks with notes supported by any profile and
+use all channels. This fallback is a heuristic, not proof that a track is drums.
+The existing `TrackInfo.drumNotes` remains the GM count.
+
+`mappingAnalysis` contains `totalNotes`, all three `candidates` with `profile`,
+`mapped` and `unmapped` counts, a nullable `selected` profile and `ambiguous`.
+Count only positive note-ons in the suggested tracks/channel, with literal intent:
+no automatic count-in, hi-hat pairing, omission or hand overrides. Compare all
+profiles using the shared Rust mapping rules before any body-dependent planning.
+Choose the largest mapped count; ties prefer GM, then Logic, then Songsterr.
+If tied candidates disagree about any observed note's instrument, piece,
+articulation or supported/unmapped status, mark the choice provisional. Equivalent
+ties need no warning. Zero supported notes means no candidate.
+
+The browser applies this candidate only on a new MIDI upload/drop, resets the
+previous file's intent controls, and displays candidate counts. Conflicting ties
+open MIDI settings for review while preparing the provisional choice. Unsupported
+notes remain diagnostic; choosing a candidate is not a complete-import guarantee.
+Malformed files and duration/event limits, audio errors and motion failures do not
+trigger blind fallback to another mapping. Parsing/scoring runs in the existing
+cancellable worker; it does not launch three parallel motion plans.
+
+Manual mapping/track/channel changes dismiss the upload comparison without running
+it again. Explicit demos and restored projects retain their saved selections.
+Save/reopen persists the resulting profile, not an `auto` pseudo-profile.
+The direct planning API still defaults to `gm` when no profile is supplied.
 
 ## Bundled demo selections
 

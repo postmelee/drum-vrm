@@ -1,9 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { makeInterpretationDemo } from '../src/demo';
+import { makeSongsterrStudy } from './songsterr-fixture';
 import { NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { cameraPresetState } from '../src/scene';
-import { resolvePieceVisual } from '../src/model-procedural';
+import { createPieceModel, disposeModel, resolvePieceVisual } from '../src/model-procedural';
+import { measureInstrumentGeometry } from '../src/instrument-body';
 import { fileReference, missingProjectAssets, parseProject, type DrumProject } from '../src/project';
 import { initSync, Performance } from '../src/wasm/drum_engine';
 import type { PerformancePlan } from '../src/types';
@@ -39,6 +41,22 @@ beforeAll(async()=>{
 });
 
 describe('versioned local project',()=>{
+  it('reopens the Songsterr Downloader profile with the same source keys and poses',async()=>{
+    const project=structuredClone(fixture),bytes=makeSongsterrStudy();
+    project.selection={tracks:[1],channel:9,mappingProfile:'songsterrDownloader',countInNote75:false,hihatPolicy:'literal',hihatOpenness:.2,omittedSourceEventIds:[],handOverrides:{}};
+    const raw=new Performance(bytes,JSON.stringify(project.selection));
+    const candidate=Performance.from_json_with_profile(raw.plan_json(),JSON.stringify(project.profile));
+    try {
+      project.plan=JSON.parse(candidate.plan_json());project.kit=structuredClone(project.plan.kit);
+      project.assets=[await fileReference('midi',new File([Uint8Array.from(bytes)],'Authored compatibility study.mid'))];
+      const reopened=parseProject(JSON.stringify(project));
+      expect(reopened.selection).toEqual(project.selection);
+      expect(reopened.plan.sourceEvents).toEqual(project.plan.sourceEvents);
+      const after=Performance.from_json_with_profile(JSON.stringify(reopened.plan),JSON.stringify(project.profile));
+      try { for(const time of [2.4,0,1.5,.8])expect(after.evaluate_rig_at(time)).toEqual(candidate.evaluate_rig_at(time)); }
+      finally { after.free(); }
+    } finally { raw.free();candidate.free(); }
+  });
   it('reconstructs the saved native measured profile from calibration and layout',()=>{
     const rig=new NativeHumanoidRigAdapter();
     try{expect(JSON.stringify(rig.setCalibration(fixture.calibration,fixture.kit))).toBe(JSON.stringify(fixture.profile));}
@@ -64,6 +82,22 @@ describe('versioned local project',()=>{
     expect(parseProject(JSON.stringify(project)).profile.bodyGeometry).toEqual(geometry);
     delete project.profile.bodyGeometry;
     expect(parseProject(JSON.stringify(project)).profile.bodyGeometry).toBeUndefined();
+  });
+  it('preserves curved contact geometry and explicit tilt while old appearances remain flat',()=>{
+    const project=structuredClone(fixture),hat=project.kit.find(piece=>piece.id==='hihat')!;
+    const settings=resolvePieceVisual('studio',hat.id,{tilt:6});
+    const body=createPieceModel(hat,settings,'studio',project.kit,false);
+    const geometry=measureInstrumentGeometry(body.root,hat,'procedural');disposeModel(body.root);
+    for(const kit of [project.kit,project.plan.kit]) for(const piece of kit) if(piece.id==='hihat'||piece.id==='openHat') piece.geometry=structuredClone(geometry);
+    project.appearance.pieces.find(piece=>piece.id==='hihat')!.settings.tilt=6;
+    const restored=parseProject(JSON.stringify(project));
+    expect(restored.kit.find(piece=>piece.id==='hihat')!.geometry!.surface.radialProfile).toEqual(geometry.surface.radialProfile);
+    expect(restored.appearance.pieces.find(piece=>piece.id==='hihat')!.settings.tilt).toBe(6);
+    expect(restored.kit.find(piece=>piece.id==='hihat')!.geometry!.surface.motion).toEqual({kind:'translation',axis:[0,1,0],travelMeters:.025});
+    const legacy=JSON.parse(JSON.stringify(project));delete legacy.appearance.pieces[0].settings.tilt;
+    expect(parseProject(JSON.stringify(legacy)).appearance.pieces[0].settings.tilt).toBe(0);
+    for(const kit of [project.kit,project.plan.kit]) kit.find(piece=>piece.id==='hihat')!.geometry!.surface.radialProfile!.points[1][0]=-1;
+    expect(()=>parseProject(JSON.stringify(project))).toThrow();
   });
   it('requires same-content relinking; renamed same files match and same-name edits do not',async()=>{
     const renamed=new File([await midiFile.arrayBuffer()],'renamed.mid'),edited=new File(['changed'],midiFile.name);

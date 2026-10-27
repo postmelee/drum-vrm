@@ -26,6 +26,31 @@ class LocalWorker {
   }
 }
 const localWorker=()=>new LocalWorker() as unknown as Worker;
+it('keeps an initialized idle worker for subsequent MIDI inspection and replaces it after cancellation',async()=>{
+  const workers:LocalWorker[]=[];
+  const factory=vi.fn(()=>{const worker=new LocalWorker();workers.push(worker);return worker as unknown as Worker;});
+  const engine=new EngineClient(factory);
+  try{
+    const first=await engine.inspect(makeInterpretationDemo());
+    expect(await engine.inspect(makeInterpretationDemo())).toEqual(first);
+    expect(factory).toHaveBeenCalledOnce();expect(workers[0].terminated).toBe(false);
+    engine.cancel();expect(workers[0].terminated).toBe(true);
+    await engine.inspect(makeInterpretationDemo());expect(factory).toHaveBeenCalledTimes(2);
+  }finally{engine.dispose();}
+  expect(workers.every(worker=>worker.terminated)).toBe(true);
+});
+
+it('rejects an in-flight request when a newer MIDI replaces it',async()=>{
+  const workers:LocalWorker[]=[];
+  const engine=new EngineClient(()=>{const worker=new LocalWorker();workers.push(worker);return worker as unknown as Worker;});
+  try{
+    const first=engine.inspect(makeInterpretationDemo());
+    const rejected=expect(first).rejects.toMatchObject({name:'AbortError'});
+    const second=engine.inspect(makeInterpretationDemo());
+    await rejected;await second;
+    expect(workers).toHaveLength(2);expect(workers[0].terminated).toBe(true);expect(workers[1].terminated).toBe(false);
+  }finally{engine.dispose();}
+});
 function fixture(){
   const rig=new NativeHumanoidRigAdapter(),profile=rig.getProfile();
   // The optional geometry extension is exercised separately at its own boundary.

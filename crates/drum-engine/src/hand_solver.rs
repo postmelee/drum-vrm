@@ -176,7 +176,7 @@ pub fn solve_with_swivel(
         unit(horizontal)
     };
     let forward = [-shoulder_axis[2], 0.0, shoulder_axis[0]];
-    let transverse = unit(add(mul(shoulder_axis, outward), [0.0, -0.8, 0.0]));
+    let transverse = unit(add(mul(shoulder_axis, outward * 0.45), [0.0, -1.0, 0.0]));
     let bend = rotate(shortest_arc(forward, axis, transverse), transverse);
     let bend = rotate(axis_rotation(axis, swivel), bend);
     let along =

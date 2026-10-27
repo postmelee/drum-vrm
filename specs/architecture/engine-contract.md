@@ -49,7 +49,12 @@ calibration/replanning. A limb is either assigned or explicitly absent. Source-e
 scope, mapping options and schema 1 migration are defined in
 [MIDI interpretation](midi-interpretation.md).
 
-Planner `phrase-beam-8-beat-horizon-24-body-v7` uses an eight-candidate beam with lookahead
+Derived `contactEvents` and `hihatMotion` share planned surface contact and
+absolute-time mechanism state across motion, feedback and separate actual-marker
+inspection. The [equipment contact contract](equipment-contact.md#shared-contact-records-and-hi-hat-state)
+owns their fields, regeneration and capability limits.
+
+Planner `phrase-beam-8-beat-horizon-24-posture-v10` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each
@@ -92,6 +97,7 @@ Unsupported notes and supported-but-unassigned hits are different diagnostics.
 | Entry point | Meaning |
 | --- | --- |
 | `inspect_midi(bytes)` | Return inspection/track metadata as JSON |
+| `plan_midi(bytes, selectionJson)` | Interpret and assign a source plan without constructing runtime motion tracks |
 | `fit_kit(profileJson, kitJson)` | Return a bounded static kit-fit proposal without changing source events |
 | `ready_pose(profileJson, kitJson)` | Return a validated dual-snare reference pose without a score |
 | `Performance(bytes, selectionJson)` | Build the retained legacy performance path |
@@ -102,7 +108,7 @@ Unsupported notes and supported-but-unassigned hits are different diagnostics.
 | `plan_json()` | Return the validated resulting plan |
 | `evaluate_at(songTime)` | Return 57 world-position floats |
 | `evaluate_rig_at(songTime)` | Return 57 positions, four xyzw tool quaternions and one torso quaternion: 77 floats |
-| `evaluate_hihat_at(songTime)` | Return absolute-time hi-hat openness from the selected interpretation policy |
+| `evaluate_hihat_at(songTime)` | Return shared absolute-time hi-hat openness from literal notes and explicit controls |
 | `inspect_pose_at(songTime)` | Return numeric skeletal-proxy clearance and bone-length measurements as JSON |
 
 The first 48 values contain four limbs in LH/RH/LF/RF order, each with root, middle,
@@ -132,12 +138,28 @@ retain the previous setup. Loading a different MIDI intentionally clears the old
 score before preparation. Rendering, absolute-time evaluation and inexpensive runtime installation
 remain on the main thread.
 
+`plan_midi` parses and interprets the source without constructing a motion evaluator.
+The worker uses it before applying the final measured profile and kit, so it does
+not prepare an unused default-body motion first. Completed requests retain the
+initialized worker for the next request; cancellation or replacement of an active
+request terminates it. Request IDs and generations reject stale replies. An exact
+source/profile match can reuse the single validated prepared candidate. After
+MIDI planning, that candidate also owns the exact input produced by resetting its
+derived targets to the captured request layout. Audio preflight can then install
+the same candidate without repeating motion search. Each key includes the complete
+plan and numeric profile, preserving every field of its layout; changed source
+directives, geometry or body data require preparation again. Cancellation and a
+failed replacement search discard candidate reuse. Rust still validates every
+prepared installation. This is bounded
+reuse, not a cache of arbitrary uploaded files.
+
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
 2, containing the plan, numeric profile, torso/elbow and equipment-approach tracks,
 and an FNV-1a integrity
 checksum. Installation checks engine/planner versions, expected source/profile
 identity, finite values, ordering, track bounds, exact control times and assigned
-contact/pedal feasibility. Equipment tracks additionally require bounded lift/pitch,
+contact/pedal feasibility at the stored torso yaw and equipment pitch. A reachable
+alternative pose cannot validate an unreachable stored impact. Equipment tracks additionally require bounded lift/pitch,
 rate limits and zero lift at each source impact. Installation uses these validated
 samples without repeating equipment-path search on the main thread. The checksum
 detects stale or damaged data; it is not a

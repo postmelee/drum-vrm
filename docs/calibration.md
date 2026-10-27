@@ -21,6 +21,7 @@ In **Files / Audio → Demo**, choose a score under **Demo selection**, then pre
 
 | Score | Purpose |
 | --- | --- |
+| Posture study · 12 s | A ready-to-ending comparison of groove, tom transfers, ride and simultaneous crashes; [review with public samples](models.md#compare-the-same-performance-across-models). |
 | Studio Groove · 30 s | A short, independently authored groove for a quick playback check. |
 | Interpretation check · 8 s | An independently authored pattern for count-in, hi-hat control, fills and explicit event inspection. |
 | Transparent Girl 1 · 3 min 13 s | A full-song example for comparing body fitting, fast fills and transitions with the same score. |

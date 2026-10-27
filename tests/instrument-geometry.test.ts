@@ -74,6 +74,42 @@ describe('measured equipment body descriptors', () => {
     expect(Math.abs(center.y - target.y)).toBeGreaterThan(.01); disposeModel(pivot);
   });
 
+  it('keeps numeric bell, bow and edge contacts on rendered curved cymbals after tilt and body fitting', () => {
+    for(const id of ['hihat','crash','ride'] as const) for(const fit of [.72,1,1.3]) {
+      const original=DEFAULT_KIT.find(piece=>piece.id===id)!;
+      const visual=resolvePieceVisual('studio',id,{tilt:18,rotation:27,scale:1.1});
+      const base=createPieceModel(original,visual,'studio',DEFAULT_KIT,false);
+      const geometry=measureInstrumentGeometry(base.root,original,'procedural');disposeModel(base.root);
+      const piece={...original,radius:original.radius*fit,geometry};
+      const rendered=createPieceModel(piece,visual,'studio',DEFAULT_KIT,false);rendered.root.updateMatrixWorld(true);
+      const profile=geometry.surface.radialProfile!,q=new THREE.Quaternion(...profile.rotation);
+      const axis=new THREE.Vector3(0,1,0).applyQuaternion(q),origin=new THREE.Vector3(...profile.origin).multiplyScalar(fit).add(new THREE.Vector3(...piece.position));
+      for(const fraction of [.12,.38,.62,.86,.88]) for(const angle of [.17,1.1,2.6]) {
+        const radius=profile.points.at(-1)![0]*fraction;
+        const next=Math.max(1,profile.points.findIndex(point=>point[0]>=radius));
+        const a=profile.points[next-1],b=profile.points[next];
+        const height=a[1]+(b[1]-a[1])*(radius-a[0])/(b[0]-a[0]);
+        const point=new THREE.Vector3(Math.sin(angle)*radius,height,Math.cos(angle)*radius).multiplyScalar(fit).applyQuaternion(q).add(origin);
+        const ray=new THREE.Raycaster(point.clone().addScaledVector(axis,.05),axis.clone().negate());
+        const hit=ray.intersectObject(rendered.root.getObjectByName('contactSurface')!)[0];
+        expect(hit,`${id} ${fit} ${fraction}`).toBeDefined();
+        expect(hit.point.distanceTo(point),`${id} ${fit} ${fraction}`).toBeLessThan(.0003);
+      }
+      disposeModel(rendered.root);
+    }
+  });
+  it('advertises surface travel only for separated semantic upper hi-hats', () => {
+    const piece=DEFAULT_KIT.find(piece=>piece.id==='hihat')!;
+    for(const preset of ['studio','electronic'] as const) {
+      const model=createPieceModel(piece,resolvePieceVisual(preset,piece.id),preset,DEFAULT_KIT,false);
+      const geometry=measureInstrumentGeometry(model.root,piece,'procedural');
+      if(preset==='studio') expect(geometry.surface.motion).toEqual({kind:'translation',axis:[0,1,0],travelMeters:.025});
+      else expect(geometry.surface.motion).toBeUndefined();
+      disposeModel(model.root);
+    }
+    const imported=new THREE.Group();imported.add(new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.01),new THREE.MeshBasicMaterial()));
+    expect(measureInstrumentGeometry(imported,piece,'mesh-bounds').surface.motion).toBeUndefined();disposeModel(imported);
+  });
   it('rejects missing body geometry rather than manufacturing a clear proxy', () => {
     expect(() => measureInstrumentGeometry(new THREE.Group(), DEFAULT_KIT[0], 'mesh-bounds')).toThrow('measure the drum body geometry');
   });

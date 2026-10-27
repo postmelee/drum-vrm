@@ -4,18 +4,22 @@
 mod body_motion;
 pub mod clearance;
 mod contact;
+mod contact_events;
+mod contact_feasibility;
 mod count_in;
 pub mod equipment;
 mod equipment_motion;
 mod fit;
 mod hand_coordination;
 pub mod hihat;
+mod hihat_motion;
 pub mod interpretation;
 mod midi;
 pub mod model;
 pub mod motion;
 mod posture;
 pub mod rig;
+pub mod stick_geometry;
 
 use model::{MidiInfo, PerformancePlan, Selection};
 use motion::Motion;
@@ -29,6 +33,7 @@ pub fn inspect(bytes: &[u8]) -> Result<MidiInfo, String> {
 pub fn build_plan(bytes: &[u8], selection: &Selection) -> Result<PerformancePlan, String> {
     let parsed = midi::parse(bytes)?;
     let mut plan = parsed.plan(bytes, selection)?;
+    contact::apply(&mut plan, &RigProfile::primitive());
     motion::assign(&mut plan);
     Ok(plan)
 }
@@ -52,6 +57,19 @@ pub fn inspect_midi(bytes: &[u8]) -> Result<String, JsValue> {
     inspect(bytes)
         .and_then(|info| serde_json::to_string(&info).map_err(|e| e.to_string()))
         .map_err(|e| JsValue::from_str(&e))
+}
+
+/// Parse and assign source events without constructing body or equipment motion tracks.
+#[wasm_bindgen]
+pub fn plan_midi(bytes: &[u8], selection_json: &str) -> Result<String, JsValue> {
+    let result = (|| {
+        let selection: Selection = serde_json::from_str(selection_json)
+            .map_err(|e| format!("트랙 선택 형식 오류: {e}"))?;
+        let mut plan = build_plan(bytes, &selection)?;
+        contact::refresh_events(&mut plan);
+        serde_json::to_string(&plan).map_err(|e| e.to_string())
+    })();
+    result.map_err(|error: String| JsValue::from_str(&error))
 }
 
 #[wasm_bindgen]
@@ -150,7 +168,7 @@ impl Performance {
     }
 
     pub fn evaluate_hihat_at(&self, song_time: f64) -> f64 {
-        hihat::evaluate(&self.motion.plan.controls, song_time)
+        hihat_motion::evaluate(&self.motion.plan.hihat_motion, song_time)
     }
 }
 

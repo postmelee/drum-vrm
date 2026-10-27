@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, expect, it } from 'vitest';
 import { makeDemo, makeInterpretationDemo } from '../src/demo';
+import { createMeasuredInstrumentBody } from '../src/instrument-body';
+import { disposeModel, resolvePieceVisual } from '../src/model-procedural';
+import { sampleHihatOpening, resolveContactEvent } from '../src/contact-events';
 import { fit_kit, initSync, inspect_midi, Performance } from '../src/wasm/drum_engine';
 import { legacyPositionToNative, NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { outputFrameCount, type Hit, type KitFitProposal, type MidiInfo, type PerformancePlan, type Selection } from '../src/types';
@@ -67,7 +70,32 @@ it('the original 30-second demo crosses the actual WASM boundary with complete e
   }
 });
 
-function prepareNative(bytes: Uint8Array, selection: Selection, fitted = false) {
+// Fitting depends on the body and equipment, not MIDI events. The browser
+// measures the selected model before fitting; use that same geometry boundary
+// here rather than repeatedly solving the legacy absent-geometry fallback.
+const nativeFits = new Map<string, KitFitProposal>();
+function measuredNativeFit(profile: string, kit: PerformancePlan['kit']): KitFitProposal {
+  const measured = structuredClone(kit);
+  for (const piece of measured) {
+    if (['openHat', 'pedalHat'].includes(piece.id)) continue;
+    const built = createMeasuredInstrumentBody(piece, resolvePieceVisual('studio', piece.id), 'studio', measured);
+    try { piece.geometry = built.geometry; }
+    finally { disposeModel(built.root); }
+  }
+  measured.find(piece => piece.id === 'openHat')!.geometry = structuredClone(measured.find(piece => piece.id === 'hihat')!.geometry);
+  const key = JSON.stringify([profile, measured]);
+  let proposal = nativeFits.get(key);
+  if (!proposal) {
+    proposal = JSON.parse(fit_kit(profile, JSON.stringify(measured))) as KitFitProposal;
+    expect(proposal.complete).toBe(true);
+    nativeFits.set(key, structuredClone(proposal));
+  }
+  // Each performance owns its layout; hand edits or target preparation in one
+  // test must never mutate the fitted fixture reused by a different source.
+  return structuredClone(proposal);
+}
+
+function prepareNative(bytes: Uint8Array, selection: Selection, fitted = true) {
   const source = new Performance(bytes, JSON.stringify(selection));
   const original = JSON.parse(source.plan_json()) as PerformancePlan;
   source.free();
@@ -75,14 +103,18 @@ function prepareNative(bytes: Uint8Array, selection: Selection, fitted = false) 
   const profile = JSON.stringify(rig.getProfile());
   const input = structuredClone(original);
   if (fitted) {
-    const proposal = JSON.parse(fit_kit(profile, JSON.stringify(input.kit))) as KitFitProposal;
+    const proposal = measuredNativeFit(profile, input.kit);
     expect(proposal.complete).toBe(true);
     input.kit = proposal.kit;
     input.hits.forEach(hit => { hit.target = [...proposal.kit.find(piece => piece.id === hit.pieceId)!.position]; });
   }
-  // Mapping/layout input retains semantic anchors. A measured physical plan may
-  // subsequently select an articulation region on the actual playing surface.
-  for (const hit of input.hits) expect(hit.target).toEqual(input.kit.find(piece => piece.id === hit.pieceId)!.position);
+  // Unmeasured source targets retain anchors plus the physical upper-hat state;
+  // a fitted input is explicitly reset and will derive its timed contacts again.
+  for (const hit of input.hits) {
+    const expected = [...input.kit.find(piece => piece.id === hit.pieceId)!.position];
+    if (!fitted && ['hihat', 'openHat'].includes(hit.instrument)) expected[1] += sampleHihatOpening(input.hihatMotion, hit.time) * (input.hihatMotion?.travelMeters ?? 0);
+    hit.target.forEach((value, axis) => expect(value).toBeCloseTo(expected[axis], 12));
+  }
   const performance = Performance.from_json_with_profile(JSON.stringify(input), profile);
   const plan = JSON.parse(performance.plan_json()) as PerformancePlan;
   const sourceFacts = (hit: Hit) => [hit.sourceEventId, hit.tick, hit.timeUs, hit.time, hit.note, hit.velocity];
@@ -90,17 +122,22 @@ function prepareNative(bytes: Uint8Array, selection: Selection, fitted = false) 
   for (const [index, hit] of plan.hits.entries()) {
     expect([hit.instrument, hit.pieceId]).toEqual([input.hits[index].instrument, input.hits[index].pieceId]);
     const piece = plan.kit.find(piece => piece.id === hit.pieceId)!, geometry = piece.geometry;
+    const contact = plan.contactEvents!.find(event => event.hitId === hit.id && event.role === 'primary')!;
+    const displacement = contact.mechanismOffset;
     if (!geometry || hit.instrument === 'kick' || hit.instrument === 'pedalHat') {
       // JSON's JS/Rust float round trip can change the last representable bit.
-      hit.target.forEach((value, axis) => expect(value).toBeCloseTo(input.hits[index].target[axis], 12));
+      hit.target.forEach((value, axis) => expect(value).toBeCloseTo(piece.position[axis] + displacement[axis], 12));
+    } else if (geometry.surface.radialProfile) {
+      resolveContactEvent(contact, plan.kit, plan.hihatMotion)!.position.forEach((value, axis) => expect(value).toBeCloseTo(hit.target[axis], 12));
+      expect(contact.localNormal?.every(Number.isFinite)).toBe(true);
     } else {
       const scale = piece.radius / geometry.referenceRadius;
       const center = piece.position.map((value, axis) => value + geometry.surface.center[axis] * scale);
-      const delta = hit.target.map((value, axis) => value - center[axis]);
+      const delta = hit.target.map((value, axis) => value - center[axis] - displacement[axis]);
       expect(Math.abs(delta.reduce((dot, value, axis) => dot + value * geometry.surface.normal[axis], 0))).toBeLessThan(1e-9);
       expect(Math.hypot(...delta)).toBeLessThanOrEqual(geometry.surface.radius * scale * .95 + 1e-9);
       // This demo uses center heads, bow hats and edgeward crash contacts.
-      const fraction = hit.instrument === 'crash' ? .88 : ['hihat', 'openHat'].includes(hit.instrument) ? .62 : 0;
+      const fraction = ({ bell: .12, inner: .38, outer: .62, edge: .86, rimshotEdge: .86, sideStick: .86, crash: .88, china: .88, splash: .88 } as Record<string, number>)[hit.articulation ?? ""] ?? (['hihat', 'openHat'].includes(hit.instrument) ? .62 : 0);
       expect(Math.hypot(...delta)).toBeCloseTo(geometry.surface.radius * scale * fraction, 10);
     }
   }
@@ -110,12 +147,12 @@ function prepareNative(bytes: Uint8Array, selection: Selection, fitted = false) 
     finally { repeated.free(); }
   }
   expect(plan.sourceEvents).toEqual(original.sourceEvents);
-  expect(plan.hits.filter(hit => hit.limb === null)).toHaveLength(0);
+  if (fitted) expect(plan.hits.filter(hit => hit.limb === null)).toHaveLength(0);
   return { rig, performance, plan, close() { performance.free(); rig.dispose(); } };
 }
 
-it.each([false, true])('the browser demo keeps right-hand hats and left-hand backbeats with the actual native rig (fitted=%s)', fitted => {
-  const session = prepareNative(makeDemo(), { tracks: [1], channel: 9 }, fitted);
+it('the automatically fitted browser demo keeps right-hand hats and left-hand backbeats with the actual native rig', () => {
+  const session = prepareNative(makeDemo(), { tracks: [1], channel: 9 });
   try {
     const { rig, performance, plan } = session;
     const hats = plan.hits.filter(hit => hit.instrument === 'hihat' || hit.instrument === 'openHat');
@@ -138,7 +175,9 @@ it.each([false, true])('the browser demo keeps right-hand hats and left-hand bac
       expect(Math.hypot(...sample.actual.map((value, axis) => value - target[axis]))).toBeLessThan(1e-6);
     }
 
-    const snare = plan.kit.find(piece => piece.id === 'snare')!.position;
+    // A tilted measured head's contact center is not its layout anchor.
+    // Recovery should hold above the physical center hit checked above.
+    const snare = backbeats[0].target;
     const ready = [snare[0], snare[1] + .035, snare[2]];
     const times = [.95, 1, 1.15, 2, 5];
     const poses = times.map(time => Array.from(performance.evaluate_rig_at(time)));
@@ -150,6 +189,18 @@ it.each([false, true])('the browser demo keeps right-hand hats and left-hand bac
     }
   } finally { session.close(); }
 },60_000); // Includes two complete WASM equipment/joint plans, not just pose evaluation.
+
+it('an unfitted kit preserves source events and reports contacts outside the native rig capability', () => {
+  const session = prepareNative(makeDemo(), { tracks: [1], channel: 9 }, false);
+  try {
+    const unavailable = session.plan.hits.filter(hit => hit.limb === null);
+    expect(unavailable.length).toBeGreaterThan(0);
+    expect(session.plan.diagnostics.some(item => item.code === 'RIG_UNREACHABLE_HIT')).toBe(true);
+    for (const hit of unavailable) {
+      expect(session.plan.contactEvents!.filter(event => event.hitId === hit.id).every(event => event.status === 'unassigned')).toBe(true);
+    }
+  } finally { session.close(); }
+}, 60_000);
 
 it('the browser interpretation study preserves groove roles without disabling two-hand solo rolls', () => {
   const session = prepareNative(makeInterpretationDemo(), {
@@ -166,17 +217,22 @@ it('the browser interpretation study preserves groove roles without disabling tw
     expect(soloRoll).toHaveLength(24);
     expect(new Set(soloRoll.map(hit => hit.limb))).toEqual(new Set([0, 1]));
   } finally { session.close(); }
-});
+}, 60_000);
 
-it('an explicit source-event hand edit overrides the default groove role', () => {
-  const bytes = makeDemo(3), selection = { tracks: [1], channel: 9 };
-  const source = new Performance(bytes, JSON.stringify(selection));
-  const sourcePlan = JSON.parse(source.plan_json()) as PerformancePlan;
-  source.free();
-  const hat = sourcePlan.hits.find(hit => hit.instrument === 'hihat')!;
-  const session = prepareNative(bytes, { ...selection, handOverrides: { [hat.sourceEventId!]: 0 } });
+it('an explicit source-event hand edit overrides an automatic solo-roll hand choice', () => {
+  const bytes = makeInterpretationDemo(), selection: Selection = {
+    tracks: [1], channel: 0, mappingProfile: 'logicDkdGm', countInNote75: true,
+    hihatPolicy: 'shortOpenClose', hihatOpenness: .2,
+  };
+  const baseline = prepareNative(bytes, selection);
+  // This unaccompanied solo roll permits either hand. The measured kit's
+  // opposite-hand hi-hat is not guaranteed reachable merely because RH is.
+  const roll = baseline.plan.hits.find(hit => hit.instrument === 'snare' && hit.tick >= 11 * 480 && hit.tick < 17 * 480 && hit.limb === 1)!;
+  expect(roll).toBeDefined();
+  baseline.close();
+  const session = prepareNative(bytes, { ...selection, handOverrides: { [roll.sourceEventId!]: 0 } });
   try {
-    expect(session.plan.hits.find(hit => hit.sourceEventId === hat.sourceEventId)?.limb).toBe(0);
-    expect(session.plan.handOverrides).toEqual({ [hat.sourceEventId!]: 0 });
+    expect(session.plan.hits.find(hit => hit.sourceEventId === roll.sourceEventId)?.limb).toBe(0);
+    expect(session.plan.handOverrides).toEqual({ [roll.sourceEventId!]: 0 });
   } finally { session.close(); }
-});
+}, 60_000);

@@ -60,7 +60,7 @@ fn collision_cost(torso: [f64; 2], pair: clearance::PairClearance) -> f64 {
         .map(|&c| deficit(c, crate::posture::MARGIN) * 10_000.0)
         .sum::<f64>()
         + if depths.iter().any(|&c| c < crate::posture::MARGIN) {
-            1.0
+            4.0
         } else {
             0.0
         }
@@ -92,6 +92,19 @@ fn pair(
         input.intended_stick_contact,
     )
 }
+fn posture_cost(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    hand: &crate::rig::HandSolution,
+) -> f64 {
+    crate::posture::comfort_cost(profile, limb, target, hand)
+        + if crate::posture::anatomical(profile, limb, target, hand) {
+            0.0
+        } else {
+            1.0
+        }
+}
 fn pose_cost(input: &HandCoordinationInput, a: [f64; 2]) -> f64 {
     let hands = std::array::from_fn::<_, 2, _>(|limb| {
         input
@@ -112,7 +125,8 @@ fn pose_cost(input: &HandCoordinationInput, a: [f64; 2]) -> f64 {
                 .min(equipment_clearance(input, 1, &right)),
         ],
         pair(input, &left, &right),
-    )
+    ) + posture_cost(&input.profile, 0, input.tips[0], &left)
+        + posture_cost(&input.profile, 1, input.tips[1], &right)
 }
 /// Bounded joint wrist/elbow witness cost for torso and stroke-envelope planning.
 /// Candidates are shared with static calibration, never tied to an avatar name.
@@ -134,10 +148,11 @@ pub(crate) fn unconstrained_cost(profile: &RigProfile, tips: [Vec3; 2], pitches:
     let mut best: f64 = 1e9;
     for (left, lc) in &hands[0] {
         for (right, rc) in &hands[1] {
-            best = best.min(collision_cost(
-                [*lc, *rc],
-                clearance::pair_clearance(profile, left, right),
-            ));
+            best = best.min(
+                collision_cost([*lc, *rc], clearance::pair_clearance(profile, left, right))
+                    + posture_cost(profile, 0, tips[0], left)
+                    + posture_cost(profile, 1, tips[1], right),
+            );
             if best == 0.0 {
                 return best;
             }
@@ -160,14 +175,15 @@ fn node_costs(input: &HandCoordinationInput) -> Vec<f64> {
                     .map(|h| {
                         let c = clearance::hand_clearance(&input.profile, limb, &h)
                             .min(equipment_clearance(input, limb, &h));
-                        (h, c)
+                        let p = posture_cost(&input.profile, limb, input.tips[limb], &h);
+                        (h, c, p)
                     })
             })
             .collect()
     });
     (0..STATES)
         .map(|state| {
-            let (Some((left, lc)), Some((right, rc))) =
+            let (Some((left, lc, lp)), Some((right, rc, rp))) =
                 (hands[0][state / AXIS_STATES], hands[1][state % AXIS_STATES])
             else {
                 return 1e9;
@@ -177,6 +193,8 @@ fn node_costs(input: &HandCoordinationInput) -> Vec<f64> {
             }
             let a = angles(state);
             collision_cost([lc, rc], pair(input, &left, &right))
+                + lp
+                + rp
                 + 0.002 * (a[0] * a[0] + a[1] * a[1])
         })
         .collect()
@@ -193,6 +211,39 @@ fn graph_path(
             .floor() as usize;
         let steps = steps.min(AXIS_STATES - 1);
         let mut next = vec![f64::INFINITY; STATES];
+        if edges[i].is_empty() {
+            // The unchanged graph transition is separable in left/right swivel.
+            // Two bounded one-dimensional minima replace the square neighbor
+            // product. Keep predecessor indices and stable ascending tie order.
+            let mut rows = vec![(f64::INFINITY, 0usize); STATES];
+            let rate_unit = ANGLE_STEP.powi(2) * 0.01;
+            for pl in 0..AXIS_STATES {
+                for r in 0..AXIS_STATES {
+                    let slot = pl * AXIS_STATES + r;
+                    for pr in r.saturating_sub(steps)..=(r + steps).min(AXIS_STATES - 1) {
+                        let before = pl * AXIS_STATES + pr;
+                        let value = previous[before] + (r as f64 - pr as f64).powi(2) * rate_unit;
+                        if value < rows[slot].0 {
+                            rows[slot] = (value, before);
+                        }
+                    }
+                }
+            }
+            for state in 0..STATES {
+                let (l, r) = (state / AXIS_STATES, state % AXIS_STATES);
+                for pl in l.saturating_sub(steps)..=(l + steps).min(AXIS_STATES - 1) {
+                    let (row, before) = rows[pl * AXIS_STATES + r];
+                    let value = row + (l as f64 - pl as f64).powi(2) * rate_unit;
+                    if value < next[state] {
+                        next[state] = value;
+                        parents[i][state] = before as u16;
+                    }
+                }
+                next[state] += costs[i][state];
+            }
+            previous = next;
+            continue;
+        }
         for state in 0..STATES {
             let (l, r) = (state / AXIS_STATES, state % AXIS_STATES);
             for pl in l.saturating_sub(steps)..=(l + steps).min(AXIS_STATES - 1) {
@@ -436,6 +487,42 @@ mod tests {
         // Greedy neutral at the middle knot cannot reach the final safe state
         // under the unchanged 2 rad/s sample bound.
         assert!((angles(neutral)[0] - angles(future)[0]).abs() > MAX_SAMPLE_RATE * STEP);
+    }
+    #[test]
+    fn separable_transition_preserves_bounded_graph_optimum() {
+        let p = profile();
+        let inputs: Vec<_> = [0.0, 0.037, 0.13, 0.21]
+            .into_iter()
+            .map(|time| HandCoordinationInput {
+                time,
+                profile: p.clone(),
+                tips: [[-0.25, 1.0, 0.5], [0.25, 1.0, 0.5]],
+                pitches: [0.0; 2],
+                equipment: None,
+                intended_stick_contact: false,
+                intended_pieces: [None, None],
+            })
+            .collect();
+        let costs: Vec<Vec<_>> = (0..inputs.len())
+            .map(|k| {
+                (0..STATES)
+                    .map(|s| {
+                        let a = angles(s);
+                        (a[0] - k as f64 * 0.07).powi(2)
+                            + (a[1] + k as f64 * 0.09).powi(2)
+                            + ((s * 31 + k * 7) % 97) as f64 * 0.00001
+                    })
+                    .collect()
+            })
+            .collect();
+        let fast = vec![HashMap::new(); inputs.len()];
+        // A never-addressed entry forces the original general transition path
+        // while leaving every transition cost exactly zero.
+        let general = vec![HashMap::from([(usize::MAX, 0.0)]); inputs.len()];
+        assert_eq!(
+            graph_path(&inputs, &costs, &fast),
+            graph_path(&inputs, &costs, &general)
+        );
     }
     #[test]
     fn first_frame_searches_safe_swivel_without_a_fake_previous_zero() {

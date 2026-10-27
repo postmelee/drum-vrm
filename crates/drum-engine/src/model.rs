@@ -102,48 +102,8 @@ impl<'de> Deserialize<'de> for KitPiece {
 }
 
 pub fn default_kit() -> Vec<KitPiece> {
-    use Instrument::*;
-    [
-        ("kick", Kick, "Kick", [0.20, 0.08, 0.62], 0.254),
-        ("snare", Snare, "Snare", [-0.18, 0.79, 0.36], 0.1778),
-        ("hihat", Hihat, "Hi-hat", [-0.52, 0.96, 0.35], 0.1778),
-        (
-            "openHat",
-            OpenHat,
-            "Open hi-hat",
-            [-0.52, 0.96, 0.35],
-            0.1778,
-        ),
-        (
-            "pedalHat",
-            PedalHat,
-            "Hi-hat pedal",
-            [-0.22, 0.08, 0.55],
-            0.12,
-        ),
-        ("tomHigh", TomHigh, "High tom", [-0.26, 1.00, 0.72], 0.1524),
-        ("tomMid", TomMid, "Mid tom", [0.18, 0.98, 0.74], 0.1651),
-        ("tomLow", TomLow, "Low tom", [0.62, 0.80, 0.42], 0.2032),
-        ("crash", Crash, "Crash left", [-0.66, 1.26, 0.68], 0.2032),
-        (
-            "crashRight",
-            Crash,
-            "Crash right",
-            [0.58, 1.20, 0.64],
-            0.2286,
-        ),
-        ("ride", Ride, "Ride", [0.70, 0.99, 0.39], 0.254),
-    ]
-    .into_iter()
-    .map(|(id, instrument, label, position, radius)| KitPiece {
-        id: id.into(),
-        instrument,
-        label: label.to_string(),
-        position,
-        radius,
-        geometry: None,
-    })
-    .collect()
+    serde_json::from_str(include_str!("../../../shared/default-kit.json"))
+        .expect("valid shared default kit")
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -216,6 +176,8 @@ pub struct MidiInfo {
     pub suggested_tracks: Vec<usize>,
     pub format: u8,
     pub ppq: u16,
+    pub suggested_channel: Option<u8>,
+    pub mapping_analysis: crate::interpretation::MappingAnalysis,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -282,6 +244,11 @@ pub struct PerformancePlan {
     pub tail: f64,
     pub duration: f64,
     pub hits: Vec<Hit>,
+    /// Derived after assignment. Imported copies never override validated hits or kit geometry.
+    #[serde(default)]
+    pub contact_events: Vec<crate::contact::ContactEvent>,
+    #[serde(default)]
+    pub hihat_motion: crate::hihat_motion::HihatMotionTrack,
     pub diagnostics: Vec<Diagnostic>,
     pub kit: Vec<KitPiece>,
     pub tempo_count: usize,

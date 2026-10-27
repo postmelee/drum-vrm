@@ -26,6 +26,18 @@ export function diagnosticTitle(code: string): string {
  * engine exposes structured diagnostic arguments at this boundary. */
 export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = [
   [
+    "{0} impact pitches have no safe posture/equipment witness within the bounded pitch-rate schedule. Original contact times are preserved; inspect the marked interval.",
+    "타격 피치 {0}개는 제한된 피치 변화율 안에서 안전한 자세·장비 접촉 후보를 유지하지 못했습니다. 원래 타격 시각은 유지합니다. 표시된 구간을 확인하세요."
+  ],
+  [
+    "The selected hi-hat surface has no movable upper cymbal. Openness changes the pedal state; the displayed strike surface remains fixed.",
+    "선택한 하이햇 표면에는 움직일 수 있는 상단 심벌이 없습니다. 개방량은 페달 상태에 반영하며 화면의 타격 표면은 고정합니다."
+  ],
+  [
+    "{0} hand-impact poses exceed the common posture limits. Contact timing is preserved; adjust the layout and inspect the arms.",
+    "손 타격 자세 {0}개가 공통 자세 한계를 벗어납니다. 원래 타격 시각은 유지합니다. 배치를 조정하고 팔을 확인하세요."
+  ],
+  [
     "MIDI PPQ must be greater than zero.",
     "MIDI PPQ 값은 0보다 커야 합니다."
   ],
@@ -134,8 +146,8 @@ export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = 
     "tick {0}의 템포 충돌: 트랙 {1} 이벤트 {2}의 {3} μs/박을 선택했습니다 (트랙 1 우선, 동일 트랙 마지막 이벤트)."
   ],
   [
-    "{0}s, MIDI note {1}: {2}. Audio and target highlighting retain the original timing.",
-    "{0}초 MIDI 음표 {1}: {2}. 원래 시각의 소리와 타점 강조는 유지합니다."
+    "{0}s, MIDI note {1}: {2}. Source events and audio retain their timing; unassigned strikes have no contact feedback.",
+    "{0}초 MIDI 음표 {1}: {2}. 원본 이벤트와 소리의 시각은 유지하며 미배정 타격의 접촉 효과는 표시하지 않습니다."
   ],
   [
     "{0}s, count-in {1}: {2}. The original cue and actual strikes are preserved.",
@@ -481,15 +493,15 @@ export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = 
 
 const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const templates = ENGINE_MESSAGE_TEMPLATES.map(([en, ko]) => ({
-  en, ko, pattern: new RegExp('^' + ko.split(/\{\d+\}/).map(escape).join('([\\s\\S]*?)') + '$'),
+  en, ko, patterns: [ko, en].map(source => new RegExp('^' + source.split(/\{\d+\}/).map(escape).join('([\\s\\S]*?)') + '$')),
 }));
 
 /** Convert only known engine messages to canonical English. Unknown vendor
  * details are preserved verbatim; original plans remain serialization-stable. */
 export function engineMessage(source: string): string {
   if (source.startsWith('Error: ')) return engineMessage(source.slice(7));
-  for (const { en, ko, pattern } of templates) {
-    const values = pattern.exec(source);
+  for (const { en, ko, patterns } of templates) {
+    const values = patterns.map(pattern => pattern.exec(source)).find(Boolean);
     if (values) return msg(en, ko, ...values.slice(1).map(value => engineMessage(value)));
   }
   return source;

@@ -5,8 +5,8 @@ import { createPieceHardware, pieceAnchors } from './kit-hardware';
 
 export type KitPresetId = 'studio' | 'vintage' | 'electronic' | 'library' | 'batoski' | 'smoj';
 export type PieceModelId = 'standard' | 'deep' | 'compact';
-export interface PieceVisualOptions { finish?: string; model?: PieceModelId; scale?: number; rotation?: number; }
-export interface PieceVisualSettings { finish: string; model: PieceModelId; scale: number; rotation: number; finishOverride?: boolean; source?: 'procedural' | 'library' | 'imported'; customModel?: string; approximateCalibration?: boolean; }
+export interface PieceVisualOptions { finish?: string; model?: PieceModelId; scale?: number; rotation?: number; tilt?: number; }
+export interface PieceVisualSettings { finish: string; model: PieceModelId; scale: number; rotation: number; tilt: number; finishOverride?: boolean; source?: 'procedural' | 'library' | 'imported'; customModel?: string; approximateCalibration?: boolean; }
 export const KIT_PRESETS = [
   { id: 'studio', label: 'Studio Acoustic' }, { id: 'vintage', label: 'Vintage Maple' },
   { id: 'electronic', label: 'Electronic' }, { id: 'library', label: 'Innerscene Acoustic · CC0' },
@@ -29,7 +29,10 @@ export function resolvePieceVisual(preset: KitPresetId, id: PieceId, override: P
   if (override.model !== undefined && !['standard', 'deep', 'compact'].includes(override.model)) throw new Error(msg("Unsupported drum shape.", "지원하지 않는 드럼 형태입니다."));
   const rotation = override.rotation ?? 0;
   if (!Number.isFinite(rotation) || rotation < -360 || rotation > 360) throw new Error(msg("Rotation must be between -360° and 360°.", "회전은 -360°–360° 범위여야 합니다."));
-  return { ...defaults, ...override, scale, rotation };
+  const instrument = canonicalPieceId(id);
+  const tilt = override.tilt ?? (instrument === 'crash' || instrument === 'crashRight' ? 12 : instrument === 'ride' ? 10 : instrument === 'tomHigh' || instrument === 'tomMid' ? 8 : instrument === 'snare' ? 4 : 0);
+  if (!Number.isFinite(tilt) || tilt < -30 || tilt > 30) throw new Error(msg("Tilt must be between -30° and 30°.", "기울기는 -30°–30° 범위여야 합니다."));
+  return { ...defaults, ...override, scale, rotation, tilt };
 }
 
 export function disposeModel(root: THREE.Object3D): void {
@@ -97,9 +100,11 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
   if (fitScale !== 1) piece = { ...piece, radius: piece.geometry!.referenceRadius };
   const root = new THREE.Group(); root.name = piece.id; root.userData.pieceId = piece.id;
   const finish = (model: PieceModel): PieceModel => {
-    if (visual.rotation) {
-      const pivot = new THREE.Group(); pivot.position.set(...pieceAnchors(piece).mount);
-      pivot.rotation.y = THREE.MathUtils.degToRad(visual.rotation);
+    if (visual.rotation || visual.tilt) {
+      // Tilt around the canonical contact so the measured playing point remains
+      // fixed. Bodies and their semantic mounts share this transformed frame.
+      const pivot = new THREE.Group(); pivot.position.set(...(pieceInstrument(piece) === 'kick' ? pieceAnchors(piece).mount : piece.position));
+      pivot.rotation.set(-THREE.MathUtils.degToRad(visual.tilt), THREE.MathUtils.degToRad(visual.rotation), 0);
       const body = new THREE.Group(); body.position.copy(pivot.position).multiplyScalar(-1);
       [...root.children].filter(child => child.userData.hitResponseRole !== 'marker' && child.userData.hitResponseRole !== 'hardware').forEach(child => body.add(child));
       pivot.add(body); root.add(pivot);
@@ -145,6 +150,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
   if (['hihat', 'crash', 'ride'].includes(instrument)) {
     const mountZ = pieceAnchors(piece).mount[2];
     const cymbal = new THREE.Group(); cymbal.userData.hitResponseRole = 'surface'; root.add(cymbal);
+    if (instrument === 'hihat' && !electronic) cymbal.userData.mechanismRole = 'hihatTop';
     if (electronic) {
       cymbal.position.set(x, y - .013, mountZ);
       const pad = cylinder(cymbal, radius, .026, shell); pad.name = 'contactSurface';
@@ -157,7 +163,16 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
       shell.metalness = .78; shell.side = THREE.DoubleSide;
       const profile = [new THREE.Vector2(.008, -.004), new THREE.Vector2(radius * .12, 0), new THREE.Vector2(radius * .24, -.022), new THREE.Vector2(radius * .8, -.038), new THREE.Vector2(radius, -.044)];
       const bow = mesh(cymbal, new THREE.LatheGeometry(profile, 80), shell); bow.name = 'contactSurface';
-      if (instrument === 'hihat') mesh(cymbal, new THREE.LatheGeometry(profile, 64), shell).position.y = -.026;
+      bow.userData.radialProfile = profile.map(point => [point.x, point.y]);
+      bow.userData.bellRadius = radius * .24;
+      if (instrument === 'hihat') {
+        const lower = new THREE.Group(); lower.name = 'HiHatBottom'; lower.userData.hitResponseRole = 'surface'; lower.userData.mechanismRole = 'hihatBottom';
+        lower.position.copy(cymbal.position); root.add(lower);
+        const bottom = mesh(lower, new THREE.LatheGeometry(profile, 64), shell);
+        // Bells face away; only the two broad rims face one another. Keep a
+        // 2 mm resting rim gap, independent of the top cymbal's opening travel.
+        bottom.rotation.x = Math.PI; bottom.position.y = -.090;
+      }
       const etched = mat(0x88713f, .68, .46);
       for (const fraction of [.36, .52, .68, .84]) {
         const line = mesh(cymbal, new THREE.TorusGeometry(radius * fraction, .0006, 4, 64), etched);

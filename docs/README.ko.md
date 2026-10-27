@@ -28,6 +28,7 @@
 
 | 범위 | 근거 |
 | --- | --- |
+| 상세 탐 홀더·심벌 스탠드·여러 시점의 배치 | [하드웨어 검사](verification/detailed-hardware.md) |
 | 자동 맞춤·측정 체형 간격·시간 기반 양팔 협응 | [체형 간격 검증](verification/body-clearance-measurements.md) |
 | 공개 브라우저 배포 | [Pages 배포 근거](verification/pages-browser-performance.md) |
 | 공개 MIDI→영상 흐름 | [v0.2 스튜디오 검사](verification/studio-0.2.md) |

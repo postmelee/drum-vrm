@@ -79,32 +79,8 @@ impl FitCache {
 fn hand_piece(piece: &KitPiece) -> bool {
     !matches!(piece.instrument, Instrument::Kick | Instrument::PedalHat)
 }
-fn fit_yaws(profile: &RigProfile) -> &'static [f64] {
-    // Same range as phrase-facing. One yaw must support all three probes;
-    // target-to-target transitions remain a separate temporal constraint.
-    if profile.torso_pivot.is_some() {
-        &[0.0, -0.12, 0.12, -0.24, 0.24]
-    } else {
-        &[0.0]
-    }
-}
 fn hand_posture_fits(profile: &RigProfile, limb: usize, target: Vec3) -> bool {
-    if profile.hand_frames.is_none() {
-        return profile.reachable(limb, target);
-    }
-    fit_yaws(profile).iter().any(|&yaw| {
-        let turned = profile.turned(yaw);
-        [(0.0, 0.0), (0.055, -0.2), (0.11, -0.42)]
-            .iter()
-            .all(|&(lift, pitch)| {
-                let raised = [target[0], target[1] + lift, target[2]];
-                crate::equipment_motion::PITCH_OFFSETS.iter().any(|delta| {
-                    crate::posture::hand_candidates(&turned, limb, raised, pitch + delta)
-                        .next()
-                        .is_some()
-                })
-            })
-    })
+    crate::contact_feasibility::hand_probe_fits(profile, limb, target, None, None)
 }
 fn preferred_hands(piece: &KitPiece) -> &'static [usize] {
     match piece.instrument {
@@ -117,46 +93,38 @@ fn preferred_hands(piece: &KitPiece) -> &'static [usize] {
         _ => &[],
     }
 }
-fn default_target(profile: &RigProfile, piece: &KitPiece) -> Vec3 {
+fn hands_satisfied(piece: &KitPiece, mut check: impl FnMut(usize) -> bool) -> bool {
+    let hands = preferred_hands(piece);
+    if piece.instrument == Instrument::Snare {
+        hands.iter().all(|&limb| check(limb))
+    } else {
+        hands.is_empty() || hands.iter().any(|&limb| check(limb))
+    }
+}
+fn piece_targets(profile: &RigProfile, piece: &KitPiece) -> Vec<Vec3> {
     let observer =
         std::array::from_fn(|axis| (profile.roots[0][axis] + profile.roots[1][axis]) * 0.5);
-    let articulation = match piece.instrument {
-        Instrument::Crash => "crash",
-        Instrument::Ride => "outer",
-        _ => "center",
-    };
-    crate::contact::target(piece, articulation, observer)
+    crate::contact::articulations_for_fit(piece)
+        .iter()
+        .map(|&articulation| crate::contact::target(piece, articulation, observer))
+        .collect()
 }
-/// Fit all designated hands against the complete shaft and rigid equipment in
-/// impact, preparation and recovery probes. Pitch candidates are common numeric
-/// alternatives; no source hit time or bone dimension changes.
+/// Each canonical articulation must have a feasible source-neutral contact and
+/// preparation route. The runtime consumes the same numeric probe contract.
 fn equipment_posture_fits(
     profile: &RigProfile,
     piece: &KitPiece,
     ctx: &crate::equipment_motion::EquipmentContext,
 ) -> bool {
-    let target = default_target(profile, piece);
-    preferred_hands(piece).iter().all(|&limb| {
-        fit_yaws(profile).iter().any(|&yaw| {
-            let turned = profile.turned(yaw);
-            [(0.0, 0.0), (0.055, -0.2), (0.11, -0.42)]
-                .iter()
-                .all(|&(lift, pitch)| {
-                    let raised = [target[0], target[1] + lift, target[2]];
-                    crate::equipment_motion::PITCH_OFFSETS.iter().any(|&delta| {
-                        crate::posture::hand_candidates(&turned, limb, raised, pitch + delta).any(
-                            |hand| {
-                                crate::equipment_motion::hand_clearance(
-                                    &turned,
-                                    limb,
-                                    &hand,
-                                    ctx,
-                                    Some(piece.id.as_str()),
-                                ) >= crate::posture::MARGIN
-                            },
-                        )
-                    })
-                })
+    piece_targets(profile, piece).iter().all(|&target| {
+        hands_satisfied(piece, |limb| {
+            crate::contact_feasibility::hand_probe_fits(
+                profile,
+                limb,
+                target,
+                Some(ctx),
+                Some(piece.id.as_str()),
+            )
         })
     })
 }
@@ -199,7 +167,8 @@ fn snare_reference(profile: &RigProfile) -> Vec3 {
     [
         (profile.roots[0][0] + profile.roots[1][0]) * 0.5 - 0.08 * (upper + lower),
         (profile.roots[0][1] + profile.roots[1][1]) * 0.5 - upper * 0.8 - 0.08,
-        (shoulder_forward + lower * 0.8 + tool * 0.75).max(body_forward + lower * 0.5 + tool * 0.6),
+        (shoulder_forward + lower * 0.95 + tool * 0.95)
+            .max(body_forward + lower * 0.5 + tool * 0.6),
     ]
 }
 fn snare_ready_fits_cached(profile: &RigProfile, piece: &KitPiece, cache: &FitCache) -> bool {
@@ -218,21 +187,25 @@ fn snare_ready_fits(profile: &RigProfile, piece: &KitPiece) -> bool {
 }
 fn piece_posture_fits(profile: &RigProfile, piece: &KitPiece, cache: &FitCache) -> bool {
     snare_ready_fits_cached(profile, piece, cache)
-        && preferred_hands(piece)
+        && piece_targets(profile, piece)
             .iter()
-            .all(|&limb| cache.hand(profile, limb, default_target(profile, piece)))
+            .all(|&target| hands_satisfied(piece, |limb| cache.hand(profile, limb, target)))
 }
 fn missed(profile: &RigProfile, kit: &[KitPiece], posture: bool) -> Vec<String> {
     let cache = FitCache::default();
     kit.iter()
         .filter(|piece| {
             (posture && !snare_ready_fits_cached(profile, piece, &cache))
-                || preferred_hands(piece).iter().any(|&limb| {
-                    if posture {
-                        !hand_posture_fits(profile, limb, default_target(profile, piece))
-                    } else {
-                        !profile.reachable(limb, default_target(profile, piece))
-                    }
+                || piece_targets(profile, piece).iter().any(|&target| {
+                    !hands_satisfied(piece, |limb| {
+                        if posture {
+                            hand_posture_fits(profile, limb, target)
+                        } else {
+                            crate::equipment_motion::PITCH_OFFSETS
+                                .iter()
+                                .any(|&pitch| profile.reachable_at_pitch(limb, target, pitch))
+                        }
+                    })
                 })
         })
         .map(|piece| piece.id.clone())
@@ -414,42 +387,185 @@ fn repair_posture(
     // usable corridor. Both orders share exactly the same finite work budget.
     repair_posture_order(profile, result, cache, true)
 }
+/// Keep the direct hi-hat assembly near the seated left foot while leaving room
+/// for the snare. Candidates preserve real leg/foot dimensions and test the full
+/// footboard pitch range, rather than detaching the cymbal from a fixed pedal.
+fn place_hihat_pedal(profile: &RigProfile, result: &mut KitFitProposal) {
+    let Some(hat) = result
+        .kit
+        .iter()
+        .find(|p| p.instrument == Instrument::Hihat)
+    else {
+        return;
+    };
+    let Some(snare) = result
+        .kit
+        .iter()
+        .find(|p| p.instrument == Instrument::Snare)
+    else {
+        return;
+    };
+    let Some(index) = result
+        .kit
+        .iter()
+        .position(|p| p.instrument == Instrument::PedalHat)
+    else {
+        return;
+    };
+    let original = result.kit[index].position;
+    let reference = snare_reference(profile);
+    let desired = [
+        reference[0] - snare.radius - hat.radius - 0.035,
+        original[1],
+        reference[2] + 0.05 - crate::equipment::HIHAT_PEDAL_TO_AXIS,
+    ];
+    let candidates = [
+        desired,
+        [desired[0], original[1], original[2]],
+        [original[0], original[1], desired[2]],
+        original,
+    ];
+    for position in candidates {
+        if (position[0] - original[0]).abs() > 0.25 || (position[2] - original[2]).abs() > 0.25 {
+            continue;
+        }
+        let mut piece = result.kit[index].clone();
+        piece.position = position;
+        let feasible = [0.0, -0.09, -0.18].iter().all(|&pitch| {
+            let rotation = crate::rig::pitch_rotation(profile.contact_rotations[2], pitch);
+            let ankle = crate::motion::sub(
+                crate::equipment::pedal_contact(&piece, pitch),
+                profile.offset(2, rotation),
+            );
+            let d = crate::motion::distance(profile.roots[2], ankle);
+            let [a, b] = profile.lengths[2];
+            let inner = ((a * a + b * b - d * d) / (2.0 * a * b))
+                .clamp(-1.0, 1.0)
+                .acos();
+            d >= (a - b).abs() + 1e-5
+                && d <= a + b - 1e-4
+                && (55_f64.to_radians()..=155_f64.to_radians()).contains(&inner)
+        });
+        if feasible {
+            let shift = std::array::from_fn(|axis| position[axis] - original[axis]);
+            if crate::motion::distance(shift, [0.0; 3]) > 1e-9 {
+                result.piece_adjustments.push(PieceAdjustment {
+                    piece_id: piece.id.clone(),
+                    translation: shift,
+                });
+                result.kit[index] = piece;
+            }
+            return;
+        }
+    }
+}
 fn repair_posture_order(
     profile: &RigProfile,
     mut result: KitFitProposal,
     cache: &FitCache,
     rack_first: bool,
 ) -> KitFitProposal {
+    place_hihat_pedal(profile, &mut result);
+    // A direct hi-hat is one mechanical assembly with its foot contact.
+    // Its surface may change height, but fitting cannot detach the mast from
+    // its pedal merely to make the right hand reachable.
+    if let Some(hat) = result
+        .kit
+        .iter()
+        .find(|p| p.instrument == Instrument::Hihat)
+    {
+        let anchored = crate::equipment::anchored_hihat_position(hat, &result.kit);
+        for piece in result
+            .kit
+            .iter_mut()
+            .filter(|p| matches!(p.instrument, Instrument::Hihat | Instrument::OpenHat))
+        {
+            let shift = std::array::from_fn(|axis| anchored[axis] - piece.position[axis]);
+            if crate::motion::distance(shift, [0.0; 3]) > 1e-9 {
+                result.piece_adjustments.push(PieceAdjustment {
+                    piece_id: piece.id.clone(),
+                    translation: shift,
+                });
+                piece.position = anchored;
+            }
+        }
+    }
+    // The direct hi-hat's X/Z and foot mechanics are already fixed for this
+    // branch. Filter its height witnesses once, not for every snare candidate.
+    let hat_candidates: Vec<KitPiece> = result
+        .kit
+        .iter()
+        .find(|p| p.instrument == Instrument::Hihat)
+        .map_or(Vec::new(), |hat| {
+            (0..=10)
+                .filter_map(|i| {
+                    if !cache.candidate() {
+                        return None;
+                    }
+                    let step = if i % 2 == 0 {
+                        i as f64 / 2.0
+                    } else {
+                        -(i as f64 + 1.0) / 2.0
+                    };
+                    let mut hat = hat.clone();
+                    hat.position[1] += step * 0.05;
+                    if !piece_posture_fits(profile, &hat, cache) {
+                        return None;
+                    }
+                    let mut kit: Vec<_> = result
+                        .kit
+                        .iter()
+                        .filter(|p| !hand_piece(p))
+                        .cloned()
+                        .collect();
+                    kit.push(hat.clone());
+                    let ctx = crate::equipment_motion::EquipmentContext {
+                        geometry: crate::equipment::kit_geometry(&kit),
+                        kit,
+                    };
+                    (ctx.geometry.unresolved_piece_ids.is_empty()
+                        && equipment_posture_fits(profile, &hat, &ctx))
+                    .then_some(hat)
+                })
+                .collect()
+        });
+    if result.kit.iter().any(|p| p.instrument == Instrument::Hihat) && hat_candidates.is_empty() {
+        result.complete = false;
+        return result;
+    }
     // Solve the supported ready surface first. A later target repair must keep
     // already placed bodies clear instead of fixing one hand by intersecting a tom.
     let mut order: Vec<usize> = (0..result.kit.len())
         .filter(|&i| hand_piece(&result.kit[i]))
         .collect();
+    // Place the right-hand-only ride corridor before instruments that can use
+    // either hand. A later crash must not consume the ride's only approach.
     order.sort_by_key(|&i| match result.kit[i].instrument {
         Instrument::Snare => 0,
         Instrument::Hihat | Instrument::OpenHat => 1,
+        Instrument::Ride => 2,
         Instrument::TomLow => {
             if rack_first {
-                4
+                5
             } else {
-                2
+                3
             }
         }
         Instrument::TomHigh => {
             if rack_first {
-                2
-            } else {
-                3
-            }
-        }
-        Instrument::TomMid => {
-            if rack_first {
                 3
             } else {
                 4
             }
         }
-        _ => 5,
+        Instrument::TomMid => {
+            if rack_first {
+                4
+            } else {
+                5
+            }
+        }
+        _ => 6,
     });
     let mut locked: Vec<usize> = (0..result.kit.len())
         .filter(|&i| !hand_piece(&result.kit[i]))
@@ -488,6 +604,46 @@ fn repair_posture_order(
             };
             ctx.geometry.unresolved_piece_ids.is_empty()
                 && equipment_posture_fits(profile, &candidate[index], &ctx)
+                && fixed
+                    .iter()
+                    .filter(|p| p.id != candidate[index].id)
+                    .all(|p| equipment_posture_fits(profile, p, &ctx))
+                && crate::posture::required_pairs_with_equipment(profile, &fixed, Some(&ctx))
+                    .is_empty()
+                && if candidate[index].instrument == Instrument::Snare {
+                    // The snare reference and direct hi-hat form one coupled
+                    // ready posture. Do not greedily lock a snare that occupies
+                    // the fixed pedal mast's only playable corridor.
+                    hat_candidates.is_empty()
+                        || hat_candidates.iter().any(|hat| {
+                            if !cache.candidate() {
+                                return false;
+                            }
+                            let tips = crate::posture::ready_pair(profile, &candidate[index], hat);
+                            if !cache.pair(profile, tips) {
+                                return false;
+                            }
+                            let mut pair_kit = fixed.clone();
+                            pair_kit.push(hat.clone());
+                            let pair_ctx = crate::equipment_motion::EquipmentContext {
+                                geometry: crate::equipment::kit_geometry(&pair_kit),
+                                kit: pair_kit,
+                            };
+                            pair_ctx.geometry.unresolved_piece_ids.is_empty()
+                                && equipment_posture_fits(profile, &candidate[index], &pair_ctx)
+                                && equipment_posture_fits(profile, hat, &pair_ctx)
+                                && crate::posture::pair_solution_with_equipment(
+                                    profile,
+                                    tips,
+                                    [0.0; 2],
+                                    Some(&pair_ctx),
+                                    [Some(candidate[index].id.as_str()), Some(hat.id.as_str())],
+                                )
+                                .is_some()
+                        })
+                } else {
+                    true
+                }
                 && if matches!(
                     candidate[index].instrument,
                     Instrument::Hihat | Instrument::OpenHat
@@ -542,11 +698,37 @@ fn repair_posture_order(
         for lateral in -6..=6 {
             for vertical in -5..=5 {
                 for forward in -6..=6 {
+                    if coupled_hat && (lateral != 0 || forward != 0) {
+                        continue;
+                    }
                     shifts.push([
                         lateral as f64 * 0.05,
                         vertical as f64 * 0.05,
                         forward as f64 * 0.05,
                     ]);
+                }
+            }
+        }
+        if result.kit[index].instrument == Instrument::Snare {
+            // Resolve the narrow feasible corridor of a measured hand/sleeve
+            // around the body reference before falling back to the coarse kit
+            // grid. Resolution scales with the arm, not an avatar identity.
+            let step = ((profile.lengths[0][0] + profile.lengths[1][0]) * 0.05).clamp(0.015, 0.03);
+            for x in -5..=5 {
+                for y in -5..=5 {
+                    for z in -6..=6 {
+                        let shift = [
+                            desired[0] + x as f64 * step - original[0],
+                            desired[1] + y as f64 * step - original[1],
+                            desired[2] + z as f64 * step - original[2],
+                        ];
+                        if shift[0].abs() <= 0.30
+                            && shift[1].abs() <= 0.25
+                            && shift[2].abs() <= 0.30
+                        {
+                            shifts.push(shift);
+                        }
+                    }
                 }
             }
         }

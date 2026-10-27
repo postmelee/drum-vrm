@@ -243,3 +243,47 @@ Validation on the production build at localhost:5180:
   chunk advisory remains. Private visual evidence stays under ignored `.local/`.
 
 No merge, release or public deployment is part of this follow-up.
+
+## Main integration follow-up — 2026-10-27
+
+The owner requested updating this feature branch from the default branch before
+local testing. The repository has no `master`; `origin/HEAD` selects `main`.
+This integration combines feature head `df8bcb6` with `origin/main` at `6038e8e`
+(PRs #55, #57, #59 and #61). It does not merge PR #58 into the default branch or
+publish Pages.
+
+Conflicts were reconciled without choosing between the two feature sets:
+
+- Project parsing retains FBX assets/material settings and accepts the incoming
+  natural palm orientation, Songsterr profile and drum tilt settings.
+- New review checkpoints, posture/impact measurements and invalidation remain
+  connected to the common humanoid adapter, including FBX.
+- The automatic-mapping status and selector remain available. Explanatory text
+  uses the existing collapsed help hierarchy; current status remains visible.
+- README publication links and the handoff retain the newer hardware evidence,
+  alongside the still-unmerged FBX/material changes.
+
+Validation of the combined tree:
+
+- `cargo test --workspace`: 155 tests passed.
+- `npm run build:wasm`: rebuilt successfully. WASM SHA-256:
+  `ea317d39ad33f346ed54ce8027919d096b05a979f2741d4c9cb5f9fc9d943454`.
+- `npm test`: 42 files / 287 tests passed. Typecheck, production web build,
+  docs check (95 files / 893 relative links / 22 public pairs) and whitespace
+  checks passed. The existing Vite chunk-size advisory remains.
+- Production preview on localhost:5180 prepared the default 12-second Posture
+  study (53 hits). The private legacy VRM retained its colors and reported five
+  shade migrations with automatic file settings.
+- Gold Ship folder import restored all 15 required bone mappings, companion
+  textures and its previously chosen Unlit setting. Adoption succeeded against
+  the new engine. The groove checkpoint selected song time 2.000 s; inspection
+  displayed hand/foot contact, posture and impact measurements without errors.
+  Songsterr appeared in the MIDI selector and help stayed collapsed by default.
+- No browser warning/error logs appeared during these checks. Screenshots remain
+  private under ignored `.local/fbx/main-merge-{vrm,fbx}.png`.
+
+Both private avatars still report automatic-fit limitations. The new planner
+reported 48 unassigned hits for Gold Ship on this study; successful import and
+zero socket error do not establish natural posture or skin clearance. Saved
+projects still require their exact engine hash; this rebuild does not silently
+migrate projects made with the previous WASM. No private assets were committed.

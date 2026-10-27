@@ -209,12 +209,14 @@ individual provenance records.
 
 - Seat height: 0.30–1.20 m. Forward/back adjustment: −0.50–0.50 m.
 - Automatic seat fitting gives a pedal-aware starting position, not collision-free fitting.
-- Explicit kit fitting adjusts hand-played contact positions/radii together; kick and
-  pedal contacts remain fixed. [Calibration](calibration.md) owns search bounds and
+- Explicit kit fitting adjusts hand-played contact positions/radii together; the kick
+  remains fixed while the direct hi-hat moves as a coupled pedal/mast/cymbal assembly.
+  [Calibration](calibration.md) owns search bounds and
   the limited meaning of a complete proposal.
 - Target X is bounded to ±2 m, Y to 0.02–2.50 m and Z to −0.50–2.50 m.
 - Kick and hi-hat pedal height is further bounded to 0.04–0.20 m.
-- Closed and open hi-hat share a surface contact; pedal hi-hat is independent.
+- Closed and open hi-hat share one movable upper surface; its opening and the
+  mechanically connected pedal use the same deterministic control state.
 - Kick's engine contact is the foot pedal, not the visible front drum head.
 - Changing layout updates `plan.kit` and matching `hit.target` together, then replans
   with the measured profile. Preserve original MIDI data and audio.
@@ -226,8 +228,13 @@ failures rather than altering limb lengths or source times.
 ## Hands, feet and repeatability
 
 The grip uses a measured diagonal hand-local mount and available finger curl.
-Palm up/inward/down is a common calibration choice; symmetric palms-up is not a
-complete traditional grip. Optional measured `handFrames` let the common solver
+The default `natural` palm preference is oblique inward/downward (45° between
+those directions), with up/inward/down retained as explicit alternatives. This is
+an engineering starting pose, not a claim that one grip suits every drummer.
+Symmetric palms-up is not a complete traditional grip. The thumb solver jointly
+minimizes pad-to-shaft distance and distal-axis misalignment with bounded rotations
+about the model's rest joints; it never extends finger bones. Missing optional
+fingers retain reduced grip detail. Optional measured `handFrames` let the common solver
 orient the wrist for each target through a compound forearm/tool link, instead of a
 fixed world rotation. Forearm roll carries palm orientation. This preserves segment
 lengths and the calibrated grip. The bend plane is transported continuously across
@@ -252,12 +259,13 @@ available hands for snare/tom fills, accent-to-tap doubles and groove-to-crash r
 continuity. It preserves simultaneous source demands and does not recover an
 original sticking style or guarantee clear arm paths.
 
-Feet rest on calibrated kick/hi-hat pedal contacts even without pedal notes. In the
-profile path, hip/knee/ankle positions remain fixed during the simple ankle stroke.
-A time-based foot pitch prepares and returns the sole socket to contact. Unreachable
-idle pedals produce diagnostics. Explicit hi-hat controls can drive the left-foot
-pitch instead of paired close strikes; [MIDI interpretation](midi-interpretation.md)
-owns that policy. This is not full heel-up/down, measured sole support or pedal mechanics.
+Feet follow the calibrated footboard hinge/contact even without pedal notes.
+The leg solves the moving sole marker without stretching bones; the renderer uses
+the same foot quaternion for its board. One absolute-time hi-hat state controls
+the foot, upper cymbal and stick target. Kick beater and sole contacts are separate.
+[Equipment/contact](equipment-contact.md) owns the mechanism frames;
+[calibration](calibration.md#feet-and-support) describes their support limitations.
+This is kinematics, not full heel-up/down dynamics or measured shoe-surface support.
 
 Each evaluation resets the normalized pose and spring state, applies torso rotation
 before the solved limb pose, and updates VRM at delta zero. Expressions/look-at are neutral; node constraints are
@@ -282,5 +290,5 @@ remove source stands/pedals; arbitrary geometry cannot be segmented reliably.
 
 Optional hit feedback depends on absolute song time/velocity and preserves contact
 at impact. It is separate from performer expression. Accurate clamps, telescoping
-stands, skin collision, explicit crossed-arm styles and full physical pedal linkage
+stands, skin collision, explicit crossed-arm styles and physical force simulation
 are not established by this contract.

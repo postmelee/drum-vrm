@@ -1,0 +1,123 @@
+[
+  {
+    "id": "kick",
+    "instrument": "kick",
+    "label": "Kick",
+    "position": [
+      0.2,
+      0.08,
+      0.62
+    ],
+    "radius": 0.254
+  },
+  {
+    "id": "snare",
+    "instrument": "snare",
+    "label": "Snare",
+    "position": [
+      -0.03,
+      0.72,
+      0.5
+    ],
+    "radius": 0.1778
+  },
+  {
+    "id": "hihat",
+    "instrument": "hihat",
+    "label": "Hi-hat",
+    "position": [
+      -0.42,
+      0.9,
+      0.4611
+    ],
+    "radius": 0.1778
+  },
+  {
+    "id": "openHat",
+    "instrument": "openHat",
+    "label": "Open hi-hat",
+    "position": [
+      -0.42,
+      0.9,
+      0.4611
+    ],
+    "radius": 0.1778
+  },
+  {
+    "id": "pedalHat",
+    "instrument": "pedalHat",
+    "label": "Hi-hat pedal",
+    "position": [
+      -0.42,
+      0.08,
+      0.43
+    ],
+    "radius": 0.12
+  },
+  {
+    "id": "tomHigh",
+    "instrument": "tomHigh",
+    "label": "High tom",
+    "position": [
+      -0.24,
+      0.95,
+      0.91
+    ],
+    "radius": 0.1524
+  },
+  {
+    "id": "tomMid",
+    "instrument": "tomMid",
+    "label": "Mid tom",
+    "position": [
+      0.18,
+      0.93,
+      0.89
+    ],
+    "radius": 0.1651
+  },
+  {
+    "id": "tomLow",
+    "instrument": "tomLow",
+    "label": "Floor tom",
+    "position": [
+      0.52,
+      0.72,
+      0.44
+    ],
+    "radius": 0.2032
+  },
+  {
+    "id": "crash",
+    "instrument": "crash",
+    "label": "Crash Left",
+    "position": [
+      -0.62,
+      1.16,
+      0.94
+    ],
+    "radius": 0.2032
+  },
+  {
+    "id": "crashRight",
+    "instrument": "crash",
+    "label": "Crash Right",
+    "position": [
+      0.6,
+      1.16,
+      0.94
+    ],
+    "radius": 0.2286
+  },
+  {
+    "id": "ride",
+    "instrument": "ride",
+    "label": "Ride",
+    "position": [
+      0.72,
+      0.99,
+      0.84
+    ],
+    "radius": 0.254
+  }
+]
