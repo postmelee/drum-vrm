@@ -45,9 +45,13 @@ describe('VRM inspection before browser loading', () => {
     expect(info.terms).toContainEqual(['Model redistribution', 'Not allowed']); expect(info.terms).toContainEqual(['Third-party terms', 'Line one\nLine two']);
     expect(info.metadataWarnings.length).toBe(2);
   });
-  it('rejects legacy/unknown formats with an actionable conversion message', () => {
-    const json = source(); json.extensions = { VRM: { specVersion: '0.0' } };
-    expect(() => inspectVRM(glb(json))).toThrow(/0.x.*VRM 1.0/);
+  it('rejects unknown or ambiguous versions with actionable guidance', () => {
+    const json = source(); json.extensions = { VRM: { specVersion: '0.1' } };
+    expect(() => inspectVRM(glb(json))).toThrow(/0.1.*VRM 0.0 and 1.0/);
+    json.extensions = { VRM: {} }; expect(() => inspectVRM(glb(json))).toThrow(/Only VRM/);
+    json.extensions = { VRM: { specVersion: '0.0' }, VRMC_vrm: { specVersion: '1.0' } };
+    expect(() => inspectVRM(glb(json))).toThrow(/Ambiguous/);
+    json.extensions = { VRMC_vrm: { specVersion: '0.0' } }; expect(() => inspectVRM(glb(json))).toThrow(/Only VRM/);
     json.extensions = {}; expect(() => inspectVRM(glb(json))).toThrow(/VRoid Studio.*UniVRM/);
   });
   it('flags malformed rights values without applying permissive fallback', () => {

@@ -27,7 +27,7 @@ automatically insert credit into exported video. The app does not export avatar 
 
 | Property | Application limit |
 | --- | --- |
-| Character format | Self-contained VRM 1.0 `.vrm`, at most 50 MiB |
+| Character format | Self-contained VRM 0.0 or 1.0 `.vrm`, at most 50 MiB |
 | Humanoid | 15 required semantic bones; optional finger bones are reported |
 | Scene | At most 10,000 nodes; valid bone references and hierarchy; finite transforms |
 | Images | Embedded PNG/JPEG; at most 64 images, 4096 pixels on either side and 64 million pixels in total |
@@ -35,17 +35,28 @@ automatically insert credit into exported video. The app does not export avatar 
 
 Bone references must be valid and non-duplicated; the hierarchy cannot contain cycles or multiple parents. These are acceptance limits, not a promise that every device can comfortably render the largest accepted model. See the [rig input contract](../specs/architecture/rig-contract.md) for technical details.
 
-VRM 0.x needs conversion or re-export as VRM 1.0 where the model's terms permit it; renaming the file does not convert it. Use an editable source in VRoid Studio or the [UniVRM migration guide](https://vrm.dev/en/univrm1/migrate_vrm0/). `.vroid` is an editing source, not the runtime import format. Generic character GLB, FBX, OBJ, BLEND and GLTF mapping is not supported. Static drum GLB replacement is a [separate workflow](calibration.md#replace-drum-bodies-while-keeping-hardware) with a 25 MiB limit.
+VRM 0.0 imports directly, with facing and legacy thumb names normalized before body fitting. Unknown versions and files declaring both VRM extensions are rejected. `.vroid` is an editing source, not the runtime import format. Generic character GLB, FBX, OBJ, BLEND and GLTF mapping is not supported. Static drum GLB replacement is a [separate workflow](calibration.md#replace-drum-bodies-while-keeping-hardware) with a 25 MiB limit.
 
 ## Import and inspect
 
 1. Choose a **Character** preset, or use **Character → Import VRM…** to select your own `.vrm`. Local files are processed in the browser without uploading them.
-2. Open **Model details / terms** for the name, author, version, required-bone and finger-bone counts and terms. Missing optional rights fields are identified with the VRM 1.0 specification default; absence is not treated as permission. Metadata links are not opened or fetched automatically.
+2. Open **Model details / terms** for the name, author, version, required-bone and finger-bone counts and terms. VRM 1.0 optional rights fields show their specification defaults when omitted. VRM 0.0 shows its original usage and redistribution/modification fields; missing values stay unspecified and are never replaced with VRM 1.0 defaults. Metadata links are not opened or fetched automatically.
 3. Load a demo or MIDI and choose **Model**, **Skeleton**, **Model + skeleton** or **Hidden** in the display selector. The adapter measures limb lengths and uses the same semantic-bone solver as the built-in skeleton. Available finger bones receive a grip pose; missing optional fingers do not prevent import.
 4. The app automatically attempts a body-fit layout. Inspect its result and, if needed, [adjust the seat and targets](calibration.md), then compare playback and arbitrary forward/backward seeks. Check the visible grip, attached stick tips, feet and pedals. Contact measurements use tool/foot sockets, not all skin, glove or shoe vertices.
 5. Choose **Default skeleton** in the preset selector to restore the skeleton. Import and reset replan the current MIDI for the selected body without changing original hit times.
 
 Spring motion is reset for each evaluated pose so seeking and output are repeatable. Dynamic hair/clothing simulation, collision-free seating, precise skin/sole calibration and natural wrists at every target are not established by a successful import. Use a [local project](projects.md) to retain model/calibration choices across sessions; the same model file must be relinked.
+
+## A legacy model looks washed out
+
+MToon uses separate lit and shade colors/textures. A VRM 0.0 material with a
+`_MainTex`, white `_ShadeColor` and no `_ShadeTexture` can turn white in shaded
+regions even when its main texture loads correctly. The importer preserves that
+material setting. Inspect the original material before changing global lighting.
+If the intended shade uses the base artwork, assign the same texture to the lit
+and shade slots in the source editor and export a separate copy, as described in
+the [official MToon guide](https://vrm.dev/en/univrm/shaders/shader_mtoon/).
+This appearance correction does not resolve body-fitting or contact warnings.
 
 ## Find a model
 

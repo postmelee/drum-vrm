@@ -38,7 +38,7 @@ hi-hat interpretation, preserving source evidence under the
 planner assigns hits; playback and seeking use the piano roll and either synthesized
 drums or a local WAV aligned to the same export clock.
 
-The shared semantic humanoid path serves the built-in skeleton and imported VRM 1.0
+The shared semantic humanoid path serves the built-in skeleton and imported VRM 0.0/1.0
 characters, with target-dependent neutral wrists and instrument-relative ready poses.
 Seat/contact calibration and explicit static kit fitting can be retained in a
 [local project](architecture/project-format.md), with exact external files relinked. Drum bodies

@@ -102,7 +102,7 @@ export function createRestRigPose(profile: RigProfile): Float32Array {
   pose.set([0, 0, 0, 1], 73); pose.set(profile.pelvis, 48); pose.set(profile.chest, 51); pose.set(profile.head, 54); return pose;
 }
 
-/** Shared semantic solver for the built-in Bone hierarchy and VRM 1.0 models.
+/** Shared semantic solver for the built-in Bone hierarchy and VRM 0.0/1.0 models.
  * Normalized rotations are solved in world space, then converted to each
  * parent's local basis. Rendered effectors remain children of the actual hand
  * and foot, so retargeting/constraint errors remain visible and measurable. */

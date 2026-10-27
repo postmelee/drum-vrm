@@ -1,5 +1,5 @@
 import { msg } from './i18n';
-import { LoadingManager } from 'three';
+import { Group, LoadingManager } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import { validateSelfContainedGLB } from './model-import';
@@ -13,9 +13,36 @@ type Json = Record<string, unknown>;
 const object = (value: unknown): Json => value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {};
 const text = (value: unknown): string => typeof value === 'string' ? value.slice(0, 16000) : msg("Not specified", "미기재");
 export interface VRMInspection {
-  version: string; name: string; authors: string[]; required: number; missing: string[];
+  version: '0.0' | '1.0'; name: string; authors: string[]; required: number; missing: string[];
   fingers: { left: number; right: number }; terms: [string, string][];
   modelVersion: string; references: string[]; rawMeta: Json; metadataWarnings: string[];
+}
+
+/** Keep the original v0 terms; v1 defaults do not describe v0 permissions. */
+function inspectLegacyMeta(meta: Json): Pick<VRMInspection, 'name' | 'authors' | 'modelVersion' | 'references' | 'rawMeta' | 'metadataWarnings' | 'terms'> {
+  const metadataWarnings: string[] = [];
+  if (typeof meta.title !== 'string' || !meta.title.trim()) metadataWarnings.push(msg('The model title is missing.', '모델 제목이 없습니다.'));
+  if (typeof meta.author !== 'string' || !meta.author.trim()) metadataWarnings.push(msg('The author information is missing.', '제작자 정보가 없습니다.'));
+  if (typeof meta.licenseName !== 'string' || !meta.licenseName.trim()) metadataWarnings.push(msg('The VRM 0.0 license type is missing. Check the original terms.', 'VRM 0.0 라이선스 종류가 없습니다. 원본 조건을 확인하세요.'));
+  const enums: Record<string, string[]> = {
+    allowedUserName: ['OnlyAuthor', 'ExplicitlyLicensedPerson', 'Everyone'],
+    violentUssageName: ['Disallow', 'Allow'], sexualUssageName: ['Disallow', 'Allow'], commercialUssageName: ['Disallow', 'Allow'],
+    licenseName: ['Redistribution_Prohibited', 'CC0', 'CC_BY', 'CC_BY_NC', 'CC_BY_SA', 'CC_BY_NC_SA', 'CC_BY_ND', 'CC_BY_NC_ND', 'Other'],
+  };
+  for (const [key, values] of Object.entries(enums)) {
+    if (meta[key] !== undefined && !values.includes(meta[key] as string)) metadataWarnings.push(msg('The {0} usage term differs from the specification. Check the original terms.', '이용 조건 {0} 값이 명세와 다릅니다. 원본 조건을 확인하세요.', key));
+  }
+  if (meta.licenseName === 'Other' && (typeof meta.otherLicenseUrl !== 'string' || !meta.otherLicenseUrl.trim())) metadataWarnings.push(msg('The custom license URL is missing. Check the original terms.', '사용자 지정 라이선스 URL이 없습니다. 원본 조건을 확인하세요.'));
+  const labels: [string, string][] = [
+    ['allowedUserName', msg('Avatar users', '아바타 사용자')], ['violentUssageName', msg('Violent content', '폭력 표현')],
+    ['sexualUssageName', msg('Sexual content', '성적 표현')], ['commercialUssageName', msg('Commercial use', '상업적 이용')],
+    ['otherPermissionUrl', msg('Additional usage terms', '추가 이용 조건')], ['licenseName', msg('Redistribution / modification license', '재배포 · 수정 라이선스')],
+    ['otherLicenseUrl', msg('Additional license terms', '추가 라이선스 조건')], ['contactInformation', msg('Creator contact', '제작자 연락처')],
+  ];
+  return { name: text(meta.title), authors: typeof meta.author === 'string' ? [text(meta.author)] : [], modelVersion: text(meta.version),
+    references: typeof meta.reference === 'string' ? [text(meta.reference)] : [], rawMeta: meta, metadataWarnings,
+    terms: labels.map(([key, label]) => [label, text(meta[key])]),
+  };
 }
 
 /** PNG/JPEG header budgets are checked before image decoding can allocate textures. */
@@ -85,9 +112,11 @@ export function inspectVRM(bytes: ArrayBuffer): VRMInspection {
   const length = new DataView(bytes).getUint32(12, true);
   const json = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes, 20, length))) as Json;
   const extensions = object(json.extensions);
-  const vrm = object(extensions.VRMC_vrm);
-  const version = vrm.specVersion === '1.0' ? '1.0' : extensions.VRM ? '0.x' : text(vrm.specVersion);
-  if (version !== '1.0') throw new Error(msg('Detected VRM: {0}. Only VRM 1.0 is supported. Export VRM 1.0 from VRoid Studio or UniVRM.', '감지된 VRM: {0}. 현재 VRM 1.0을 지원합니다. VRoid Studio 또는 UniVRM에서 VRM 1.0으로 내보내세요.', version));
+  const legacy = extensions.VRM !== undefined;
+  if (legacy && extensions.VRMC_vrm !== undefined) throw new Error(msg('Ambiguous VRM extensions: use one VRM version per file.', 'VRM 확장이 모호합니다. 파일마다 하나의 VRM 버전만 사용하세요.'));
+  const vrm = object(legacy ? extensions.VRM : extensions.VRMC_vrm);
+  const version = legacy && vrm.specVersion === '0.0' ? '0.0' : !legacy && vrm.specVersion === '1.0' ? '1.0' : undefined;
+  if (!version) throw new Error(msg('Detected VRM: {0}. Only VRM 0.0 and 1.0 are supported. Export a supported version from VRoid Studio or UniVRM.', '감지된 VRM: {0}. VRM 0.0과 1.0만 지원합니다. VRoid Studio 또는 UniVRM에서 지원 버전으로 내보내세요.', text(vrm.specVersion)));
   inspectImageBudget(json, bytes);
   const nodes = Array.isArray(json.nodes) ? json.nodes : [];
   if (!nodes.length || nodes.length > 10000) throw new Error(msg("The VRM node count is outside the supported range.", "VRM 노드 수가 허용 범위를 벗어났습니다."));
@@ -112,16 +141,32 @@ export function inspectVRM(bytes: ArrayBuffer): VRMInspection {
     }
     visited.forEach(index => complete.add(index));
   }
-  const bones = object(object(vrm.humanoid).humanBones);
+  const humanBones = object(vrm.humanoid).humanBones;
+  const bones: Json = legacy ? Object.create(null) : object(humanBones);
+  if (legacy) {
+    if (!Array.isArray(humanBones)) throw new Error(msg('VRM 0.0 humanBones must be an array.', 'VRM 0.0 humanBones는 배열이어야 합니다.'));
+    // Match three-vrm's v0 thumb mapping, preserving distal unchanged.
+    const thumbNames: Record<string, string> = { leftThumbProximal: 'leftThumbMetacarpal', leftThumbIntermediate: 'leftThumbProximal', rightThumbProximal: 'rightThumbMetacarpal', rightThumbIntermediate: 'rightThumbProximal' };
+    for (const raw of humanBones) {
+      const bone = object(raw), name = typeof bone.bone === 'string' ? bone.bone : '';
+      const normalized = Object.hasOwn(thumbNames, name) ? thumbNames[name] : name;
+      if (!name || Object.hasOwn(bones, normalized)) throw new Error(msg('VRM humanoid bone assignments are duplicated or invalid.', 'VRM 휴머노이드 본 연결이 중복되었거나 유효하지 않습니다.'));
+      bones[normalized] = bone;
+    }
+  }
   const validBone = (name: string) => {
     const index = object(bones[name]).node;
     return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < nodes.length;
   };
   const missing = REQUIRED_BONES.filter(name => !validBone(name));
-  if (missing.length) throw new Error(msg('Missing required VRM 1.0 bones: {0}', 'VRM 1.0 필수 본 누락: {0}', missing.join(', ')));
+  if (missing.length) throw new Error(msg('Missing required VRM bones: {0}', 'VRM 필수 본 누락: {0}', missing.join(', ')));
   const indices = Object.values(bones).map(bone => object(bone).node);
   if (new Set(indices).size !== indices.length || Object.keys(bones).some(name => !validBone(name))) throw new Error(msg("VRM humanoid bone assignments are duplicated or invalid.", "VRM 휴머노이드 본 연결이 중복되었거나 유효하지 않습니다."));
   const meta = object(vrm.meta);
+  if (legacy) return { version, required: REQUIRED_BONES.length, missing,
+    fingers: { left: fingers.filter(f => validBone('left' + f)).length, right: fingers.filter(f => validBone('right' + f)).length },
+    ...inspectLegacyMeta(meta),
+  };
   const termLabels: [string, string][] = [
     ['licenseUrl',msg("License document", "라이선스 문서")], ['avatarPermission',msg("Avatar users", "아바타 사용자")], ['commercialUsage',msg("Commercial use", "상업적 이용")],
     ['creditNotation',msg("Credit", "크레딧")], ['allowRedistribution',msg("Model redistribution", "모델 재배포")], ['modification',msg("Model modification", "모델 수정")],
@@ -165,10 +210,23 @@ export async function loadLocalVRM(file: File): Promise<{vrm: VRM; info: VRMInsp
     if (url.startsWith('blob:') || url.startsWith('data:')) return url;
     throw new Error(msg("An external VRM resource request was blocked.", "VRM 외부 리소스 요청을 차단했습니다."));
   });
-  const loader = new GLTFLoader(manager).register(parser => new VRMLoaderPlugin(parser));
+  const loader = new GLTFLoader(manager).register(parser => {
+    const plugin = new VRMLoaderPlugin(parser), afterRoot = plugin.afterRoot.bind(plugin);
+    plugin.afterRoot = async gltf => {
+      if (info.version === '0.0') {
+        // Normalize -Z facing before three-vrm captures raw rest transforms.
+        // Keep the scene itself at identity so the normalized rig added later
+        // uses the same +Z world basis as VRM 1.0 and the shared solver.
+        const basis = new Group(); basis.name = 'VRM0FacingBasis'; basis.rotation.y = Math.PI;
+        basis.add(...gltf.scene.children); gltf.scene.add(basis); gltf.scene.updateMatrixWorld(true);
+      }
+      await afterRoot(gltf);
+    };
+    return plugin;
+  });
   const gltf = await loader.parseAsync(bytes, '');
   const vrm = gltf.userData.vrm as VRM | undefined;
-  if (!vrm || vrm.meta.metaVersion !== '1') { VRMUtils.deepDispose(gltf.scene); throw new Error(msg("The VRM 1.0 humanoid could not be loaded.", "VRM 1.0 휴머노이드를 읽지 못했습니다.")); }
+  if (!vrm || vrm.meta.metaVersion !== (info.version === '0.0' ? '0' : '1')) { VRMUtils.deepDispose(gltf.scene); throw new Error(msg("The VRM humanoid could not be loaded.", "VRM 휴머노이드를 읽지 못했습니다.")); }
   const remove: import('three').Object3D[] = [];
   vrm.scene.traverse(node => { if (node.type.includes('Camera') || node.type.includes('Light')) remove.push(node); });
   remove.forEach(node => node.removeFromParent());

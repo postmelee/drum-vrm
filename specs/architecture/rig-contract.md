@@ -6,7 +6,7 @@ For detailed reasoning, see [calibration](calibration.md) and [rig compatibility
 
 ## Semantic body boundary
 
-The built-in skeleton and VRM 1.0 import share
+The built-in skeleton and VRM 0.0/1.0 imports share
 [NormalizedHumanoidRigAdapter](../../src/rig-humanoid.ts). Measure semantic rest joints
 and actual segment lengths; do not branch animation on an avatar's name, model
 filename or creator. Source-specific drum extraction belongs in appearance adapters.
@@ -66,16 +66,29 @@ separate from proxy clearance; see [calibration](calibration.md).
 
 | Input | Accepted boundary |
 | --- | --- |
-| Character | One self-contained VRM 1.0 `.vrm`, at most 50 MiB |
+| Character | One self-contained VRM 0.0 or 1.0 `.vrm`, at most 50 MiB |
 | Required body | 15 required semantic bones, at most 10,000 nodes, valid references/hierarchy and finite transforms |
 | Character images | Embedded PNG/JPEG; at most 64 images, 4096 pixels per side, 64 million pixels total |
 | Drum component | Self-contained static `.glb`, at most 25 MiB; body-only geometry expected |
 
-VRM 0.x is detected and rejected with conversion guidance. `.vroid` is an editing
+Only explicit `VRM.specVersion = "0.0"` or `VRMC_vrm.specVersion = "1.0"` is accepted; unknown versions and files containing both extensions are rejected. `.vroid` is an editing
 source, not an imported runtime model. Generic humanoid GLB/FBX mapping is not
 implemented. External resource references are rejected; metadata links are displayed
 without automatically fetching them. File metadata and source terms govern asset
 use, independent of the application's MIT license.
+
+VRM 0.0's `humanBones` array is checked before loading, including duplicate names
+and node assignments. Legacy thumb `Proximal`/`Intermediate` map to normalized
+`Metacarpal`/`Proximal`; `Distal` is unchanged. A positive-scale +Y half-turn wrapper
+aligns the source roots from −Z to +Z **before** three-vrm captures rest transforms.
+The scene stays at identity for the normalized rig subsequently added by the loader,
+so both formats use the same coordinate, grip, fitting and evaluation path.
+
+The inspection retains original metadata. VRM 0.0 uses `title`, `author`, `reference`,
+`allowedUserName`, `violentUssageName`, `sexualUssageName`, `commercialUssageName`,
+`otherPermissionUrl`, `licenseName` and `otherLicenseUrl`; no VRM 1.0 license defaults
+are applied. Missing/invalid metadata is reported without inventing permissions.
+Original strings and URLs are displayed as text and never executed or fetched.
 
 ### Bundled character selection
 
