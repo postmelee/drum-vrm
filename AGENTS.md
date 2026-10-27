@@ -21,7 +21,7 @@
 
 ## Engineering and provenance
 
-- Keep ordinary inspectors focused on controls and current values. Do not add paragraphs of mapping rationale, implementation disclaimers, candidate counts or repeated success/status messages beneath controls. Use the shared notification system for operation feedback, Analysis for evidence, and collapsed contextual help for reference material; follow the [notification design](specs/architecture/notifications.md). Until that system is implemented, do not introduce another local toast/status mechanism.
+- Keep ordinary inspectors focused on controls and current values. Do not add paragraphs of mapping rationale, implementation disclaimers, candidate counts or repeated success/status messages beneath controls. Use the shared notification system for operation feedback, Analysis for evidence, and collapsed contextual help for reference material; follow the [notification design](specs/architecture/notifications.md). Use `NotificationFeedback` / `NotificationStore`; do not introduce another local toast/status mechanism.
 - Retain visible field labels, units, concise actionable validation, unresolved-state badges and required attribution. Do not remove screen-reader descriptions to reduce visible copy. Every UI change must review notification duplication and both language layouts.
 
 - Rust owns MIDI interpretation and planning; WASM is the browser boundary; Three.js renders through `RigAdapter`. Keep `PerformancePlan` independent of scene object names.

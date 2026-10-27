@@ -82,3 +82,79 @@ highlight inside the unchanged 44 px button. Keyboard focus visibly outlines the
 label; the outer button remains transparent. Hover feedback is gated by pointer
 capability, while pressed feedback also works on touch. Syntax, diff and docs
 checks passed. Screenshot: `/private/tmp/drum-vrm-toast-highlight.png` (local only).
+
+## Production integration
+
+The owner subsequently approved applying this study to the actual app. The
+implementation increment follows design commit
+`6e43c6fda029df6c1e7baeadaa693f86a94d4951` on `codex/toast-design`, in PR #63.
+The earlier sections above remain evidence of their respective prototype stages.
+No Rust, WASM interpretation, uploaded assets, dependency versions or media encoding
+algorithms changed. No public deployment is established by these local checks.
+
+### Implemented boundary
+
+- `NotificationStore`: delayed progress, ID coalescing, source invalidation,
+  stable priority ordering, 3/1 visible cards, 8 pending, 20 terminal history,
+  separately retained current/unresolved conditions, remaining-time pause/resume.
+- `NotificationFeedback`: complete operation boundaries and nested setup steps,
+  one final result, required-choice precedence and cancellation suppression.
+- Keyed DOM cards/history, existing i18n bindings, separate polite/error announcers,
+  scoped actions, focus routing, reduced-motion CSS and app design tokens.
+- MIDI/demo/reprepare, character/layout/equipment, WAV, projects, note edits,
+  review and export feed the shared center. Numeric progress and cancellation
+  controls remain at the task. Background initialization emits no success toast.
+- Mapping coverage is an Analysis table. Reference guidance is disclosed. Current
+  mapping, provisional/unapplied state, missing original files, WAV no-overlap,
+  analysis badges, required attribution and piano-roll descriptions remain.
+  Old result live regions were replaced by the shared announcers; the explicitly
+  requested pose measurement retains its own status semantics.
+
+### Executed verification
+
+- Full frontend suite: 39 files, 267 tests, including 10 controlled-clock lifecycle
+  cases for fast results, progress dismissal, overlapping pause reasons, queue
+  pressure, capacity changes, persistent errors, scope invalidation, nested work,
+  cancellation/replacement and required-choice precedence.
+- `npm run build:web` (including typecheck), `npm run docs:check` and
+  `git diff --check`. Vite retains its existing large-bundle advisory.
+- Actual local app in the in-app browser, at 745 × 833: imported the independently
+  authored seven-note Songsterr study and prepared the built-in posture demo.
+  Each import produced one final result; analysis/motion warnings stayed distinct
+  from mapping success. No initial automatic-fit success was announced.
+- Invalid authored MIDI: persistent failure, badge after dismissal, detail recovery
+  through history, and obsolete history actions removed on replacement.
+- Authored GM/Logic conflict study: provisional GM label and required-choice toast;
+  dismissing or changing the selector did not remove the provisional label.
+  Applying Logic succeeded and removed it. Saving and reopening that project
+  preserved Logic and its rimshot interpretation without automatic remapping.
+- Authored one-second WAV: load, offset outside the song (persistent warning),
+  and correction to zero (warning resolved). A 3.80-second WebM preparation
+  completed with the persistent download link and one export result. This checks
+  notification routing; it is not a new encoded-media quality audit.
+- Demo preparation cancellation left one cancellation history entry and no later
+  success. Escape on a toast preserved the inspector and moved focus to the bell.
+  A history action opened Analysis and focused the specific error detail.
+- English/Korean switching changed card text without replaying the existing live
+  regions; the previous announcement retained its original language. Light/dark
+  layouts and the focused blue action were inspected. A focused completion card
+  remained present across subsequent checks, beyond its normal timeout.
+- Real production app embedded in a **390 CSS px iframe viewport**, not the synthetic
+  toast study: Korean/dark and English/light error cards measured 95.59 px high,
+  with 44 px action targets and 24 px visible action labels. Viewport and document
+  scroll width were both 390 px. Desktop completion without a description measured
+  69.59 px, with a 32 px action and 24 px label. Heights were content-driven.
+- Browser error logs were empty for the actual app checks. The local screenshot
+  `/private/tmp/drum-vrm-notifications-app.png` shows the integrated Korean result
+  and concise source inspector using authored fixture data. Temporary viewport
+  tooling is ignored under `.local/`; fixtures/screenshots are not committed.
+
+### Remaining manual coverage
+
+A physical touch device, browser-level 200% zoom, OS reduced-motion preference and
+spoken screen-reader output were not available in this browser harness. The CSS
+reduced-motion/coarse-pointer branches and live-region/focus DOM were reviewed;
+these are not claims of those device/assistive checks. Existing rig/project/audio
+regression tests passed, but every model-import failure and hardware combination
+was not repeated interactively. The center changes UI feedback only; it does not
+remove the engine's existing motion diagnostics or improve contact accuracy.

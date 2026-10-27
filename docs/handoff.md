@@ -5,12 +5,13 @@ own measured results and publication evidence.
 
 ## Current batch and next work
 
-- [#62](https://github.com/postmelee/drum-vrm/issues/62): review the proposed
-  [notification design](../specs/architecture/notifications.md) and
-  [interactive prototype](design/notifications.html). Implement the shared
-  notification center and migrate repeated inspector prose as a later increment.
-  AGENTS now requires concise controls, centralized feedback and preserved
-  accessibility/attribution. The prototype is not production behavior.
+- [#62](https://github.com/postmelee/drum-vrm/issues/62): the approved notification
+  design is implemented in [PR #63](https://github.com/postmelee/drum-vrm/pull/63).
+  Shared scoped feedback replaces the bottom strip and ad hoc toast; inspectors
+  keep current values and recovery state, while evidence/help is disclosed.
+  Review the [contract](../specs/architecture/notifications.md) and
+  [implementation checks](verification/notification-design.md#production-integration).
+  Next: owner review of the implementation. No merge or deployment is authorized.
 
 - [#60](https://github.com/postmelee/drum-vrm/issues/60): Songsterr Downloader MIDI
   compatibility and automatic mapping comparison on new uploads are a separate

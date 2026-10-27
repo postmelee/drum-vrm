@@ -12,7 +12,7 @@ Start with the [overview](overview.md), then read the boundary relevant to the c
 | [Equipment and contact](equipment-contact.md) | Measured bodies, generated hardware, playable regions, complete-tool paths and count-in gestures |
 | [Audio and export](audio-export-contract.md) | Song/output time, PCM, playback clock and encoding |
 | [Local project format](project-format.md) | Versioned settings, source evidence, exact file relinking and restore validation |
-| [Notifications (proposed)](notifications.md) | Concise inspector copy, unified toast placement, lifecycle, motion and accessibility |
+| [Notifications](notifications.md) | Concise inspector copy, unified toast placement, lifecycle, motion and accessibility |
 
 The detailed chapters explain [body/tool/kit calibration](calibration.md),
 [humanoid compatibility](rig-compatibility.md), [technique and expression](performance-expression.md)

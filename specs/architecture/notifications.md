@@ -2,15 +2,16 @@
 
 **English** · [한국어](notifications.ko.md)
 
-**Proposed design, not production behavior.** [Issue #62](https://github.com/postmelee/drum-vrm/issues/62)
-owns implementation scope and acceptance. The [interactive prototype](../../docs/design/notifications.html)
-demonstrates placement, copy and motion with synthetic states; it does not import
-files or run the engine. This extends the focused-inspector intent of #44.
+This contract describes the shared notifications in the checked-out app.
+[Issue #62](https://github.com/postmelee/drum-vrm/issues/62) owns scope and acceptance;
+[PR #63](https://github.com/postmelee/drum-vrm/pull/63) contains the implementation.
+The [interactive prototype](../../docs/design/notifications.html) remains a separate
+synthetic design study. Source implementation does not establish public deployment.
 
-The prototype's English / 한국어 button translates menus, current notifications,
-history and accessible labels in place. `?lang=en` / `?lang=ko` links select the
-initial language. Switching preserves active cards, remaining time, theme and
-layout without replaying announcements; the specification link follows the language.
+English / 한국어 switches translate current cards, history and accessible labels
+in place. `?lang=en` / `?lang=ko` selects the initial language. Switching preserves
+remaining time and does not replay announcements; announcers retain the language
+of the event that was actually announced.
 
 ## Information belongs in one place
 
@@ -83,11 +84,11 @@ into long toasts. Colors never substitute for labels.
 | Ambiguous mapping | Review drum mapping / General MIDI selected provisionally | Choose mapping |
 | Unsupported notes remain | Some notes could not be mapped | View analysis |
 | No usable mapping | Could not find a drum mapping | MIDI settings |
-| File parse failure | Could not read MIDI / Choose another .mid file | Choose file |
-| WAV ready | WAV applied | None |
-| Project saved | Project saved | None |
-| Video ready | Video ready | Download |
-| Fit ready | Drum layout fitted | Undo, only while valid |
+| Preparation failure | Could not prepare the performance / Check the details and try again | View details |
+| WAV ready | WAV loaded | Files / Audio |
+| Project saved | Project file ready | Files / Audio |
+| Video ready | Video ready to download | View export |
+| Fit ready | Layout fitted to character | View details; Undo remains in Character |
 
 Combine the result and its most important warning into one completion toast.
 Do not show separate “mapping selected,” “audio synthesized,” “ready,” and “two
@@ -150,18 +151,24 @@ Historical entries from an obsolete file have no stale Retry/Undo/Download actio
 
 ## Implementation boundary and migration
 
-A single future `NotificationCenter` owns store, timer, queue, announcement and
-rendering. Callers send typed events with an operation ID, file/project scope,
-severity, localized message keys/arguments, optional action ID and optional
-diagnostic reference. No raw HTML, raw exception dump or filename-dependent logic.
-Use the existing localization bindings so a language switch changes visible copy
-without resetting timers or re-announcing old events. Scope checks reject obsolete
-callbacks and disable obsolete actions. Remove duplicate notifications at the
-operation coordinator; `renderDiagnostics()` must not emit result events.
+`NotificationStore` owns IDs, scoped invalidation, timers, priority and the bounded
+queue/history. `NotificationFeedback` coalesces nested work into its owning operation,
+retaining required choices ahead of recoverable warnings. The keyed DOM view in
+`notifications.ts` owns cards, history, focus and announcements; `notifications.css`
+uses existing app tokens. Typed content carries localized strings and optional
+labelled action callbacks. Obsolete actions are removed on scope invalidation.
+No raw HTML or exception dump enters a card; full errors open Task details in Analysis.
 
-| Existing surface | Proposed migration |
+Callers begin feedback around complete commit/rollback boundaries. Progress updates
+the same ID without re-announcing every stage; nested fitting/synthesis does not
+create its own completion. The existing source-generation checks reject obsolete
+async work, and the store rejects stale terminal updates. `renderDiagnostics()`
+updates persistent evidence only. Ordinary playback, camera and seek controls do
+not create result toasts. Numeric export progress and Cancel remain in Export.
+
+| Surface | Implemented destination |
 | --- | --- |
-| `notify()` / `#toast` | Replace with the shared center and anchored viewport |
+| Previous `#toast` | Shared store/view and stage-anchored viewport |
 | `#message` bottom strip | Remove duplicate result paragraphs; retain compact stage status |
 | `#automatic-mapping`, `#mapping-evidence` | Result toast; coverage table in Analysis; selected control value remains |
 | `#source-summary` | Analysis badge/link only when attention is needed |
@@ -175,7 +182,7 @@ project assets, unsaved/applied settings and failed fitting remain findable afte
 the toast disappears. A mapping warning must not be relabeled as a motion failure.
 Rust interpretation and planning remain unchanged by this UI migration.
 
-## Acceptance for implementation
+## Verification boundary
 
 Verify normal/partial/ambiguous/failed import; cancellation and rapid replacement;
 one result per operation; queue overflow; persistent recovery after dismissal;
@@ -184,3 +191,5 @@ no duplicate announcements; English/Korean; light/dark; reduced motion; 200% zoo
 desktop with inspector open/closed and a 390 px narrow layout.
 Capture actual UI evidence and test lifecycle behavior with controlled timers.
 Document checks alone do not verify these production behaviors.
+
+See [implementation evidence](../../docs/verification/notification-design.md#production-integration) for executed checks and remaining manual device/accessibility coverage.
