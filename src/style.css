@@ -32,3 +32,15 @@
 @media(max-width:760px) { .fbx-layout { grid-template-columns: 1fr; } .fbx-visual { position: static; } .fbx-preview { height: 240px; } .fbx-setup { padding: 16px; } .fbx-setup label { grid-template-columns: 1fr; gap: 4px; } .fbx-setup .fbx-actions { bottom: -16px; } }
 .fbx-setup .fbx-more { display: flex; gap: 8px; font-size: 12px; color: var(--muted); }
 .fbx-setup .fbx-more input { width: auto; }
+
+/* Information hierarchy shared by panels and import dialogs. */
+.field-status { font-size: 12px; color: var(--text); overflow-wrap: anywhere; }
+.field-status:empty, .control-help:empty { display: none; }
+.control-help { font-size: 12px; color: var(--muted); margin: 4px 0 12px; }
+.help-section { font-size: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.help-section > summary { color: var(--muted); }
+.help-section p { color: var(--text); margin: 8px 0; }
+#diagnostic-list { list-style: none; padding-left: 0; max-height: 300px; }
+#diagnostic-list details { margin: 0; padding: 6px 0; border-bottom: 1px solid var(--border); }
+#diagnostic-list summary { overflow-wrap: anywhere; }
+#diagnostic-list p { margin: 8px 0; }

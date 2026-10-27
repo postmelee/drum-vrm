@@ -1,3 +1,5 @@
+import { createHelp } from './ui-help';
+import { materialAppearanceLabel } from './material-appearance';
 import { characterFiles, chooseCharacterFile } from './character-files';
 import { rememberFBXSetup } from './fbx-preferences';
 import { setupFBX } from './fbx-setup';
@@ -6,7 +8,7 @@ import { loadLocalFBX } from './fbx-import';
 import { imageKey, type FBXConfig } from './fbx-config';
 import type { HumanoidRigAdapter } from './rig-humanoid';
 import {msg, raw, bindText, boundText, bindAttribute, bindStaticTranslations, joinMessages, getLocale, setLocale, onLocaleChange} from './i18n';
-import {engineMessage} from './engine-messages';
+import {diagnosticTitle, engineMessage} from './engine-messages';
 import './style.css';
 import { studioTemplate } from './studio-template';
 import { prepareAutomaticFit } from './automatic-fit';
@@ -160,7 +162,7 @@ async function refreshIdlePose() {
 }
 function invalidateVideo() {
   if(downloadUrl)URL.revokeObjectURL(downloadUrl); downloadUrl=null; get('download').hidden=true;
-  bindText(get('export-note'), msg("1280 × 720 · 30 fps · Export again with the current settings. Includes 0.5 s preparation and 0.25 s tail.", "1280 × 720 · 30 fps · 현재 설정으로 다시 추출하세요. 시작 준비 0.5초 · 끝 여운 0.25초 포함."));
+  bindText(get('export-note'), msg("Export with the current settings.", "현재 설정으로 추출하세요."));
 }
 async function applyCalibration(seat: HumanoidCalibration, kit: KitPiece[], feedbackId: string, automatic=false) {
   if(busy||exporting||(modelBusy&&!automatic))return false;
@@ -205,7 +207,7 @@ function refreshFitState() {
   if(capability){
     bindText(get('fit-capability-summary'), msg("{0} · {1} · {2} single-hand checks · {4} of {3} two-hand pairs found. This does not test skin or clothing collisions.", "{0} · {1} · 한 손 {2}회 · 양손 {3}조합 중 {4}조합 확인. 피부·의상 충돌 검사는 아닙니다.", fitProposal?.complete?msg("Applied layout", "적용 배치"):msg("Unapplied fit candidate", "미적용 맞춤 후보"), capability.geometrySource==='mesh-estimate'?msg("Mesh-based approximation", "메시 기반 근사"):msg("Skeleton-based estimate", "뼈대 기반 추정"), capability.handTargetChecks, capability.pairChecks, capability.availablePairs));
     for(const pair of capability.pairs){const row=document.createElement('li');bindText(row, msg("L {0} / R {1} · {2}", "L {0} / R {1} · {2}", pair.leftPieceId, pair.rightPieceId, {available:msg("Feasible pose found", "가능한 자세 확인"),'not-found':msg("Not found within search bounds", "탐색 범위에서 찾지 못함"),unmeasured:msg("Insufficient measurements", "측정 정보 부족")}[pair.status]));list.append(row);}
-  }else bindText(get('fit-details'), '');
+  }else if(!fitProposal) bindText(get('fit-details'), '');
 
   controls();
 }
@@ -219,7 +221,7 @@ for(const button of document.querySelectorAll<HTMLButtonElement>('[data-open-ana
 get('analysis-source').onclick=()=>{openPanel('source');get<HTMLDetailsElement>('midi-settings').open=true;get<HTMLSelectElement>('mapping-profile').focus();};
 function showFitResult(result: Awaited<ReturnType<typeof prepareAutomaticFit>>) {
   fitProposal=result.proposal;fitState=result.applied?msg("Automatic body fit applied", "체형 자동 맞춤 적용"):msg("Automatic fit needs attention", "자동 맞춤 확인 필요");
-  bindText(get('calibration-message'), result.applied?'':result.message);
+  bindText(get('calibration-message'), ''); // The summary stays here; full fit evidence lives in Analysis.
   bindText(get('fit-details'), result.message);
   refreshFitState();
   if(result.applied)notify(msg("The drum layout has been fitted to the character.", "캐릭터에 맞게 드럼 배치를 조정했습니다."));
@@ -297,12 +299,14 @@ get<HTMLSelectElement>('character-display').onchange=e=>setCharacterDisplay((e.t
 function showModelInfo(info: VRMInspection | null, preset?: CharacterPreset) {
   const host = get('character-info'); host.replaceChildren(); if (!info) return;
   const name=document.createElement('strong');bindText(name, raw(info.name));host.append(name);
+  const appearance=document.createElement('p');bindText(appearance,msg('Material: {0}','재질: {0}',materialAppearanceLabel()));host.append(appearance);
   if(preset){const credit=document.createElement('p');credit.className='hint';bindText(credit,msg('By {0}', '제작: {0}',raw(preset.creator)));host.append(credit);}
   const metadata=document.createElement('details'),label=document.createElement('summary');bindText(label, msg("Model details / terms", "모델 정보 · 이용 조건"));metadata.append(label);host.append(metadata);
   for (const text of [msg("VRM {0} · model {1} · required bones {2}/15", "VRM {0} · 모델 {1} · 필수 본 {2}/15", raw(info.version), raw(info.modelVersion), info.required), msg("Finger bones L {0}/15 · R {1}/15", "손가락 본 L {0}/15 · R {1}/15", info.fingers.left, info.fingers.right), msg("Author: {0}", "제작자: {0}", info.authors.length ? raw(info.authors.join(', ')) : msg("Not specified", "미기재"))]) {
     const p = document.createElement('p'); p.className='hint'; bindText(p, text); metadata.append(p);
   }
-  if(info.fingers.left<15 || info.fingers.right<15) { const p=document.createElement('p'); p.className='hint'; bindText(p, msg("Some finger bones are missing, which limits the grip pose. Stick attachment and performance remain available.", "일부 손가락 본이 없어 그립 표현이 제한됩니다. 스틱 부착과 연주는 유지됩니다.")); host.append(p); }
+  if(info.fingers.left<15 || info.fingers.right<15) { const p=document.createElement('p'); p.className='hint'; bindText(p, msg("Some finger bones are missing, which limits the grip pose. Stick attachment and performance remain available.", "일부 손가락 본이 없어 그립 표현이 제한됩니다. 스틱 부착과 연주는 유지됩니다.")); metadata.append(p); }
+  if (info.legacyShadeTextures) { const p=document.createElement('p'); bindText(p,msg('VRM 0.0 shade compatibility applied to {0} materials.','VRM 0.0 음영 호환 처리: 재질 {0}개',info.legacyShadeTextures)); metadata.append(p); }
   for (const warning of info.metadataWarnings) { const p=document.createElement('p'); p.className='hint'; bindText(p, warning); metadata.append(p); }
   const details = document.createElement('details'), summary = document.createElement('summary'); bindText(summary, msg("Model terms", "모델 이용 조건")); details.append(summary);
   for (const [label, value] of info.terms) { const p=document.createElement('p'); p.className='hint'; bindText(p, msg('{0}: {1}', '{0}: {1}', label, raw(value))); details.append(p); }
@@ -367,9 +371,9 @@ async function importCharacter(fileOrPreset: File | CharacterPreset) {
 function showFBXInfo(name:string) {
   const host=get('character-info');host.replaceChildren();
   const mode=currentFBX?.materialMode??'original';
-  const appearance=mode==='unlit'?msg('Texture only (Unlit)','텍스처 그대로 (Unlit)'):mode==='matte'?msg('Matte lighting','무광 조명'):msg('Original material','원본 재질');
-  const appearanceLabel=document.createElement('p');bindText(appearanceLabel,msg('Material appearance: {0}','재질 표현: {0}',appearance));host.append(appearanceLabel);
-  const p=document.createElement('p');bindText(p,msg('FBX · {0} · mapped humanoid. Original model terms apply; toon shaders, physics and embedded animations are not reproduced.', 'FBX · {0} · 연결된 휴머노이드. 모델의 원본 이용 조건을 확인하세요. 툰 셰이더·물리·내장 애니메이션은 재현하지 않습니다.',raw(name)));host.append(p);
+  const title=document.createElement('strong');bindText(title,raw(name));host.append(title);
+  const appearanceLabel=document.createElement('p');bindText(appearanceLabel,msg('Material: {0}','재질: {0}',materialAppearanceLabel(mode)));host.append(appearanceLabel);
+  host.append(createHelp(msg('Model details / terms', '모델 정보 · 이용 조건'), [msg('FBX humanoid. Original model terms apply; toon shaders, physics and embedded animations are not reproduced.', 'FBX 휴머노이드입니다. 모델의 원본 이용 조건이 적용되며, 툰 셰이더·물리·내장 애니메이션은 재현하지 않습니다.')]));
 }
 async function importFBXCharacter(file:File,images:File[]) {
   if(busy||exporting||modelBusy)return;
@@ -377,7 +381,7 @@ async function importFBXCharacter(file:File,images:File[]) {
   let candidate:Awaited<ReturnType<typeof setupFBX>>=null,adapter:FBXHumanoidRigAdapter|null=null;
   try {
     candidate=await setupFBX(file,images);
-    if(!candidate){bindText(get('character-message'),msg('Character import canceled.', '캐릭터 가져오기를 취소했습니다.'));return;}
+    if(!candidate){bindText(get('character-message'),'');notify(msg('Character import canceled.', '캐릭터 가져오기를 취소했습니다.'));return;}
     const reference=await fileReference('fbx',file),textureReferences=await Promise.all(candidate.loaded.images.map(image=>fileReference('fbxTexture',image)));
     await candidate.loaded.applyTextures(candidate.config);
     adapter=new FBXHumanoidRigAdapter(candidate.loaded.scene,candidate.config,`fbx:${reference.sha256}`,candidate.loaded.release);
@@ -385,7 +389,7 @@ async function importFBXCharacter(file:File,images:File[]) {
     rememberFBXSetup(reference.sha256,candidate.config);
     currentFBX=structuredClone(candidate.config);sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));commitProjectFile(reference,file);
     textureReferences.forEach((ref,index)=>commitProjectFile(ref,candidate!.loaded.images[index]));
-    candidate=null;adapter=null;committedCharacter='local';showFBXInfo(file.name);bindText(get('character-message'),raw(file.name));setCharacterDisplay('model');
+    candidate=null;adapter=null;committedCharacter='local';showFBXInfo(file.name);bindText(get('character-message'),'');setCharacterDisplay('model');
   }catch(error){if(adapter)adapter.dispose();else candidate?.loaded.dispose();bindText(get('character-message'),uiError(error));}
   finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg('Paused','일시정지'):msg('Idle','대기'));}
 }
@@ -592,10 +596,16 @@ function renderDiagnostics() {
   bindText(get('interpretation-summary'), msg("{0} · {1} count-in · {2} controls · {3} unmapped · {4} omitted · {5} hand overrides · {6} unassigned motions", "{0} · 카운트인 {1}개 · 제어 {2}개 · 미매핑 {3}개 · 제외 {4}개 · 손 지정 {5}개 · 동작 미배정 {6}개", plan.mappingProfile==='logicDkdGm'?'Logic DKD · GM':'General MIDI', countIn, interpretations.filter(event=>event.kind==='control').length, unmapped, omitted, Object.keys(plan.handOverrides??{}).length, unresolved));
   get('diagnostics').hidden = !plan.diagnostics.length;
   bindText(get('diagnostic-summary'), msg("{0} diagnostics{1}", "분석 알림 {0}개{1}", plan.diagnostics.length, unresolved?msg(" · {0} unassigned hits", " · 표현하지 못한 타격 {0}개", unresolved):''));
-  for (const item of plan.diagnostics.slice(0,100)) { const li=document.createElement('li'); const text=msg('{0}{1}', '{0}{1}', raw(item.time !== undefined ? preciseClockText(item.time)+' · ':''), engineMessage(item.message));
-    if(item.time!==undefined){const jump=document.createElement('button');bindText(jump, text);jump.onclick=()=>{if(!plan||busy||exporting||modelBusy)return;const time=item.time!+PRE_ROLL;audio?.seek(time);updateFrame(time);};li.append(jump);}else bindText(li, text);
-    if(item.hitId!==undefined){const hit=plan.hits[item.hitId];if(hit){const related=plan.hits.filter(other=>other.timeUs===hit.timeUs&&other.time===hit.time);const detail=document.createElement('p');detail.className='hint';bindText(detail, msg("MIDI tick {0} · simultaneous hits: {1} · Select the button to jump here.", "MIDI tick {0} · 동시 타격: {1} · 버튼을 누르면 해당 위치로 이동합니다.", hit.tick, related.map(other=>`${other.pieceId??other.instrument} (${other.note})`).join(', ')));li.append(detail);}}
-    diagnosticList.append(li); }
+  for (const item of plan.diagnostics.slice(0,100)) {
+    const li=document.createElement('li'), detail=document.createElement('details'), summary=document.createElement('summary');
+    const hit=item.hitId!==undefined?plan.hits[item.hitId]:undefined;
+    bindText(summary,joinMessages([raw(item.time!==undefined?preciseClockText(item.time):'—'), diagnosticTitle(item.code), ...(hit?[raw(`${hit.pieceId??hit.instrument} (${hit.note})`)]:[])]));
+    detail.append(summary);
+    const explanation=document.createElement('p');bindText(explanation,engineMessage(item.message));detail.append(explanation);
+    if(hit){const related=plan.hits.filter(other=>other.timeUs===hit.timeUs&&other.time===hit.time);const source=document.createElement('p');bindText(source,msg('MIDI tick {0} · simultaneous hits: {1}', 'MIDI tick {0} · 동시 타격: {1}',hit.tick,raw(related.map(other=>`${other.pieceId??other.instrument} (${other.note})`).join(', '))));detail.append(source);}
+    if(item.time!==undefined){const jump=document.createElement('button');bindText(jump,msg('Go to time','해당 시각으로 이동'));jump.onclick=()=>{if(!plan||busy||exporting||modelBusy)return;const time=item.time!+PRE_ROLL;audio?.seek(time);updateFrame(time);};detail.append(jump);}
+    li.append(detail);diagnosticList.append(li);
+  }
   if(plan.diagnostics.length>100){const li=document.createElement('li');bindText(li, msg("{0} more diagnostics", "외 {0}개 알림", plan.diagnostics.length-100));diagnosticList.append(li);}
   status(msg("Ready", "준비 완료"),'ready'); message(unmapped||unresolved?msg("Ready · {0} unmapped · {1} unassigned motions. See Analysis.", "준비 완료 · 미매핑 {0}개 · 동작 미배정 {1}개. 분석에서 확인하세요.", unmapped, unresolved):msg("Ready. Press Play to start the performance.", "준비가 끝났습니다. 재생 버튼을 눌러 연주를 시작하세요.")); timeline.resize();
 }
@@ -677,7 +687,7 @@ function showWavInfo(info?: WavAlignmentInfo) {
   if(info)wavAlignmentInfo=info;
   if(!plan)wavAlignmentInfo=undefined;
   info=info??wavAlignmentInfo;
-  if(!wav){wavAlignmentInfo=undefined;bindText(get('wav-info'), msg("Synthesized drum audio · loading a WAV replaces this sound.", "합성 드럼 오디오 · WAV를 불러오면 이 소리를 대체합니다."));return;}
+  if(!wav){wavAlignmentInfo=undefined;bindText(get('wav-info'), msg("Synthesized drum audio", "합성 드럼 오디오"));return;}
   const parts=[raw(wav.name), msg("{0} s", "{0}초", wav.buffer.duration.toFixed(2)), msg("Start {0} s", "시작 {0}초", wavOffset.toFixed(3))];
   if(info){
     if(info.copiedSeconds===0)parts.push(msg("Warning: no overlap with the current song; the result is silent", "주의: 현재 곡 범위와 겹치지 않아 전체 무음"));
@@ -871,7 +881,7 @@ get('project-save').onclick=async()=>{
       view:{theme,background:get<HTMLInputElement>('background').value,skeleton:get<HTMLInputElement>('skeleton-visible').checked,model:get<HTMLInputElement>('model-visible').checked,character:get<HTMLInputElement>('character-visible').checked,timelineZoom:Number(get<HTMLInputElement>('timeline-zoom').value)},outputTime};
     parseProject(JSON.stringify(project));
     downloadJson(project,`${fileName.replace(/\.(mid|midi)$/i,'')}.drumvrm.json`);
-    bindText(get('project-message'), msg("Project saved. This private file includes MIDI notes and the plan. Keep the matching app version and original WAV, VRM, FBX, texture and GLB files.", "프로젝트를 저장했습니다. MIDI 노트·계획이 포함된 개인 파일입니다. 같은 버전의 앱과 원본 WAV·VRM·FBX·텍스처·GLB를 함께 보관하세요."));
+    bindText(get('project-message'), ''); notify(msg("Project saved.", "프로젝트를 저장했습니다."));
   }catch(error){bindText(get('project-message'), uiError(error));}
   finally{busy=false;projectBusy=false;controls();status(msg("Paused", "일시정지"));}
 };
@@ -879,7 +889,7 @@ function showMissingProjectAssets() {
   if(!pendingProject)return;
   const missing=missingProjectAssets(pendingProject,projectFiles);
   get('project-relink').hidden=!missing.length;
-  if(missing.length)bindText(get('project-message'), msg("The current performance is preserved. Relink originals: {0}. A matching name is not enough; the SHA-256 content hash must match.", "현재 연주는 유지됩니다. 다시 연결할 원본: {0}. 이름이 같아도 내용의 SHA-256이 다르면 사용할 수 없습니다.", raw(missing.map(asset=>`${asset.kind} · ${asset.name}`).join(', '))));
+  if(missing.length)bindText(get('project-message'), msg("Relink original files: {0}", "원본 파일을 연결하세요: {0}", raw(missing.map(asset=>`${asset.kind} · ${asset.name}`).join(', '))));
 }
 async function restorePendingProject() {
   const project=pendingProject;if(!project)return;
@@ -936,11 +946,11 @@ async function restorePendingProject() {
     committedCharacter=project.rig==='native'?'native':characterPreset?.id??'local';refreshCharacterPreset();
     scene.setPlan(plan);timeline.setPlan(plan);replaceAudio(nextBuffer,project.outputTime);showWavInfo(aligned?.info);showModelInfo(modelInfo,characterPreset);
     if(project.rig==='fbx')showFBXInfo(project.assets.find(a=>a.kind==='fbx')!.name);
-    bindText(get('character-message'), project.rig==='fbx'?msg('Project FBX · bone, texture and body settings restored', '프로젝트 FBX · 본·텍스처·체형 설정 복원'):project.rig==='vrm'?msg("Project VRM · original file and body settings restored", "프로젝트 VRM · 같은 원본 파일과 체형 설정 복원"):msg("Default rig · project body settings restored", "기본 리그 · 프로젝트 체형 설정 복원"));
+    bindText(get('character-message'), '');
     get<HTMLInputElement>('seek').max=String(outputDuration(plan));bindText(get('duration'), clockText(outputDuration(plan)));
     bindText(get('metric-duration'), clockText(plan.duration));bindText(get('metric-hits'), plan.hits.length.toLocaleString());bindText(get('metric-tempos'), String(plan.tempoCount));bindText(get('plan-label'), 'READY');get('stage-empty').hidden=true;
     fitProposal=null;preFitSetup=null;fitBaseline=structuredClone(project.kit);fitState=msg("Saved layout restored", "저장한 배치 복원");poseReview=null;refreshCalibration();refreshTarget();refreshPiece();renderDiagnostics();
-    pendingProject=null;get('project-relink').hidden=true;bindText(get('project-message'), msg("Original files verified and project restored. Compare WAV and poses during playback and seeking.", "같은 원본 파일을 확인하고 프로젝트를 복원했습니다. WAV와 자세를 재생·탐색으로 확인하세요."));
+    pendingProject=null;get('project-relink').hidden=true;bindText(get('project-message'), ''); notify(msg("Project restored.", "프로젝트를 복원했습니다."));
   } finally {adapter?.dispose();preparedAppearance?.dispose();}
 }
 get('project-open').onclick=()=>get<HTMLInputElement>('project-file').click();

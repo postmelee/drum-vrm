@@ -1,3 +1,5 @@
+import { createHelp } from './ui-help';
+import { materialAppearanceLabel, materialAppearanceDescription } from './material-appearance';
 import { bindAttribute, bindText, joinMessages, msg, raw } from './i18n';
 import { engineMessage } from './engine-messages';
 import { FBX_BONES, FBX_REQUIRED, imageKey, type FBXMaterialMode, validateFBXConfig, type FBXConfig } from './fbx-config';
@@ -32,7 +34,7 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = document.createElement('dialog'); dialog.className = 'fbx-setup'; dialog.setAttribute('aria-labelledby', 'fbx-title');
     const title = text('h2', 'Import FBX character', 'FBX 캐릭터 불러오기'); title.id = 'fbx-title';
-    const intro = text('p', 'Check the remaining bones and colors in the preview, then use the character.', '남은 본과 색상을 미리보기에서 확인한 뒤 캐릭터를 적용하세요.');
+
     const filename = document.createElement('p'); filename.textContent = file.name;
     const picker = document.createElement('input'); picker.type = 'file'; picker.multiple = true; picker.accept = '.png,.jpg,.jpeg'; picker.id = 'fbx-images';
     const label = text('label', 'Companion images (optional)', '함께 사용할 이미지 (선택)'); label.htmlFor = picker.id;
@@ -40,10 +42,10 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
     const showFiles = () => { selected.textContent = companions.map(f => f.name).join(', '); }; showFiles();
     picker.onchange = () => { companions = [...picker.files ?? []]; showFiles(); };
     const files = document.createElement('div'); files.append(filename, label, picker, selected);
-    const fields = document.createElement('div'), error = document.createElement('p'); error.setAttribute('role', 'status');
+    const fields = document.createElement('div'), error = document.createElement('p'); error.setAttribute('role', 'status'); error.className = 'field-status';
     const actions = document.createElement('div'); actions.className = 'button-row fbx-actions';
     const cancel = text('button', 'Cancel', '취소'), next = text('button', 'Inspect file', '파일 검사');
-    actions.append(cancel, next); dialog.append(title, intro, files, fields, error, actions); document.body.append(dialog);
+    actions.append(cancel, next); dialog.append(title, files, fields, error, actions); document.body.append(dialog);
     let loaded: LoadedFBX | null = null, finished = false, busy = false;
     let preview: ReturnType<typeof createFBXPreview> | undefined;
     let textureWork: Promise<void> = Promise.resolve();
@@ -67,19 +69,20 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
       const initial = saved?.bones ?? suggested;
       files.hidden = true;
       const info = document.createElement('p'); info.textContent = file.name; fields.append(info);
-      if (saved) fields.append(text('p', 'Restored the last successful setup for this file. Review it before applying.', '이 파일의 마지막 성공 설정을 복원했습니다. 확인한 뒤 적용하세요.'));
+      if (saved) fields.append(text('p', 'Saved settings restored', '저장한 설정 복원'));
+      const guidance: string[] = [];
       const layout = document.createElement('div'); layout.className = 'fbx-layout';
       const visual = document.createElement('div'); visual.className = 'fbx-visual';
       const viewport = document.createElement('div'); viewport.className = 'fbx-preview';
-      const highlighted = text('p', 'Select a bone to mark its position in pink.', '본을 선택하면 해당 위치를 분홍색으로 표시합니다.'); highlighted.setAttribute('role', 'status');
+      const highlighted = text('p', 'Bone preview', '본 미리보기'); highlighted.setAttribute('role', 'status');
       const resetView = text('button', 'Reset view', '시점 초기화');
-      visual.append(viewport, highlighted, text('p', 'Drag to rotate · scroll to zoom. Preview lighting differs from the performance scene.', '드래그로 회전 · 스크롤로 확대. 미리보기 조명은 연주 장면과 다릅니다.'), resetView);
+      visual.append(viewport, highlighted, text('p', 'Drag to rotate · scroll to zoom', '드래그로 회전 · 스크롤로 확대'), resetView);
       const settings = document.createElement('div'); layout.append(visual, settings); fields.append(layout);
-      const progress = document.createElement('p'); progress.setAttribute('role', 'status'); settings.append(progress);
+      const progress = document.createElement('p'); progress.setAttribute('role', 'status'); progress.className = 'field-status'; settings.append(progress);
       const pending = document.createElement('div'); settings.append(pending);
       const moreLabel = text('label', 'Show candidates with other names', '이름이 다른 후보도 표시'); moreLabel.className = 'fbx-more';
       const more = document.createElement('input'); more.type = 'checkbox'; moreLabel.append(more); settings.append(moreLabel);
-      settings.append(text('p', 'Used bones and incompatible ancestry are excluded. If a candidate is missing, review or clear an incorrect assigned/optional bone.', '사용 중인 본과 상하 관계가 맞지 않는 본은 제외합니다. 후보가 없으면 연결된 본·선택 본에서 잘못된 연결을 해제하세요.'));
+      guidance.push(msg('Bone lists exclude used bones and incompatible ancestry. Review assigned and optional bones to change an earlier connection.', '본 목록은 사용 중인 본과 상하 관계가 맞지 않는 본을 제외합니다. 기존 연결은 연결된 본·선택 본에서 수정하세요.'));
       const assigned = document.createElement('details'); assigned.append(text('summary', 'Review assigned bones', '연결된 본 수정')); settings.append(assigned);
       const optional = document.createElement('details'); optional.append(text('summary', 'Optional bones / fingers', '선택 본 · 손가락')); settings.append(optional);
       const refresh = () => {
@@ -101,7 +104,7 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
           input.value = value;
         }
         const missing = FBX_REQUIRED.filter(name => !current[name as keyof typeof current]);
-        bindText(progress, missing.length ? msg('{0} required bones left: {1}', '필수 본 {0}개를 선택하세요: {1}', missing.length, joinMessages(missing.map(boneLabel), ', ')) : msg('All 15 required bones are connected. Check the colors below.', '필수 본 15개가 모두 연결되었습니다. 아래에서 색상을 확인하세요.'));
+        bindText(progress, missing.length ? msg('{0} required bones left: {1}', '필수 본 {0}개를 선택하세요: {1}', missing.length, joinMessages(missing.map(boneLabel), ', ')) : msg('Required bones: 15/15', '필수 본: 15/15'));
         next.disabled = busy || missing.length > 0;
       };
       more.onchange = refresh;
@@ -122,7 +125,8 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
       unit = document.createElement('input'); unit.id = 'fbx-unit'; unit.type = 'number'; unit.min = '.000001'; unit.max = '10'; unit.step = 'any'; unit.value = String(saved?.metersPerUnit ?? source.metersPerUnit); units.append(unit); advanced.append(units);
       advanced.append(text('p', 'Centimetres: 0.01 · metres: 1. Use a standing rest pose.', '센티미터: 0.01 · 미터: 1. 서 있는 기본 자세를 사용하세요.'));
       const details = document.createElement('p'); bindText(details, msg('{0} bones · {1} materials · {2} embedded clips (not played).', '본 {0}개 · 재질 {1}개 · 내장 클립 {2}개 (재생하지 않음).', candidates.length, source.materials.length, source.animationCount)); advanced.append(details); settings.append(advanced);
-      settings.append(text('h3', 'Colors and textures', '색상 · 텍스처'), text('p', 'Image names suggest connections. Check the preview and change any incorrect choices.', '이미지 이름으로 연결을 제안합니다. 미리보기를 확인하고 맞지 않는 항목은 변경하세요.'));
+      settings.append(text('h3', 'Colors and textures', '색상 · 텍스처'));
+      guidance.push(msg('Texture connections are suggested from image names. Use the preview to check and change them.', '이미지 이름으로 텍스처 연결을 제안합니다. 미리보기에서 확인하고 수정하세요.'));
       const applyTextures = async () => {
         busy = true; next.disabled = true; materialMode.disabled = true; textureInputs.forEach(input => { input.disabled = true; });
         try { await source.applyTextures(config()); if (!finished) preview?.draw(); }
@@ -131,12 +135,15 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
       };
       const modeLabel = text('label', 'Material appearance', '재질 표현');
       materialMode = document.createElement('select'); materialMode.id = 'fbx-material-mode';
-      materialMode.append(option(msg('Original material (default)', '원본 재질 (기본)'), 'original'),
-        option(msg('Matte lighting', '무광 조명'), 'matte'), option(msg('Texture only (Unlit)', '텍스처 그대로 (Unlit)'), 'unlit'));
+      for (const mode of ['original', 'matte', 'unlit'] as const) materialMode.append(option(materialAppearanceLabel(mode), mode));
       materialMode.value = saved?.materialMode ?? 'original';
-      materialMode.onchange = () => { error.textContent = ''; textureWork = applyTextures(); };
-      modeLabel.append(materialMode); settings.append(modeLabel);
-      settings.append(text('p', 'Original uses the FBX lighting properties. Matte removes highlights; Unlit shows base colors without lights or tone mapping. Choose Unlit for a flat, texture-only reference. It does not recreate an authoring-tool toon shader.', '원본은 FBX의 조명 속성을 사용합니다. 무광은 반짝임을 없애고, Unlit은 조명·톤 매핑 없이 기본색을 보여줍니다. 텍스처 중심의 평면적인 미리보기에는 Unlit을 선택하세요. 제작 도구의 툰 셰이더를 재현하는 기능은 아닙니다.'));
+      const modeDescription = document.createElement('p'); modeDescription.className = 'control-help'; modeDescription.id = 'fbx-mode-description';
+      materialMode.setAttribute('aria-describedby', modeDescription.id);
+      const describeMode = () => bindText(modeDescription, materialAppearanceDescription(materialMode.value as FBXMaterialMode));
+      describeMode();
+      materialMode.onchange = () => { error.textContent = ''; describeMode(); textureWork = applyTextures(); };
+      modeLabel.append(materialMode); settings.append(modeLabel, modeDescription);
+      guidance.push(msg('Automatic follows supported file material properties; it cannot recover missing authoring-tool shaders or website lighting. Preview lighting differs from the performance scene. Unlit also disables tone mapping.', '자동 적용은 지원되는 파일 재질 속성을 따릅니다. 파일에 없는 제작 도구의 셰이더나 웹사이트 조명은 복원하지 않습니다. 미리보기와 연주 장면의 조명은 다르며, Unlit은 톤 매핑도 끕니다.'));
       source.materials.forEach((material, index) => {
         const row = document.createElement('label'); row.textContent = material.name || `Material ${index + 1}`;
         const select = document.createElement('select'); select.id = `fbx-material-${index}`;
@@ -148,8 +155,9 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
         select.onchange = () => { error.textContent = ''; textureWork = applyTextures(); };
         row.append(select); settings.append(row); textureInputs.push(select);
       });
-      settings.append(text('p', 'Successful settings are remembered for this file in this browser (up to 10 files). Model and image contents are not stored. Keep a project and the source files for later use.', '성공한 설정은 이 브라우저에서 같은 파일에 재사용합니다(최근 10개). 모델·이미지 내용은 저장하지 않습니다. 나중에 사용하려면 프로젝트와 원본 파일을 보관하세요.'));
-      settings.append(text('p', 'Original model terms apply. Toon shaders, physics and constraints are not reproduced.', '모델의 원본 이용 조건을 확인하세요. 툰 셰이더·물리·제약 설정은 재현하지 않습니다.'));
+      guidance.push(msg( 'Successful settings are remembered for this file in this browser (up to 10 files). Model and image contents are not stored. Keep a project and the source files for later use.', '성공한 설정은 이 브라우저에서 같은 파일에 재사용합니다(최근 10개). 모델·이미지 내용은 저장하지 않습니다. 나중에 사용하려면 프로젝트와 원본 파일을 보관하세요.'));
+      guidance.push(msg( 'Original model terms apply. Toon shaders, physics and constraints are not reproduced.', '모델의 원본 이용 조건을 확인하세요. 툰 셰이더·물리·제약 설정은 재현하지 않습니다.'));
+      settings.append(createHelp(msg('Import help', '불러오기 도움말'), guidance));
       try { preview = createFBXPreview(viewport, source.scene); resetView.onclick = () => preview?.reset(); }
       catch { bindText(viewport, msg('3D preview unavailable. Bone and texture selection is still available.', '3D 미리보기를 사용할 수 없습니다. 본과 텍스처는 계속 선택할 수 있습니다.')); }
       bindText(next, msg('Use character', '캐릭터 적용')); refresh();

@@ -4,6 +4,7 @@ import { Group, LoadingManager } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import { validateSelfContainedGLB } from './model-import';
+import { applyLegacyShadeCompatibility } from './vrm-materials';
 
 export const MAX_VRM_BYTES = 50 * 1024 * 1024;
 export const MAX_VRM_IMAGES = 64, MAX_VRM_IMAGE_DIMENSION = 4096, MAX_VRM_IMAGE_PIXELS = 64_000_000;
@@ -17,6 +18,7 @@ export interface VRMInspection {
   version: '0.0' | '1.0'; name: string; authors: string[]; required: number; missing: string[];
   fingers: { left: number; right: number }; terms: [string, string][];
   modelVersion: string; references: string[]; rawMeta: Json; metadataWarnings: string[];
+  legacyShadeTextures?: number;
 }
 
 /** Keep the original v0 terms; v1 defaults do not describe v0 permissions. */
@@ -191,6 +193,7 @@ export async function loadLocalVRM(file: File): Promise<{vrm: VRM; info: VRMInsp
     throw new Error(msg("An external VRM resource request was blocked.", "VRM 외부 리소스 요청을 차단했습니다."));
   });
   const loader = new GLTFLoader(manager).register(parser => {
+    info.legacyShadeTextures = applyLegacyShadeCompatibility(parser.json);
     const plugin = new VRMLoaderPlugin(parser), afterRoot = plugin.afterRoot.bind(plugin);
     plugin.afterRoot = async gltf => {
       if (info.version === '0.0') {

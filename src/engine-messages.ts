@@ -1,5 +1,25 @@
 import { msg } from './i18n';
 
+/** Compact labels use diagnostic codes; complete engine messages remain in details. */
+export function diagnosticTitle(code: string): string {
+  const labels: Record<string, [string, string]> = {
+    RIG_UNREACHABLE_HIT: ['Target out of reach', '타점 도달 불가'],
+    RIG_UNREACHABLE_PEDAL: ['Pedal out of reach', '페달 도달 불가'],
+    UNRESOLVED_HIT: ['Motion unassigned', '동작 미배정'],
+    UNMAPPED_NOTE: ['Instrument unmapped', '악기 미매핑'],
+    HAND_OVERRIDE_INFEASIBLE: ['Hand assignment unavailable', '지정한 손으로 연주 불가'],
+    BODY_PATH_CLEARANCE: ['Body path overlap', '신체 경로 겹침'],
+    EQUIPMENT_PATH_CLEARANCE: ['Equipment path overlap', '악기 경로 겹침'],
+    EQUIPMENT_LAYOUT_CLEARANCE: ['Equipment layout overlap', '악기 배치 겹침'],
+    COUNT_IN_GESTURE_UNAVAILABLE: ['Count-in motion unavailable', '카운트인 동작 불가'],
+    HIHAT_INTENT_CONFLICT: ['Hi-hat interpretation conflict', '하이햇 해석 충돌'],
+    TEMPO_CONFLICT: ['Tempo conflict', '템포 충돌'],
+    TIME_SIGNATURE_CONFLICT: ['Time signature conflict', '박자표 충돌'],
+    INVALID_TIME_SIGNATURE: ['Invalid time signature', '잘못된 박자표'],
+  };
+  return labels[code] ? msg(...labels[code]) : msg('Diagnostic: {0}', '진단: {0}', code);
+}
+
 /** Presentation adapter for the current Rust diagnostic text protocol.
  * The engine plan and its original diagnostic messages are never rewritten.
  * Keep exact templates covered by the Rust-message coverage test until the
