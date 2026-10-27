@@ -60,7 +60,7 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
   it.each([.86, 1.12])('fits a diagonal grip from measured %s finger geometry with arbitrary raw rest bases', proportion => {
     const {vrm} = generatedVRM(proportion, true), rig = new VRMHumanoidRigAdapter(vrm, `generated-fingers-${proportion}`);
     const profile = rig.getProfile(), pose = createRestRigPose(profile);
-    expect(Math.abs(profile.gripOffsets[0][0])).toBeGreaterThan(.03 * proportion);
+    expect(Math.hypot(...profile.gripOffsets[0])).toBeGreaterThan(.03 * proportion);
     expect(profile.gripOffsets[0][0]).toBeCloseTo(-profile.gripOffsets[1][0], 6);
     for (const side of ['left', 'right'] as const) {
       const socket = rig.root.getObjectByName(`${side}HandToolSocket`)!;
@@ -161,7 +161,7 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
       }
     }
     const rig = new VRMHumanoidRigAdapter(vrm, `generated-${variant}`);
-    for (const palmOrientation of ['up', 'inward', 'down'] as const) {
+    for (const palmOrientation of ['natural', 'up', 'inward', 'down'] as const) {
       const profile = rig.setCalibration({...rig.getCalibration(), palmOrientation}); rig.applyPose(createRestRigPose(profile));
       expect(matrices(rig).every(Number.isFinite)).toBe(true);
       expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);

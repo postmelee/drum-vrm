@@ -25,7 +25,7 @@ fn profile(scale: f64) -> RigProfile {
     p
 }
 #[test]
-fn bounded_common_fit_keeps_pedals_unchanged_and_is_idempotent() {
+fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
     for scale in [1.0, 0.8, 0.65] {
         let profile = profile(scale);
         let original = default_kit();
@@ -70,10 +70,35 @@ fn bounded_common_fit_keeps_pedals_unchanged_and_is_idempotent() {
                     );
                 }
             } else {
-                assert_eq!(old.position, new.position);
                 assert_eq!(old.radius, new.radius);
+                if old.instrument == Instrument::Kick {
+                    assert_eq!(old.position, new.position);
+                } else {
+                    assert!((old.position[0] - new.position[0]).abs() <= 0.25);
+                    assert!((old.position[2] - new.position[2]).abs() <= 0.25);
+                    for pitch in [0.0, -0.09, -0.18] {
+                        let q = crate::rig::pitch_rotation(profile.contact_rotations[2], pitch);
+                        let ankle = crate::motion::sub(
+                            crate::equipment::pedal_contact(new, pitch),
+                            profile.offset(2, q),
+                        );
+                        let d = crate::motion::distance(profile.roots[2], ankle);
+                        assert!(d < profile.lengths[2].iter().sum::<f64>());
+                    }
+                }
             }
         }
+        let hat = fitted
+            .kit
+            .iter()
+            .find(|p| p.instrument == Instrument::Hihat)
+            .unwrap();
+        assert!(
+            crate::motion::distance(
+                hat.position,
+                crate::equipment::anchored_hihat_position(hat, &fitted.kit)
+            ) < 1e-9
+        );
         let snare = fitted.kit.iter().find(|piece| piece.id == "snare").unwrap();
         assert!(snare_ready_fits(&profile, snare));
         for piece in &fitted.kit {
@@ -119,9 +144,9 @@ fn bounded_common_fit_keeps_pedals_unchanged_and_is_idempotent() {
 #[test]
 fn geometry_rejects_obstructed_approaches_without_applying_unsafe_partial_repair() {
     let kit = default_kit();
-    // The former nominal cylinder check considered this clear. The shared
-    // physical bounds now expose obstructions rather than certifying that pose.
-    assert!(!kit_clearance_ids(&kit).is_empty());
+    // The shared default seed is now physically clear. An authored obstruction
+    // must still be rejected; this test does not depend on obsolete defaults.
+    assert!(kit_clearance_ids(&kit).is_empty());
     let mut intersecting = kit;
     let tom = intersecting
         .iter()
@@ -162,7 +187,14 @@ fn annulus_reach_is_not_accepted_as_a_safe_near_snare_posture() {
         .unwrap()
         .position = target;
     let result = fit_kit(&profile, &kit).unwrap();
-    assert!(result.complete);
+    assert!(
+        result.complete,
+        "misses={:?} clearance={:?} budget={} candidates={}",
+        result.unreachable_piece_ids,
+        result.clearance_piece_ids,
+        result.search_limit_reached,
+        result.search_candidates
+    );
     let fitted_snare = result.kit.iter().find(|p| p.id == "snare").unwrap();
     assert_ne!(fitted_snare.position, target);
     assert!(snare_ready_fits(&profile, fitted_snare));
@@ -236,6 +268,34 @@ fn measured_body_pair_capability_and_ready_pose_share_the_fit_contract() {
     assert_eq!(audit.pair_checks, 64); // Eight physical hand-played surfaces.
     assert_eq!(audit.hand_target_checks, 16);
     assert!(audit.available_pairs > 0);
+    let crashes: Vec<_> = result
+        .kit
+        .iter()
+        .filter(|p| p.instrument == Instrument::Crash)
+        .collect();
+    let equipment = crate::equipment_motion::EquipmentContext::for_kit(&result.kit);
+    assert!(crashes.len() >= 2);
+    assert!(
+        [false, true].into_iter().any(|swap| {
+            let a = crashes[usize::from(swap)];
+            let b = crashes[usize::from(!swap)];
+            let observer =
+                std::array::from_fn(|axis| (profile.roots[0][axis] + profile.roots[1][axis]) * 0.5);
+            let targets = [
+                crate::contact::target(a, "crash", observer),
+                crate::contact::target(b, "crash", observer),
+            ];
+            crate::posture::pair_solution_with_equipment(
+                &profile,
+                targets,
+                [0.; 2],
+                equipment.as_deref(),
+                [Some(&a.id), Some(&b.id)],
+            )
+            .is_some()
+        }),
+        "complete fitting must support simultaneous crash impacts, not only raised ready tips"
+    );
     let pose = crate::posture::ready_pose(&profile, &result.kit).unwrap();
     let inspected = crate::clearance::inspect(&profile, &pose);
     assert!(inspected.torso_clearance_meters >= crate::posture::MARGIN - 1e-6);

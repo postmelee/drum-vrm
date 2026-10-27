@@ -51,11 +51,26 @@ pub fn at(samples: &[f64], time: f64) -> f64 {
 pub fn preserve_contacts(
     samples: &mut [f64],
     profile: &RigProfile,
-    contacts: &[(f64, usize, Vec3)],
+    contacts: &[(f64, usize, Vec3, f64, Option<&str>)],
+    equipment: Option<&crate::equipment_motion::EquipmentContext>,
 ) {
     if samples.is_empty() {
         return;
     }
+    let valid =
+        |yaw, &(time, limb, target, pitch, piece): &(f64, usize, Vec3, f64, Option<&str>)| {
+            let _ = time;
+            let p = profile.turned(yaw);
+            if equipment.is_some() && p.hand_frames.is_some() {
+                crate::contact_feasibility::at_pitch(&p, limb, target, pitch, equipment, piece)
+                    .is_some()
+            } else {
+                p.reachable_at_pitch(limb, target, pitch)
+            }
+        };
+    // Preserve a known neutral witness; baseline path failures remain explicit
+    // and do not erase useful body motion in unrelated phrases.
+    let protected: Vec<_> = contacts.iter().map(|c| valid(0., c)).collect();
     let enforce_rate = |values: &mut [f64]| {
         for reverse in [false, true] {
             for k in 1..values.len() {
@@ -80,8 +95,9 @@ pub fn preserve_contacts(
     };
     for pass in 0..16 {
         let mut affected = vec![false; samples.len()];
-        for &(time, limb, target) in contacts {
-            if profile.turned(at(samples, time)).reachable(limb, target) {
+        for (contact, &protect) in contacts.iter().zip(&protected) {
+            let time = contact.0;
+            if !protect || valid(at(samples, time), contact) {
                 continue;
             }
             let frame = ((time + crate::model::PRE_ROLL) / STEP).max(0.0);
@@ -101,7 +117,8 @@ pub fn preserve_contacts(
     }
     if contacts
         .iter()
-        .any(|&(time, limb, target)| !profile.turned(at(samples, time)).reachable(limb, target))
+        .zip(&protected)
+        .any(|(c, &protect)| protect && !valid(at(samples, c.0), c))
     {
         samples.fill(0.0);
     }
@@ -230,14 +247,14 @@ mod tests {
         let target = [-1.079, 1.26, 0.2];
         assert!(profile.reachable(0, target));
         let mut samples = vec![0.24; 80];
-        preserve_contacts(&mut samples, &profile, &[(0.0, 0, target)]);
+        preserve_contacts(&mut samples, &profile, &[(0.0, 0, target, 0.0, None)], None);
         assert!(profile.turned(at(&samples, 0.0)).reachable(0, target));
         assert!((samples[79] - 0.24).abs() < 1e-12);
         assert!(samples
             .windows(2)
             .all(|p| (p[1] - p[0]).abs() <= 0.06 + 1e-12));
         let first = samples.clone();
-        preserve_contacts(&mut samples, &profile, &[(0.0, 0, target)]);
+        preserve_contacts(&mut samples, &profile, &[(0.0, 0, target, 0.0, None)], None);
         assert_eq!(samples, first);
     }
 }

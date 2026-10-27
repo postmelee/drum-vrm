@@ -22,7 +22,7 @@ export interface CharacterPreset {
 export const CHARACTER_PRESETS: readonly CharacterPreset[] = [
   { ...avatar, label: avatar.title, provenanceFile: 'avatar-sample-b-provenance.json' },
   { ...seed, label: seed.title, provenanceFile: 'seed-san-provenance.json' },
-  { ...twist, label: msg('Twist sample (fit limited)', 'Twist 샘플 (맞춤 제한)'), provenanceFile: 'twist-provenance.json' },
+  { ...twist, label: msg('Twist sample', 'Twist 샘플'), provenanceFile: 'twist-provenance.json' },
 ];
 
 export function characterAssetUrl(file: string, baseUrl = import.meta.env.BASE_URL): string {

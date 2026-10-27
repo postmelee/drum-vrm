@@ -10,6 +10,14 @@ export function validateKitLayout(kit: readonly KitPiece[]): KitPiece[] {
     if (pieceInstrument(piece) !== expected) throw new Error(WORKER_MESSAGES.pieceRole);
     const g=piece.geometry;
     if(g && (g.version!==1 || !['procedural','mesh-bounds'].includes(g.source) || !Number.isFinite(g.referenceRadius) || g.referenceRadius<.01 || g.referenceRadius>1 || !g.body.center.every(Number.isFinite) || !g.body.halfExtents.every(v=>Number.isFinite(v)&&v>=.001&&v<=2) || !g.surface.center.every(Number.isFinite) || !g.surface.normal.every(Number.isFinite) || Math.abs(Math.hypot(...g.surface.normal)-1)>1e-5 || !Number.isFinite(g.surface.radius) || g.surface.radius<.01 || g.surface.radius>1)) throw new Error(WORKER_MESSAGES.dimensions);
+    const motion = g?.surface.motion;
+    if (motion && (motion.kind !== 'translation' || !Array.isArray(motion.axis) || motion.axis.length!==3 || !motion.axis.every(Number.isFinite)
+      || Math.abs(Math.hypot(...motion.axis)-1)>1e-5 || !Number.isFinite(motion.travelMeters) || motion.travelMeters<0 || motion.travelMeters>.025)) throw new Error(WORKER_MESSAGES.dimensions);
+    const radial = g?.surface.radialProfile;
+    if (radial && (!Array.isArray(radial.origin) || radial.origin.length !== 3 || !radial.origin.every(v=>Number.isFinite(v)&&Math.abs(v)<=3)
+      || !Array.isArray(radial.rotation) || radial.rotation.length !== 4 || !radial.rotation.every(Number.isFinite) || Math.abs(Math.hypot(...radial.rotation)-1)>1e-5
+      || !Array.isArray(radial.points) || radial.points.length < 2 || radial.points.length > 32
+      || radial.points.some((point,index)=>!Array.isArray(point)||point.length!==2||!Number.isFinite(point[0])||point[0]<0||point[0]>1||!Number.isFinite(point[1])||Math.abs(point[1])>1||index>0&&point[0]<=radial.points[index-1][0]))) throw new Error(WORKER_MESSAGES.dimensions);
     const [x,y,z] = piece.position;
     if (piece.position.length !== 3 || !piece.position.every(Number.isFinite) || Math.abs(x)>2 || y<.02 || y>2.5 || z<-.5 || z>2.5 || !Number.isFinite(piece.radius) || piece.radius<=0 || piece.radius>1) throw new Error(WORKER_MESSAGES.targetRange);
     if ((piece.id==='kick'||piece.id==='pedalHat') && (y<.04||y>.20)) throw new Error(WORKER_MESSAGES.pedalHeight);

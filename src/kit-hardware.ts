@@ -54,6 +54,28 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], g
     mesh.userData.pieceId = pedal.pieceId; mesh.userData.hitResponseRole = pedal.kind === 'board' ? 'pedal' : 'hardware';
     mesh.userData.fixedContact = true; mesh.userData.box = structuredClone(pedal);
   }
+  const mechanism = geometry.mechanisms?.find(value => value.pieceId === piece.id);
+  if (mechanism) {
+    const board = root.children.find(node => node.userData.box?.kind === 'board');
+    if (board) {
+      const pivot = new THREE.Group(); pivot.name = `${piece.id}/FootboardPivot`; pivot.userData.mechanismRole = 'footboardPivot'; pivot.userData.hitResponseRole = 'hardware';
+      pivot.position.set(...mechanism.pivot); root.add(pivot); root.updateMatrixWorld(true); pivot.attach(board);
+    }
+    if (mechanism.kind === 'kick') {
+      const center = new THREE.Vector3(...mechanism.contact).addScaledVector(new THREE.Vector3(...mechanism.normal), .028);
+      const parts = root.children.filter(node => {
+        const segment = node.userData.segment;
+        return segment && new THREE.Vector3(...segment.end).distanceTo(center) < 1e-7 &&
+          (new THREE.Vector3(...segment.start).distanceTo(center) < 1e-7 || new THREE.Vector3(...segment.start).distanceTo(new THREE.Vector3(...mechanism.axle)) < 1e-7);
+      });
+      const pivot = new THREE.Group(); pivot.name = 'KickBeaterPivot'; pivot.userData.mechanismRole = 'beaterPivot'; pivot.userData.hitResponseRole = 'hardware';
+      pivot.position.set(...mechanism.axle); root.add(pivot); root.updateMatrixWorld(true); parts.forEach(node => pivot.attach(node));
+      pivot.userData.contact = mechanism.contact;
+    }
+  }
+  root.userData.supportAssembly = pieceInstrument(piece) === 'tomHigh' || pieceInstrument(piece) === 'tomMid' ? 'bass-mounted-tom'
+    : pieceInstrument(piece) === 'tomLow' ? 'floor-tom-legs' : pieceInstrument(piece) === 'hihat' ? 'direct-hihat'
+      : pieceInstrument(piece) === 'snare' ? 'snare-basket' : pieceInstrument(piece) === 'kick' ? 'bass-pedal' : 'boom-cymbal';
   if (!geometry.supports.some(segment => canonical(segment.pieceId) === piece.id)) metal.dispose();
   if (!geometry.pedals.some(pedal => canonical(pedal.pieceId) === piece.id)) dark.dispose();
   return root;

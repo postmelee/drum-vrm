@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Bone, Group, Quaternion, Vector3 } from 'three';
 import { createRestRigPose, legacyPositionToNative, legacyQuaternionToNative, NativeHumanoidRigAdapter, type PalmOrientation } from '../src/rig-humanoid';
 import type { KitPiece } from '../src/types';
+import { DEFAULT_PEDALS } from '../src/kit-default';
 
 describe('semantic humanoid and hand-local tools', () => {
   it('uses a real positive-scale hierarchy with fingers and measured lengths', () => {
@@ -42,16 +43,16 @@ describe('semantic humanoid and hand-local tools', () => {
     expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
     rig.setCalibration({seatHeight: .54, seatForward: -.1});
     expect(rig.setCalibration(adjusted, kit)).toEqual(profile);
-    const read = rig.getCalibration(); read.seatHeight = 1; expect(rig.getCalibration()).toEqual({...adjusted, palmOrientation: 'up'});
+    const read = rig.getCalibration(); read.seatHeight = 1; expect(rig.getCalibration()).toEqual({...adjusted, palmOrientation: 'natural'});
     expect(() => rig.setCalibration({seatHeight: NaN, seatForward: 0})).toThrow('Seat');
     expect(() => rig.setCalibration({seatHeight: .6, seatForward: .51})).toThrow('Seat');
     expect(rig.getProfile()).toEqual(profile);
     const auto = rig.getAutomaticCalibration(kit); expect(auto.seatHeight).toBeGreaterThanOrEqual(.3); expect(auto.seatForward).toBe(.06);
     rig.dispose();
   });
-  it.each<PalmOrientation>(['up', 'inward', 'down'])('aligns resting wrists with forearms and carries %s palm roll in the forearm', palmOrientation => {
+  it.each<PalmOrientation>(['natural', 'up', 'inward', 'down'])('aligns resting wrists with forearms and carries %s palm roll in the forearm', palmOrientation => {
     const rig = new NativeHumanoidRigAdapter(), original = rig.getProfile();
-    expect(rig.getCalibration().palmOrientation).toBe('up');
+    expect(rig.getCalibration().palmOrientation).toBe('natural');
     const profile = rig.setCalibration({...rig.getCalibration(), palmOrientation}), pose = createRestRigPose(profile);
     rig.applyPose(pose);
     for (const [limb, side] of (['left', 'right'] as const).entries()) {
@@ -59,7 +60,7 @@ describe('semantic humanoid and hand-local tools', () => {
       const forearm = hand.getWorldPosition(new Vector3()).sub(lower.getWorldPosition(new Vector3())).normalize();
       const forward = new Vector3(side === 'left' ? .065 : -.065, 0, .008).normalize().applyQuaternion(hand.getWorldQuaternion(new Quaternion()));
       const palm = new Vector3(0, -1, 0).applyQuaternion(hand.getWorldQuaternion(new Quaternion()));
-      const desired = palmOrientation === 'up' ? new Vector3(0, 1, 0) : palmOrientation === 'down' ? new Vector3(0, -1, 0) : new Vector3(limb === 0 ? -1 : 1, 0, 0);
+      const desired = palmOrientation === 'natural' ? new Vector3(limb === 0 ? -1 : 1, -1, 0).normalize() : palmOrientation === 'up' ? new Vector3(0, 1, 0) : palmOrientation === 'down' ? new Vector3(0, -1, 0) : new Vector3(limb === 0 ? -1 : 1, 0, 0);
       desired.addScaledVector(forearm, -desired.dot(forearm)).normalize();
       expect(forward.dot(forearm)).toBeGreaterThan(1 - 1e-10); expect(palm.dot(desired)).toBeGreaterThan(1 - 1e-10);
       const forearmPalm = new Vector3(0, -1, 0).applyQuaternion(lower.getWorldQuaternion(new Quaternion()));
@@ -76,7 +77,7 @@ describe('semantic humanoid and hand-local tools', () => {
   });
   it('starts with both feet on the pedals and clamps unreachable rest poses without stretching', () => {
     const rig = new NativeHumanoidRigAdapter(), initial = rig.getProfile();
-    expect(initial.restTips[2]).toEqual([-.22, .08, .55]); expect(initial.restTips[3]).toEqual([.2, .08, .62]);
+    expect(initial.restTips.slice(2)).toEqual(DEFAULT_PEDALS);
     for (const limb of [2, 3]) expect(rig.getContactSamples()[limb].actual).toEqual(expect.arrayContaining(legacyPositionToNative(initial.restTips[limb]).map(value => expect.closeTo(value, 6))));
     const profile = rig.setCalibration({seatHeight: 1.2, seatForward: -.5}), pose = createRestRigPose(profile);
     rig.applyPose(pose);
@@ -121,7 +122,7 @@ describe('semantic humanoid and hand-local tools', () => {
     const b = new Vector3(...legacyPositionToNative(point.toArray())).applyQuaternion(new Quaternion(...legacyQuaternionToNative(q.toArray())));
     expect(a.distanceTo(b)).toBeLessThan(1e-12);
     const scene = new Group(), rig = new NativeHumanoidRigAdapter(); scene.add(rig.root); scene.updateMatrixWorld(true);
-    expect(rig.root.matrixWorld.determinant()).toBeGreaterThan(0); expect(rig.getContactSamples()[0].actual[0]).toBeGreaterThan(0);
+    expect(rig.root.matrixWorld.determinant()).toBeGreaterThan(0); expect(rig.getContactSamples()[0].actual[0]).toBeCloseTo(-rig.getProfile().restTips[0][0], 6);
     rig.dispose();
   });
 });

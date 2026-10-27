@@ -1,4 +1,4 @@
-import { inspect_midi, Performance } from './wasm/drum_engine';
+import { inspect_midi, plan_midi, Performance } from './wasm/drum_engine';
 import { applyKitLayout } from './kit-calibration';
 import type { EngineRequest, PreparedResponse } from './engine-protocol';
 import type { PerformancePlan } from './types';
@@ -8,13 +8,11 @@ import type { PerformancePlan } from './types';
 export function executeEngineRequest(request:EngineRequest):string {
   if(request.kind==='inspect')return inspect_midi(request.bytes);
   if(request.kind==='source'){
-    const performance=new Performance(request.bytes,JSON.stringify(request.selection));
-    try{return performance.plan_json();}finally{performance.free();}
+    return plan_midi(request.bytes,JSON.stringify(request.selection));
   }
   let plan:PerformancePlan;
   if(request.kind==='plan'){
-    const source=new Performance(request.bytes,JSON.stringify(request.selection));
-    try{plan=JSON.parse(source.plan_json());}finally{source.free();}
+    plan=JSON.parse(plan_midi(request.bytes,JSON.stringify(request.selection)));
     if(request.layout)plan=applyKitLayout(plan,request.layout);
   }else plan=request.plan;
   const performance=request.profile?Performance.from_json_with_profile(JSON.stringify(plan),JSON.stringify(request.profile)):Performance.from_json(JSON.stringify(plan));

@@ -88,9 +88,9 @@ describe('UI locale selection and messages', () => {
     expect(studioTemplate).toContain('Switch to Korean');
     expect(studioTemplate).toContain('>한국어</button>');
     expect(studioTemplate).not.toContain('MIDI 불러오기');
-    expect(DEMO_CATALOG.map(demo => demo.label)).toEqual(['Studio Groove · 30 s', 'Interpretation check · 8 s', 'Transparent Girl 1 · 3 min 13 s']);
+    expect(DEMO_CATALOG.map(demo => demo.label)).toEqual(['Posture study · 12 s', 'Studio Groove · 30 s', 'Interpretation check · 8 s', 'Transparent Girl 1 · 3 min 13 s']);
     change('ko');
-    expect(translate(DEMO_CATALOG[2].label)).toBe('투명소녀1 · 3분 13초');
-    expect(DEMO_CATALOG[2].filename.normalize('NFC')).toBe('투명소녀1.mid');
+    expect(translate(DEMO_CATALOG[3].label)).toBe('투명소녀1 · 3분 13초');
+    expect(DEMO_CATALOG[3].filename.normalize('NFC')).toBe('투명소녀1.mid');
   });
 });

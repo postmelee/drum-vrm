@@ -10,7 +10,7 @@ afterEach(() => setLocale('en', { persist: false, updateUrl: false }));
 
 describe('engine presentation boundary', () => {
   it('translates nested diagnostic reasons without changing their original data', () => {
-    const source = '1.250초 MIDI 음표 38: 현재 체형·좌석·그립에서 타점에 도달하지 못했습니다. 원래 시각의 소리와 타점 강조는 유지합니다.';
+    const source = '1.250초 MIDI 음표 38: 현재 체형·좌석·그립에서 타점에 도달하지 못했습니다. 원본 이벤트와 소리의 시각은 유지하며 미배정 타격의 접촉 효과는 표시하지 않습니다.';
     const diagnostic = Object.freeze({ code: 'UNREACHABLE_TARGET', message: source, time: 1.25 });
     const english = engineMessage(diagnostic.message);
     expect(english).toContain('1.250s, MIDI note 38');
@@ -44,6 +44,15 @@ describe('engine presentation boundary', () => {
   it('preserves unknown vendor details instead of inventing translations', () => {
     const unknown = 'Decoder XYZ: unsupported extension';
     expect(engineMessage(unknown)).toBe(unknown);
+  });
+  it('localizes canonical English contact and posture diagnostics without rewriting them', () => {
+    const source = 'The selected hi-hat surface has no movable upper cymbal. Openness changes the pedal state; the displayed strike surface remains fixed.';
+    const canonical = engineMessage(source);
+    expect(canonical).toBe(source);
+    setLocale('ko', { persist: false, updateUrl: false });
+    expect(translate(canonical)).toContain('움직일 수 있는 상단 심벌이 없습니다');
+    const posture = engineMessage('3 hand-impact poses exceed the common posture limits. Contact timing is preserved; adjust the layout and inspect the arms.');
+    expect(translate(posture)).toContain('손 타격 자세 3개');
   });
   it('covers every existing Korean Rust message template', () => {
     const known = new Set(ENGINE_MESSAGE_TEMPLATES.map(([, ko]) => ko));

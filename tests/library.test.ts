@@ -80,6 +80,7 @@ describe('bundled instrument libraries', () => {
     }
     expect(draws).toBeLessThan(100);
     expect(kit.hihat!.userData.contact[0]).toBeLessThan(0);
+    expect(kit.hihat!.children.some(node=>node.userData.mechanismRole==='hihatTop')).toBe(true);
     expect(kit.ride!.userData.contact[0]).toBeGreaterThan(0);
     expect(kit.kick!.userData.contact[1]).toBeLessThan(.1);
     expect(kit.kick!.userData.contact[1]).toBeGreaterThan(.025);

@@ -34,7 +34,7 @@ The guides describe this repository build. Check the deployed commit before assu
 
 The interface defaults to English and remembers your language choice when browser storage is available. Use **EN / 한국어** in the toolbar to switch languages without reloading your files or losing the current playback position. Direct links: [English](https://postmelee.github.io/drum-vrm/?lang=en) · [한국어](https://postmelee.github.io/drum-vrm/?lang=ko).
 
-1. Open **Files / Audio** and choose a `.mid`/`.midi` file, or expand **Demo**, choose a [demo score](docs/calibration.md#try-a-demo-score), and press **Load**. The initial **Prepare demo** button uses Studio Groove.
+1. Open **Files / Audio** and choose a `.mid`/`.midi` file, or expand **Demo**, choose a [demo score](docs/calibration.md#try-a-demo-score), and press **Load**. The initial **Prepare demo** button uses the 12-second Posture study; [review it with the three public characters](docs/models.md#compare-the-same-performance-across-models).
 2. Review tracks, channels and mapping under **MIDI settings**; diagnostics are in **Analysis**. Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **Apply settings** after changes.
 3. Press **Play**. Seek on the timeline and use the viewpoint buttons or drag/scroll to adjust the camera. **Player** view locks rotation, panning and zoom; closing drum editing restores the previous view.
 4. Open **Character** and choose a bundled sample from the dropdown, or use **Import VRM…** for your own file. [Model choices and terms](docs/models.md); [seat, contact-point and drum-part fitting](docs/calibration.md).
@@ -54,7 +54,7 @@ Drum appearance changes do not change the sound, and the app does not reproduce 
 
 Humanoid motion preparation has a separate [6,000-control-time budget](specs/architecture/engine-contract.md#preparation-and-worker-boundary); dense scores may reach it before the MIDI input limits. Setup replanning can be cancelled without losing the current setup.
 
-SMF 2, SMPTE timing and malformed files are rejected with a reason. Unmapped notes are reported and excluded from drum synthesis; supported hits the rig cannot perform retain their original sound, time and target highlight. The planner does not move notes or stretch bones to hide reach problems.
+SMF 2, SMPTE timing and malformed files are rejected with a reason. Unmapped notes are reported and excluded from drum synthesis; supported hits the rig cannot perform retain their original sound, time and source-note display, but do not show an impact effect. The planner does not move notes or stretch bones to hide reach problems.
 
 Motion is rule-based. Dense hits, distant targets, body proportions and clothing can still produce awkward poses or intersections. The [model guide](docs/models.md) distinguishes input acceptance from measured compatibility. Generic humanoid GLB mapping, detailed collision/skin calibration, explicit playing styles, expression controls, higher resolutions and 3D motion export remain future work. Save a project to retain appearance and calibration across sessions; source files must be relinked and exact replay requires the same engine build.
 

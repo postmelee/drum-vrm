@@ -37,15 +37,15 @@ export class EngineClient {
     this.worker?.terminate();this.worker=null;
     const reject=this.reject;this.reject=null;reject?.(new DOMException(msg("Preparation canceled.", "준비를 취소했습니다."),'AbortError'));
   }
-  private begin() { this.stopWorker();return ++this.generation; }
+  private begin() { if(this.reject)this.stopWorker();return ++this.generation; }
   cancel() { ++this.generation;this.stopWorker();this.cache=null; }
   private request<T>(payload:EngineRequest,generation:number):Promise<T> {
     this.assertCurrent(generation);
     const requestId=++this.requestId;
     return new Promise((resolve,reject)=>{
-      const worker=this.createWorker();this.worker=worker;this.reject=reject;
-      const done=()=>{worker.terminate();if(this.worker===worker){this.worker=null;this.reject=null;}};
-      const fail=(error:Error)=>{if(this.worker!==worker)return;done();reject(error);};
+      const worker=this.worker??this.createWorker();this.worker=worker;this.reject=reject;
+      const done=()=>{if(this.worker===worker)this.reject=null;};
+      const fail=(error:Error)=>{if(this.worker!==worker)return;worker.terminate();this.worker=null;this.reject=null;reject(error);};
       worker.onmessage=({data})=>{
         if(this.worker!==worker||generation!==this.generation)return;
         if(!data||data.requestId!==requestId)return;
@@ -67,15 +67,19 @@ export class EngineClient {
   private key(plan:PerformancePlan,profile:RigProfile|null){return JSON.stringify([plan,profile]);}
   private async prepareEvaluator(source:PerformancePlan,profile:RigProfile|null,generation:number) {
     const key=this.key(source,profile);
-    const response=this.cache?.keys.includes(key)?this.cache.response:await this.request<PreparedResponse>({kind:'prepare',plan:source,profile},generation);
+    const cached=this.cache?.keys.includes(key)?this.cache:null;
+    // A failed replacement must not leave an unrelated candidate available.
+    if(!cached)this.cache=null;
+    const response=cached?.response??await this.request<PreparedResponse>({kind:'prepare',plan:source,profile},generation);
     this.assertCurrent(generation);await this.initialize();this.assertCurrent(generation);
     // The opaque worker transfer is validated by Rust against this source/body.
-    const candidate=Performance.from_prepared_json(response.prepared,source.midiHash??'',profile?JSON.stringify(profile):'');
+    let candidate:Performance|null=null;
     try{
+      candidate=Performance.from_prepared_json(response.prepared,source.midiHash??'',profile?JSON.stringify(profile):'');
       const plan=JSON.parse(candidate.plan_json()) as PerformancePlan;
       this.cache={keys:[key,this.key(plan,profile)],response};
       return {candidate,plan};
-    }catch(error){candidate.free();throw error;}
+    }catch(error){candidate?.free();if(generation===this.generation)this.cache=null;throw error;}
   }
   /** Expensive planning completes in a worker before the scene is changed.
    * Commit is synchronous and rejects a canceled/superseded candidate. */
@@ -100,24 +104,35 @@ export class EngineClient {
   async setSetup(profile:RigProfile,layout:readonly KitPiece[]|null){return (await this.prepareSetup(profile,layout)).commit();}
   async plan(bytes:Uint8Array,selection:Selection,commit=true) {
     const generation=this.begin(),profile=this.profile?structuredClone(this.profile):null,layout=this.layout?structuredClone(this.layout):null;
+    this.cache=null;
     const response=await this.request<PreparedResponse>({kind:'plan',bytes,selection:structuredClone(selection),profile,layout},generation);
     this.assertCurrent(generation);await this.initialize();this.assertCurrent(generation);
-    const candidate=Performance.from_prepared_json(response.prepared,response.plan.midiHash??'',profile?JSON.stringify(profile):'');
+    let candidate:Performance|null=null;
     try{
+      candidate=Performance.from_prepared_json(response.prepared,response.plan.midiHash??'',profile?JSON.stringify(profile):'');
       const plan=JSON.parse(candidate.plan_json()) as PerformancePlan;
-      this.cache={keys:[this.key(plan,profile)],response};
+      // restorePlan resets derived targets to the requested kit anchors before
+      // replanning. That exact input is another representation of this already
+      // validated candidate, including all source, geometry and body fields.
+      // Keep the captured request layout: Rust's resulting kit may add fields.
+      const keys=[this.key(plan,profile)];
+      if(layout)keys.push(this.key(applyKitLayout(plan,layout),profile));
+      this.cache={keys,response};
       if(commit){this.sourcePlan=structuredClone(plan);this.performance?.free();this.performance=candidate;}else candidate.free();
       return plan;
-    }catch(error){candidate.free();throw error;}
+    }catch(error){candidate?.free();if(generation===this.generation)this.cache=null;throw error;}
   }
   /** Exact saved/source plans are rebuilt in the worker, never automatically fit.
    * Reuse an unchanged prepared candidate after file/audio preflight. */
   async restorePlan(plan:PerformancePlan,profile:RigProfile,layout:readonly KitPiece[],commit=true):Promise<PerformancePlan> {
-    const generation=this.begin(),kit=validateKitLayout(layout),source=applyKitLayout(plan,kit),nextProfile=structuredClone(profile);
+    // applyKitLayout replaces targets, but retains nested source/directive data.
+    // Capture all of it before yielding so the installed evaluator and future
+    // setup replans cannot observe different versions of a caller-owned plan.
+    const generation=this.begin(),kit=validateKitLayout(layout),source=applyKitLayout(structuredClone(plan),kit),nextProfile=structuredClone(profile);
     const {candidate,plan:restored}=await this.prepareEvaluator(source,nextProfile,generation);
     try{
       this.assertCurrent(generation);
-      if(plan.engineVersion!==restored.engineVersion||plan.plannerVersion!==restored.plannerVersion)throw new Error(msg("The project uses a different engine version. Prepare the original MIDI again.", "프로젝트 엔진 버전이 다릅니다. 원본 MIDI를 다시 준비해 주세요."));
+      if(source.engineVersion!==restored.engineVersion||source.plannerVersion!==restored.plannerVersion)throw new Error(msg("The project uses a different engine version. Prepare the original MIDI again.", "프로젝트 엔진 버전이 다릅니다. 원본 MIDI를 다시 준비해 주세요."));
       if(commit){this.performance?.free();this.performance=candidate;this.sourcePlan=structuredClone(source);this.profile=nextProfile;this.layout=kit;}else candidate.free();
       return restored;
     }catch(error){candidate.free();throw error;}

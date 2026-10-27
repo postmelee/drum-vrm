@@ -178,7 +178,22 @@ pub fn hand_clearance(profile: &RigProfile, limb: usize, hand: &HandSolution) ->
     let sign = if limb == 0 { -1.0 } else { 1.0 };
     let outward = sign * dot(sub(hand.middle, root), right) >= 0.0
         && sign * dot(sub(hand.middle, center), right) > 0.0;
-    let connected = outward && torso_clearance(profile, root, root, radii[0]) <= 0.0;
+    // Torso measurements are capped proxies; the connected shoulder joint may
+    // lie just above the cap instead of inside it. Both describe the same
+    // anatomical attachment when the joint projects inside the elliptical cap,
+    // is within one upper-arm diameter above it, and the upper-arm path moves outward
+    // on its own side. A convex torso has one intersection interval: the clear
+    // elbow capsule bounds its exit, and the full forearm/hand/tool are checked.
+    // No fixed fraction of the arm is ignored and inward routes are never exempt.
+    let near_cap = profile.body_geometry.as_ref().is_some_and(|body| {
+        let top = body.torso.center[1] + body.torso.half_extents[1];
+        let offset = sub(root, body.torso.center);
+        let forward = [-right[2], 0.0, right[0]];
+        let footprint = (dot(offset, right) / body.torso.half_extents[0]).powi(2)
+            + (dot(offset, forward) / body.torso.half_extents[2]).powi(2);
+        root[1] >= top && root[1] - top <= 2.0 * radii[0] && footprint <= 1.0
+    });
+    let connected = outward && (torso_clearance(profile, root, root, radii[0]) <= 0.0 || near_cap);
     let upper_clearance = if connected {
         torso_clearance(profile, hand.middle, hand.middle, radii[0])
     } else {
@@ -397,6 +412,107 @@ mod tests {
         let mut embedded_elbow = hand(-0.1);
         embedded_elbow.middle[2] = 0.0;
         assert!(hand_clearance(&profile, 0, &embedded_elbow) < 0.0);
+    }
+    #[test]
+    fn shoulder_attachment_is_bounded_and_continuous_across_the_torso_cap() {
+        let mut profile = RigProfile::primitive();
+        profile.body_geometry = Some(crate::rig::BodyGeometry {
+            version: 1,
+            source: "mesh-estimate".into(),
+            sample_count: 100,
+            torso: crate::rig::TorsoGeometry {
+                center: [0., 1., 0.],
+                half_extents: [0.15, 0.2, 0.12],
+            },
+            arm_radii: [[0.015, 0.02]; 2],
+            hand_radii: [0.025; 2],
+            hand_centers: None,
+            hand_capsules: None,
+        });
+        let hand = HandSolution {
+            middle: [-0.28, 1.05, 0.05],
+            end: [-0.25, 1.05, 0.35],
+            tip: [-0.22, 1.05, 0.65],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        for y in [1.199, 1.214, 1.216, 1.225] {
+            profile.roots[0] = [-0.10, y, 0.];
+            profile.roots[1] = [0.10, y, 0.];
+            assert!(
+                hand_clearance(&profile, 0, &hand) > 0.002,
+                "attachment at {y}"
+            );
+            let crossed = HandSolution {
+                middle: [0.28, 1.05, 0.05],
+                ..hand
+            };
+            assert!(hand_clearance(&profile, 0, &crossed) < 0., "crossed at {y}");
+            let embedded = HandSolution {
+                middle: [-0.12, 1.05, 0.05],
+                ..hand
+            };
+            assert!(
+                hand_clearance(&profile, 0, &embedded) < 0.,
+                "distal upper arm at {y}"
+            );
+        }
+        profile.roots[0] = [-0.10, 1.24, 0.];
+        profile.roots[1] = [0.10, 1.24, 0.];
+        assert!(
+            hand_clearance(&profile, 0, &hand) < 0.,
+            "a detached joint does not inherit the proximal exemption"
+        );
+    }
+    #[test]
+    fn shoulder_above_but_outside_cap_cannot_traverse_the_torso() {
+        let mut profile = RigProfile::primitive();
+        profile.torso_pivot = Some([0., 1., 0.]);
+        profile.body_geometry = Some(crate::rig::BodyGeometry {
+            version: 1,
+            source: "mesh-estimate".into(),
+            sample_count: 100,
+            torso: crate::rig::TorsoGeometry {
+                center: [0., 1., 0.],
+                half_extents: [0.15, 0.2, 0.12],
+            },
+            arm_radii: [[0.015, 0.02]; 2],
+            hand_radii: [0.025; 2],
+            hand_centers: None,
+            hand_capsules: None,
+        });
+        // Both rear-to-front and front-to-rear upper arms remain on their own
+        // lateral side, but cross the torso from outside the cap footprint.
+        for direction in [-1., 1.] {
+            profile.roots[0] = [-0.08, 1.225, -0.13 * direction];
+            profile.roots[1] = [0.08, 1.225, -0.13 * direction];
+            let hand = HandSolution {
+                middle: [-0.10, 1.05, 0.18 * direction],
+                end: [-0.12, 1.05, 0.45 * direction],
+                tip: [-0.12, 1.05, 0.72 * direction],
+                rotation: [0., 0., 0., 1.],
+                reachable: true,
+            };
+            for yaw in [0., 0.6, -0.6] {
+                let turned = profile.turned(yaw);
+                let q = [0., (yaw * 0.5).sin(), 0., (yaw * 0.5).cos()];
+                let pivot = profile.torso_pivot.unwrap();
+                let turn = |v| add(pivot, crate::rig::rotate(q, sub(v, pivot)));
+                let posed = HandSolution {
+                    middle: turn(hand.middle),
+                    end: turn(hand.end),
+                    tip: turn(hand.tip),
+                    rotation: q,
+                    ..hand
+                };
+                assert!(torso_clearance(&turned, turned.roots[0], turned.roots[0], 0.015) > 0.);
+                assert!(torso_clearance(&turned, turned.roots[0], posed.middle, 0.015) < -0.06);
+                assert!(
+                    hand_clearance(&turned, 0, &posed) < -0.06,
+                    "outside cap, direction {direction}, yaw {yaw}"
+                );
+            }
+        }
     }
     #[test]
     fn opposite_stick_arm_collision_is_not_hidden_by_stick_separation() {

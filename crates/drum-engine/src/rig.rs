@@ -281,12 +281,23 @@ impl RigProfile {
     }
 
     pub fn reachable(&self, limb: usize, tip: Vec3) -> bool {
+        self.reachable_at_pitch(limb, tip, 0.)
+    }
+
+    /// Exact annulus of the same pitched compound link used by the hand solve.
+    /// Feasibility searches may compare several pitches; a committed pose must
+    /// be checked with its actual pitch rather than the existence of another.
+    pub fn reachable_at_pitch(&self, limb: usize, tip: Vec3, pitch: f64) -> bool {
+        if limb >= 4 || !pitch.is_finite() || tip.iter().any(|value| !value.is_finite()) {
+            return false;
+        }
+        let rotation = pitch_rotation(self.contact_rotations[limb], pitch);
         if limb < 2 {
             if let Some(frames) = &self.hand_frames {
                 let lower = self.lengths[limb][1];
                 let compound = add(
                     frames[limb].forearm.map(|v| v * lower),
-                    self.offset(limb, self.contact_rotations[limb]),
+                    self.offset(limb, rotation),
                 );
                 let length = distance(compound, [0.0; 3]);
                 let upper = self.lengths[limb][0];
@@ -296,10 +307,7 @@ impl RigProfile {
                     && d <= upper + length - 1e-4;
             }
         }
-        let d = distance(
-            self.roots[limb],
-            sub(tip, self.offset(limb, self.contact_rotations[limb])),
-        );
+        let d = distance(self.roots[limb], sub(tip, self.offset(limb, rotation)));
         let [a, b] = self.lengths[limb];
         d >= (a - b).abs() + 1e-5 && d <= a + b - 1e-4
     }

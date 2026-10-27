@@ -1,9 +1,9 @@
 import { msg } from './i18n';
-import { makeDemo, makeInterpretationDemo } from './demo';
+import { makeDemo, makeInterpretationDemo, makePostureDemo } from './demo';
 import song from '../public/demos/transparent-girl-1-provenance.json';
 import type { Selection } from './types';
 
-export type DemoId = 'studio' | 'interpretation' | 'transparent-girl';
+export type DemoId = 'studio' | 'interpretation' | 'posture' | 'transparent-girl';
 interface DemoEntry {
   id: DemoId;
   label: string;
@@ -15,6 +15,12 @@ interface DemoEntry {
 
 /** Demo directives describe reviewed content; uploaded filenames never select rules. */
 const entries: readonly DemoEntry[] = [
+  {
+    id: 'posture', label: msg('Posture study · 12 s', '자세 검증 패턴 · 12초'), filename: 'Posture Study.mid',
+    generate: makePostureDemo,
+    selection: { channel: 0, mappingProfile: 'logicDkdGm', countInNote75: true,
+      hihatPolicy: 'literal', hihatOpenness: .2, omittedSourceEventIds: [], handOverrides: {} },
+  },
   {
     id: 'studio', label: msg('Studio Groove · 30 s', 'Studio Groove · 30초'), filename: 'Studio Groove.mid',
     generate: () => makeDemo(),

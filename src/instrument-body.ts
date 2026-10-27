@@ -20,9 +20,9 @@ export function alignInstrumentBody(display: THREE.Group, pivot: THREE.Group, pi
   const bounds = new THREE.Box3().setFromObject(display), size = bounds.getSize(new THREE.Vector3()), center = bounds.getCenter(new THREE.Vector3());
   const kick = pieceInstrument(piece) === 'kick', anchors = pieceAnchors(piece);
   const fit = (kick ? piece.radius * 2 / Math.max(size.y, .0001) : piece.radius * 2 / Math.max(size.x, size.z, .0001)) * settings.scale;
-  display.position.set(-center.x, kick ? -center.y : 0, -center.z);
+  display.position.set(-center.x, -center.y, -center.z);
   pivot.position.set(anchors.mount[0], kick ? anchors.mount[1] : 0, anchors.mount[2]);
-  pivot.scale.setScalar(fit); pivot.rotation.y = THREE.MathUtils.degToRad(settings.rotation);
+  pivot.scale.setScalar(fit); pivot.rotation.set(-THREE.MathUtils.degToRad(settings.tilt), THREE.MathUtils.degToRad(settings.rotation), 0);
   pivot.updateMatrixWorld(true);
   if (kick) {
     // Center on the actual transformed vertices, including asymmetric imported
@@ -131,16 +131,27 @@ export function measureInstrumentGeometry(root: THREE.Object3D, piece: KitPiece,
       else playingCenter.copy(contact);
     }
   }
-  const measured: PieceGeometry = {
+  let motion: PieceGeometry['surface']['motion'];
+  root.traverse(node => { if (node.userData.mechanismRole === 'hihatTop') motion = { kind: 'translation', axis: [0,1,0], travelMeters: .025 }; });
+  let radialProfile: PieceGeometry['surface']['radialProfile'];
+  const profileMesh = surfaces.find(mesh => Array.isArray(mesh.userData.radialProfile));
+  if (profileMesh) {
+    const profileTransform = new THREE.Matrix4().multiplyMatrices(frame, profileMesh.matrixWorld);
+    const origin = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
+    profileTransform.decompose(origin, rotation, scale);
+    radialProfile = { origin: offset(origin), rotation: rotation.toArray(),
+      points: (profileMesh.userData.radialProfile as [number, number][]).map(([radius, height]) => [radius * Math.abs(scale.x) / ratio, height * scale.y / ratio]) };
+  }
+    const measured: PieceGeometry = {
     version: 1, referenceRadius, source,
     body: { center: offset(bounds.getCenter(new THREE.Vector3())), halfExtents: size.multiplyScalar(.5 / ratio).toArray().map(value => Math.max(value, .001)) as Vec3 },
     surface: kick ? structuredClone(piece.geometry?.surface ?? { center: [0, 0, -.02], normal: [0, 1, 0], radius: .05 })
-      : { center: offset(playingCenter), normal: normal.toArray() as Vec3, radius: Math.min(playingSize.x, playingSize.z) / 2 / ratio },
+      : { center: offset(playingCenter), normal: normal.toArray() as Vec3, radius: Math.min(playingSize.x, playingSize.z) / 2 / ratio, ...(radialProfile ? { radialProfile } : {}), ...(motion ? { motion } : {}) },
   };
   // Rebuilding the same appearance after a fitted radius change must retain its
   // serialized reference shape instead of accumulating floating-point drift.
   const previous = piece.geometry;
-  const numbers = (value: PieceGeometry) => [value.referenceRadius, ...value.body.center, ...value.body.halfExtents, ...value.surface.center, ...value.surface.normal, value.surface.radius];
-  if (previous?.source === source && numbers(previous).every((value, index) => Math.abs(value - numbers(measured)[index]) < 1e-6)) return structuredClone(previous);
+  const numbers = (value: PieceGeometry) => [value.referenceRadius, ...value.body.center, ...value.body.halfExtents, ...value.surface.center, ...value.surface.normal, value.surface.radius, ...(value.surface.radialProfile ? [...value.surface.radialProfile.origin, ...value.surface.radialProfile.rotation, ...value.surface.radialProfile.points.flat()] : []), ...(value.surface.motion ? [...value.surface.motion.axis, value.surface.motion.travelMeters] : [])];
+  if (previous?.source === source && numbers(previous).length === numbers(measured).length && numbers(previous).every((value, index) => Math.abs(value - numbers(measured)[index]) < 1e-6)) return structuredClone(previous);
   return measured;
 }
