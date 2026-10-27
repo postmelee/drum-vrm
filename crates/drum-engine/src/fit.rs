@@ -538,31 +538,34 @@ fn repair_posture_order(
     let mut order: Vec<usize> = (0..result.kit.len())
         .filter(|&i| hand_piece(&result.kit[i]))
         .collect();
+    // Place the right-hand-only ride corridor before instruments that can use
+    // either hand. A later crash must not consume the ride's only approach.
     order.sort_by_key(|&i| match result.kit[i].instrument {
         Instrument::Snare => 0,
         Instrument::Hihat | Instrument::OpenHat => 1,
+        Instrument::Ride => 2,
         Instrument::TomLow => {
             if rack_first {
-                4
+                5
             } else {
-                2
+                3
             }
         }
         Instrument::TomHigh => {
             if rack_first {
-                2
-            } else {
-                3
-            }
-        }
-        Instrument::TomMid => {
-            if rack_first {
                 3
             } else {
                 4
             }
         }
-        _ => 5,
+        Instrument::TomMid => {
+            if rack_first {
+                4
+            } else {
+                5
+            }
+        }
+        _ => 6,
     });
     let mut locked: Vec<usize> = (0..result.kit.len())
         .filter(|&i| !hand_piece(&result.kit[i]))
@@ -605,7 +608,8 @@ fn repair_posture_order(
                     .iter()
                     .filter(|p| p.id != candidate[index].id)
                     .all(|p| equipment_posture_fits(profile, p, &ctx))
-                && crate::posture::required_pairs(profile, &fixed).is_empty()
+                && crate::posture::required_pairs_with_equipment(profile, &fixed, Some(&ctx))
+                    .is_empty()
                 && if candidate[index].instrument == Instrument::Snare {
                     // The snare reference and direct hi-hat form one coupled
                     // ready posture. Do not greedily lock a snare that occupies

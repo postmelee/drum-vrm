@@ -54,7 +54,7 @@ absolute-time mechanism state across motion, feedback and separate actual-marker
 inspection. The [equipment contact contract](equipment-contact.md#shared-contact-records-and-hi-hat-state)
 owns their fields, regeneration and capability limits.
 
-Planner `phrase-beam-8-beat-horizon-24-posture-v9` uses an eight-candidate beam with lookahead
+Planner `phrase-beam-8-beat-horizon-24-posture-v10` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each

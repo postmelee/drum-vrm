@@ -164,6 +164,7 @@ export function createPieceModel(piece: KitPiece, visual: PieceVisualSettings, p
       const profile = [new THREE.Vector2(.008, -.004), new THREE.Vector2(radius * .12, 0), new THREE.Vector2(radius * .24, -.022), new THREE.Vector2(radius * .8, -.038), new THREE.Vector2(radius, -.044)];
       const bow = mesh(cymbal, new THREE.LatheGeometry(profile, 80), shell); bow.name = 'contactSurface';
       bow.userData.radialProfile = profile.map(point => [point.x, point.y]);
+      bow.userData.bellRadius = radius * .24;
       if (instrument === 'hihat') {
         const lower = new THREE.Group(); lower.name = 'HiHatBottom'; lower.userData.hitResponseRole = 'surface'; lower.userData.mechanismRole = 'hihatBottom';
         lower.position.copy(cymbal.position); root.add(lower);

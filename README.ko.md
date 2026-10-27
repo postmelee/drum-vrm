@@ -25,7 +25,7 @@ DAW에서 만든 드럼 MIDI를 브라우저에서 3D 드러머의 연주 영상
 | 버전 | 제공 범위 |
 | --- | --- |
 | 저장소 / 로컬 빌드 | VRM 0.0/1.0 로컬 불러오기와 이 문서의 MIDI 해석·프레이즈 계획·체형과 키트 맞춤·동작 검수·WAV·로컬 프로젝트 기능을 포함합니다. 공개 버전은 별도의 Pages 행에서 확인하세요. |
-| [Pages 빌드](https://postmelee.github.io/drum-vrm/) | 배포된 배치 [`d23a940`](https://github.com/postmelee/drum-vrm/commit/d23a9400abc9461633f26a9b805659026626a633): 선택 가능한 공식 VRM 샘플, 영어·한국어 UI, 전체 곡 데모, 측정 장비·접촉 계획과 양 스틱 카운트인, 자동 맞춤·MIDI/WAV 미리보기·로컬 프로젝트. [배포 검증과 남은 제한](docs/verification/character-presets.md#pages-publication). |
+| [Pages 빌드](https://postmelee.github.io/drum-vrm/) | 저장소 변경과 별도로 수동 배포합니다. [현재 배치의 검증·배포 기록](docs/verification/detailed-hardware.md)에서 검사한 빌드·배포·남은 제한을 확인할 수 있으며, [이전 공개 배치](docs/verification/character-presets.md#pages-publication)는 당시의 정확한 커밋을 보존합니다. |
 | [태그 v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | 과거 릴리스: MIDI 재생·출력, 기본 스켈레톤, 자체 도형/Innerscene 키트와 정적 드럼 GLB 교체. [당시 검증](docs/verification/studio-0.2.md). |
 
 안내 문서는 이 저장소 빌드를 설명합니다. 더 최신 로컬 변경이 공개되었다고 판단하기 전에 배포 커밋을 확인하세요. 상세 개발 검사는 연결된 [검증 기록](docs/README.ko.md#검증)에서 확인할 수 있습니다.

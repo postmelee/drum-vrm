@@ -52,6 +52,19 @@ describe('deterministic instrument mechanisms', () => {
     mechanism.setHits([hit]);mechanism.apply(1,0);
     const expected = mechanism.contact('kick')!.point, actual = mechanism.actualContact('kick')!;
     expect(new THREE.Vector3(...actual).distanceTo(new THREE.Vector3(...expected))).toBeLessThan(1e-8);
+    // Inspect independent rendered vertices: a correctly placed contact marker
+    // must not conceal a smaller beater mesh floating short of the batter head.
+    const beater = hardware.root.getObjectByName('KickBeaterPivot')!;
+    let surfaceDistance = Infinity;
+    beater.traverse(node => {
+      if (!(node instanceof THREE.Mesh)) return;
+      const positions = node.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        const point = hardware.root.worldToLocal(new THREE.Vector3().fromBufferAttribute(positions, i).applyMatrix4(node.matrixWorld));
+        surfaceDistance = Math.min(surfaceDistance, point.distanceTo(new THREE.Vector3(...expected)));
+      }
+    });
+    expect(surfaceDistance).toBeLessThan(1e-7);
     mechanism.apply(0,0);expect(mechanism.actualContact('kick')).not.toEqual(actual);
     mechanism.apply(1,0);expect(mechanism.actualContact('kick')).toEqual(actual);
     const rebound = new KitMechanismLayer(hardware.root,[],geometry);

@@ -3,7 +3,12 @@ use crate::model::default_kit;
 
 #[test]
 fn shared_default_kit_has_clear_fallback_geometry() {
-    assert!(kit_geometry(&default_kit()).unresolved_piece_ids.is_empty());
+    let g = kit_geometry(&default_kit());
+    assert!(
+        g.unresolved_piece_ids.is_empty(),
+        "{:?}",
+        g.unresolved_piece_ids
+    );
 }
 
 #[test]
@@ -159,7 +164,20 @@ fn semantic_tom_supports_and_booms_replace_universal_tripods() {
     let g = kit_geometry(&kit);
     for id in ["tomHigh", "tomMid"] {
         let rods: Vec<_> = g.supports.iter().filter(|rod| rod.piece_id == id).collect();
-        assert_eq!(rods.len(), 2, "rack tom uses a holder and L-arm");
+        assert_eq!(rods.iter().filter(|rod| rod.role == "tomArm").count(), 2);
+        let arms: Vec<_> = rods.iter().filter(|rod| rod.role == "tomArm").collect();
+        assert_eq!(
+            arms[0].start[1], arms[0].end[1],
+            "L-arm first section is horizontal"
+        );
+        assert_eq!(arms[1].start[0], arms[1].end[0]);
+        assert_eq!(arms[1].start[2], arms[1].end[2]);
+        assert!(
+            arms[1].end[1] > arms[1].start[1],
+            "L-arm enters receiver vertically"
+        );
+        assert!(distance(arms[0].start, arms[0].end) <= hardware::MAX_TOM_ARM);
+        assert!(rods.iter().any(|rod| rod.role == "suspensionBracket"));
         assert!(rods
             .iter()
             .all(|rod| rod.start[1] > 0.2 && rod.end[1] > 0.2));
@@ -169,8 +187,17 @@ fn semantic_tom_supports_and_booms_replace_universal_tripods() {
         .iter()
         .filter(|rod| rod.piece_id == "tomLow")
         .collect();
-    assert_eq!(floor.len(), 6);
-    assert_eq!(floor.iter().filter(|rod| rod.end[1] == 0.012).count(), 3);
+    assert_eq!(
+        floor.iter().filter(|rod| rod.role == "rubberFoot").count(),
+        3
+    );
+    assert_eq!(
+        floor
+            .iter()
+            .filter(|rod| rod.role == "suspensionBracket")
+            .count(),
+        3
+    );
     let crash: Vec<_> = g
         .supports
         .iter()
@@ -220,14 +247,25 @@ fn shared_rack_holder_branches_clear_the_other_shell_at_unequal_heights() {
             );
         }
     }
-    let holders: Vec<_> = g
+    assert_eq!(
+        g.supports
+            .iter()
+            .filter(|rod| rod.role == "tomPost")
+            .count(),
+        1
+    );
+    assert_eq!(
+        g.supports
+            .iter()
+            .filter(|rod| rod.role == "tomYoke")
+            .count(),
+        1
+    );
+    assert!(g
         .supports
         .iter()
-        .filter(|rod| rod.piece_id == "tomHigh" || rod.piece_id == "tomMid")
-        .filter(|rod| rod.start[0] == rod.end[0] && rod.start[2] == rod.end[2])
-        .collect();
-    assert_eq!(holders.len(), 2);
-    assert_eq!(holders[0].end, holders[1].end);
+        .filter(|rod| rod.role == "tomPost" || rod.role == "tomYoke")
+        .all(|rod| rod.piece_id == "kick"));
 }
 
 #[test]
@@ -287,4 +325,229 @@ fn beater_impact_surface_is_distinct_from_sole_and_matches_head_tangent() {
         && rod.start == center
         && rod.end == center
         && rod.radius == 0.028));
+}
+
+#[test]
+fn unrelated_hardware_crossings_are_not_joint_exemptions() {
+    let kit = default_kit();
+    let mut a = capsule(&kit[0], [-1., 0.2, 0.], [1., 0.2, 0.], 0.01);
+    a.piece_id = "crash".into();
+    let mut b = capsule(&kit[0], [0., 0., 0.], [0., 1., 0.], 0.01);
+    b.piece_id = "ride".into();
+    assert!(!hardware::supports_clear(&a, &b, &kit));
+    b.start = a.end;
+    b.end = [1., 1., 0.];
+    assert!(
+        !hardware::supports_clear(&a, &b, &kit),
+        "unrelated shared endpoints are still crossings"
+    );
+    let g = kit_geometry(&kit);
+    for (i, a) in g.supports.iter().enumerate() {
+        for b in &g.supports[i + 1..] {
+            assert!(
+                hardware::supports_clear(a, b, &kit),
+                "{}:{} crosses {}:{}",
+                a.piece_id,
+                a.role,
+                b.piece_id,
+                b.role
+            );
+        }
+    }
+}
+
+#[test]
+fn unreachable_rack_rod_is_reported_instead_of_accepted_as_long_diagonal() {
+    let mut kit = default_kit();
+    kit.iter_mut().find(|p| p.id == "tomHigh").unwrap().position[0] = -1.5;
+    assert!(kit_geometry(&kit)
+        .unresolved_piece_ids
+        .iter()
+        .any(|id| id == "tomHigh"));
+}
+
+#[test]
+fn cymbal_spindle_uses_radial_axis_not_bow_contact_normal() {
+    let mut piece = default_kit().into_iter().find(|p| p.id == "crash").unwrap();
+    let mut geometry = local_geometry(&piece);
+    let tilt = 0.3_f64;
+    geometry.surface.normal = [0., (0.6_f64).cos(), -(0.6_f64).sin()];
+    geometry.surface.radial_profile = Some(RadialSurfaceProfile {
+        bell_radius: None,
+        origin: [0.04, 0.02, 0.03],
+        rotation: [(tilt / 2.).sin(), 0., 0., (tilt / 2.).cos()],
+        points: vec![[0.008, 0.], [piece.radius, -0.04]],
+    });
+    piece.geometry = Some(geometry);
+    let g = kit_geometry(&[piece.clone()]);
+    let sleeve = g
+        .supports
+        .iter()
+        .find(|rod| rod.role == "cymbalSleeve")
+        .unwrap();
+    let expected = [0., tilt.cos(), tilt.sin()];
+    let d = sub(sleeve.end, sleeve.start);
+    let n = distance(d, [0.; 3]);
+    for axis in 0..3 {
+        assert!((d[axis] / n - expected[axis]).abs() < 1e-10);
+    }
+    let mount = add(piece.position, [0.04, 0.02, 0.03]);
+    assert!(crate::clearance::segment_distance(mount, mount, sleeve.start, sleeve.end) < 1e-10);
+}
+
+#[test]
+fn boom_load_projection_stays_within_oriented_tripod() {
+    let kit = default_kit();
+    let g = kit_geometry(&kit);
+    for piece in kit
+        .iter()
+        .filter(|p| matches!(p.instrument, Instrument::Crash | Instrument::Ride))
+    {
+        let rods: Vec<_> = g
+            .supports
+            .iter()
+            .filter(|rod| rod.piece_id == piece.id)
+            .collect();
+        let feet: Vec<_> = rods
+            .iter()
+            .filter(|rod| rod.role == "rubberFoot")
+            .map(|rod| rod.start)
+            .collect();
+        let sleeve = rods.iter().find(|rod| rod.role == "cymbalSleeve").unwrap();
+        let load = sleeve.end;
+        let crosses: Vec<_> = (0..3)
+            .map(|i| {
+                let a = feet[i];
+                let b = feet[(i + 1) % 3];
+                (b[0] - a[0]) * (load[2] - a[2]) - (b[2] - a[2]) * (load[0] - a[0])
+            })
+            .collect();
+        assert!(
+            crosses.iter().all(|v| *v > 0.) || crosses.iter().all(|v| *v < 0.),
+            "{} tripod",
+            piece.id
+        );
+        assert!(rods.iter().any(|rod| rod.role == "boomTail"));
+        for role in ["tubeLower", "tubeMiddle", "tubeUpper"] {
+            assert!(rods.iter().any(|rod| rod.role == role));
+        }
+    }
+}
+
+#[test]
+fn basket_neck_connects_the_routed_mast_to_its_receiver() {
+    let kit = default_kit();
+    let g = kit_geometry(&kit);
+    let neck = g
+        .supports
+        .iter()
+        .find(|s| s.piece_id == "snare" && s.role == "basketNeck")
+        .unwrap();
+    let mast = g
+        .supports
+        .iter()
+        .find(|s| s.piece_id == "snare" && s.role == "tubeUpper")
+        .unwrap();
+    assert_eq!(mast.end, neck.start);
+    assert!(distance(neck.start, neck.end) <= 0.10);
+    for arm in g
+        .supports
+        .iter()
+        .filter(|s| s.piece_id == "snare" && s.role == "basketArm")
+    {
+        assert_eq!(arm.start, neck.end);
+    }
+}
+
+#[test]
+fn rod_box_broad_phase_preserves_exact_clearance_predicate() {
+    let obstacle = EquipmentBox {
+        piece_id: "shell".into(),
+        center: [0.1, 0.6, -0.2],
+        half_extents: [0.2, 0.14, 0.3],
+        kind: "body",
+    };
+    let piece = &default_kit()[0];
+    for i in -6..=6 {
+        for j in -6..=6 {
+            let rod = capsule(
+                piece,
+                [i as f64 * 0.08, 0.3, j as f64 * 0.07],
+                [j as f64 * 0.09, 0.8, i as f64 * 0.06],
+                0.017,
+            );
+            assert_eq!(
+                rod_box_clear(&rod, &obstacle),
+                segment_box_clearance(rod.start, rod.end, rod.radius, &obstacle) >= CLEARANCE
+            );
+        }
+    }
+}
+
+#[test]
+fn tilted_snare_basket_receivers_follow_the_lower_rim_plane() {
+    let mut piece = default_kit()
+        .into_iter()
+        .find(|p| p.instrument == Instrument::Snare)
+        .unwrap();
+    let normal = [0., 0.3_f64.cos(), 0.3_f64.sin()];
+    let mut geometry = local_geometry(&piece);
+    geometry.body.center = normal.map(|v| -0.065 * v);
+    geometry.body.half_extents = [
+        piece.radius + 0.014,
+        0.065 * normal[1] + piece.radius * normal[2],
+        piece.radius * normal[1] + 0.065 * normal[2],
+    ];
+    geometry.surface.normal = normal;
+    piece.geometry = Some(geometry);
+    let g = kit_geometry(&[piece.clone()]);
+    let center = sub(
+        body(&piece).unwrap().center.map(|v| 2. * v),
+        surface(&piece).center,
+    );
+    for arm in g.supports.iter().filter(|s| s.role == "basketArm") {
+        let offset = sub(arm.end, center);
+        let plane_distance: f64 = offset.iter().zip(normal).map(|(a, b)| a * b).sum();
+        assert!(plane_distance.abs() < 1e-10);
+        assert!((distance(arm.end, center) - piece.radius).abs() < 1e-10);
+    }
+    assert_eq!(
+        g.supports.iter().filter(|s| s.role == "basketGrip").count(),
+        3
+    );
+}
+
+#[test]
+fn authored_fallback_bell_semantics_survive_compact_fitting_without_guessing_imports() {
+    let mut ride = default_kit()
+        .into_iter()
+        .find(|p| p.instrument == Instrument::Ride)
+        .unwrap();
+    ride.geometry = Some(local_geometry(&ride));
+    let descriptor = ride.geometry.clone().unwrap();
+    assert_eq!(
+        descriptor
+            .surface
+            .radial_profile
+            .as_ref()
+            .unwrap()
+            .bell_radius,
+        Some(ride.radius * 0.24)
+    );
+    for scale in [1.0, 0.72, 0.60] {
+        ride.radius = descriptor.reference_radius * scale;
+        assert!(valid_piece_geometry(&ride));
+        let surface = surface(&ride);
+        let observer = add(surface.center, [0.0, 0.5, -0.6]);
+        let target = crate::contact::target(&ride, "bell", observer);
+        let radius = distance(target, surface.center);
+        let tool_radius = crate::stick_geometry::profile().terminal.last().unwrap()[1];
+        assert!(radius + 1e-12 >= CYMBAL_FELT_RADIUS + tool_radius + crate::posture::MARGIN);
+        assert!(radius <= surface.radial_profile.unwrap().bell_radius.unwrap() + 1e-12);
+    }
+    // An explicit planar asset descriptor carries no authored bell semantics.
+    // Importing it must not silently replace the caller's surface contract.
+    ride.geometry.as_mut().unwrap().source = "mesh-bounds".into();
+    ride.geometry.as_mut().unwrap().surface.radial_profile = None;
+    assert!(local_geometry(&ride).surface.radial_profile.is_none());
 }

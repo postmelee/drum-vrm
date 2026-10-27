@@ -414,3 +414,19 @@ fn fit_budget_stops_before_allocating_more_candidate_work() {
     assert_eq!(cache.candidates.get(), MAX_FIT_LAYOUT_CANDIDATES);
     assert!(cache.exhausted.get());
 }
+
+#[test]
+fn required_pair_checks_reuse_geometry_without_changing_results() {
+    let mut kit = default_kit();
+    for piece in &mut kit {
+        piece.geometry = Some(crate::equipment::local_geometry(piece));
+    }
+    let ctx = crate::equipment_motion::EquipmentContext::for_kit(&kit).unwrap();
+    for scale in [1.0, 0.8] {
+        let profile = profile(scale);
+        assert_eq!(
+            crate::posture::required_pairs(&profile, &kit),
+            crate::posture::required_pairs_with_equipment(&profile, &kit, Some(&ctx))
+        );
+    }
+}

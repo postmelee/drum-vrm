@@ -196,6 +196,23 @@ pub struct Capabilities {
     pub pairs: Vec<PairCapability>,
 }
 pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
+    if profile.hand_frames.is_none()
+        || !kit
+            .iter()
+            .any(|p| p.instrument == crate::model::Instrument::Snare)
+    {
+        return Vec::new();
+    }
+    let ctx = crate::equipment_motion::EquipmentContext::for_kit(kit);
+    required_pairs_with_equipment(profile, kit, ctx.as_deref())
+}
+
+/// Reuse the immutable geometry already routed for this exact fit candidate.
+pub(crate) fn required_pairs_with_equipment(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    ctx: Option<&crate::equipment_motion::EquipmentContext>,
+) -> Vec<String> {
     if profile.hand_frames.is_none() {
         return Vec::new();
     }
@@ -206,12 +223,11 @@ pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
         return Vec::new();
     };
     let mut missing = Vec::new();
-    let ctx = crate::equipment_motion::EquipmentContext::for_kit(kit);
     if pair_solution_with_equipment(
         profile,
         ready_pair(profile, snare, snare),
         [0.0; 2],
-        ctx.as_deref(),
+        ctx,
         [Some(snare.id.as_str()); 2],
     )
     .is_none()
@@ -226,7 +242,7 @@ pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
             profile,
             ready_pair(profile, snare, hat),
             [0.0; 2],
-            ctx.as_deref(),
+            ctx,
             [Some(snare.id.as_str()), Some(hat.id.as_str())],
         )
         .is_none()
@@ -254,7 +270,7 @@ pub fn required_pairs(profile: &RigProfile, kit: &[KitPiece]) -> Vec<String> {
                     profile,
                     tips,
                     [0.0; 2],
-                    ctx.as_deref(),
+                    ctx,
                     [Some(a.id.as_str()), Some(b.id.as_str())],
                 )
                 .is_some()

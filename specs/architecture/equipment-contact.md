@@ -31,7 +31,7 @@ supports and pedal boxes rather than maintaining another routing algorithm.
 | `referenceRadius` | Radius at which local dimensions were measured, in metres |
 | `body.center`, `body.halfExtents` | Axis-aligned body box relative to the piece's planning anchor |
 | `surface.center`, `surface.normal`, `surface.radius` | Approximate circular playing region and unit normal in the same frame |
-| `surface.radialProfile` | Optional native cymbal surface: local origin, unit quaternion, and increasing radius/height samples |
+| `surface.radialProfile` | Optional native cymbal surface: local origin, unit quaternion, increasing radius/height samples and an optional explicit `bellRadius` |
 | `surface.motion` | Optional semantic translation capability: unit axis and absolute travel in metres, independent of shell fit scale |
 
 For anchor `p` and scale `s = piece.radius / referenceRadius`, a local point becomes
@@ -50,10 +50,15 @@ that profile's piecewise-linear height and normal after the same rigid transform
 a single sampled bow plane no longer substitutes for its bell or edge. The profile
 has 2–32 increasing radius/height samples, a finite local origin within ±3 m, and a
 unit quaternion. Radii lie in 0–1 m and heights in ±1 m before fit scaling.
+When present, `bellRadius` must be positive and no larger than the profile's outer
+radius. Native geometry supplies its bell boundary; unknown imported profiles do
+not acquire an inferred bell region.
 Imported surfaces without this semantic profile remain an explicit planar
 approximation; this field does not infer arbitrary curved geometry from a box.
 Legacy entries without a descriptor use documented procedural dimensions; this
-does not identify their imported appearance. Historical projects do not acquire
+fallback declares a flat cymbal profile and a bell boundary at 24% of its radius.
+It does not identify their imported appearance or add that boundary to an explicitly
+measured planar import. Historical projects do not acquire
 new measured geometry without a new measurement transaction.
 
 ## Layout, hardware and access
@@ -72,18 +77,45 @@ Static layout checks combine:
 - A bounded approach corridor above each head, extending 0.12 m along its normal.
   Its radius is `min(0.45 × headRadius, 0.09 m)`; it tests nearby body boxes.
 - Generated stand, basket, collar, tripod, pedal and kick-hardware capsules against
-  other bodies and pedal boxes. A bounded mast/boom search may find a clear route;
-  failure retains `unresolvedPieceIds` rather than hiding a support.
+  other bodies, pedal boxes and unrelated supports. An expanded-box broad phase
+  precedes exact segment-distance checks. Intentional common-holder joints are
+  explicit exemptions; an accidental shared endpoint is not one. A bounded
+  mast/boom search may find a clear route; failure retains `unresolvedPieceIds`
+  rather than hiding a support.
 
 Support topology follows the physical role: a snare basket, bass-mounted rack-tom
 holder/L-arms when a kick is present, three shell-mounted floor-tom legs, and
 angled boom cymbal stands. A standalone rack tom may use a stand when the layout
-has no kick assembly. Other stand candidates use offsets up to 0.5 m and bounded
+has no kick assembly. Other stand candidates use offsets up to 0.30 m and bounded
 tripod rotations. Failed attachment routes remain unresolved; a lower collision
 count does not certify load-bearing stability.
-The shared rack holder stops below the lowest rack shell; its separate branches
-rise to the underside mounts. A higher tom cannot raise its branch through a
-neighbouring lower shell. Every branch still checks the other bodies.
+The shared rack holder is generated once on the kick: a shell socket, telescopic
+post, locking collar, yoke and two ball joints. Each rack tom uses a horizontal
+L-rod section and a vertical insertion section into an external side clamp;
+suspension brackets connect that clamp to the shell. It is not a diagonal rod
+terminating at the head or underside centre. Bounded arm length and rise reject
+unreachable mounts instead of stretching their connectors. Floor-tom brackets
+join three independent legs to the shell. The snare basket retains a connected
+neck and tilter above its tripod.
+
+Boom stands use three nested tube diameters, locking collars, memory locks, a
+boom pivot, a straight boom with a rear tail, a separate cymbal tilter, sleeve and
+felt, and double-braced tripod legs with rubber feet. One leg points toward the
+boom within the bounded tripod-rotation search. A projected cymbal-centre check
+keeps the load within the support triangle;
+it is a geometric plausibility constraint, not a mass, torque or tipping analysis.
+Native cymbal mounts use the radial profile's local axis, not the sloped bow's
+contact normal. This keeps the mounting spindle aligned with the bell hole.
+
+[Manufacturer references](../../docs/research/drum-hardware.md) explain the
+topology and distinguish published dimensions from our compact engineering
+bounds. [equipment_hardware.rs](../../crates/drum-engine/src/equipment_hardware.rs)
+owns those bounds and routes. Its semantic `role` metadata selects details in
+[hardware-parts.ts](../../src/hardware-parts.ts); endpoints and capsule radii still
+own their placement and maximum envelope. Screws and collars stay inside those
+envelopes, so visual detail does not introduce an independent collision model.
+Fixed hardware is merged by material per instrument; the kick beater remains
+separately articulated. Detail therefore does not add a draw call per screw.
 
 The direct hi-hat mast is constrained to the pedal's toe-side axis, 0.12 m ahead
 of the sole anchor. Measured body offsets determine the corresponding hi-hat
@@ -94,9 +126,11 @@ Native appearance defaults tilt the snare 4°, rack toms 8°, ride 10°, and cra
 12° toward the player; floor tom and hi-hat remain level. These are editable
 engineering defaults, not prescribed technique angles. The appearance limit is
 ±30°. Body measurement includes the actual tilt, and project files retain it;
-older projects without a tilt field retain 0°. Support-to-support crossings,
-load/weight stability, and complete moving-part swept volumes remain separate
-verification work.
+older projects without a tilt field retain 0°. Same-assembly self-collision beyond
+the constructed joints, load/weight stability and complete moving-part swept
+volumes remain separate verification work. Top-view overlap between an elevated
+cymbal and a drum is not automatically invalid; the bodies, supports and head
+approach corridor must remain clear in three dimensions.
 
 Appearance replacement preserves the identity of the instrument and its source
 events. Because a replacement can change bounds, a new geometry/layout transaction
@@ -212,6 +246,14 @@ by Yamaha or Zildjian. They do not add random dispersion. Exact source times,
 identity, velocity and physical-piece identity remain unchanged. Restored plans
 accept a legacy anchor or a bounded point on the described playing surface; subsequent
 profile preparation derives the current articulation region again.
+
+For a radial profile with an explicit bell boundary, the nominal bell fraction
+is moved outward as needed to clear the fixed felt radius, full stick radius and
+posture margin, then capped at `bellRadius`. The bell boundary scales with the
+instrument; the mounting hardware does not. A bell too small for that clearance
+remains a failed equipment test, rather than silently becoming a bow strike or
+exempting its own mount. Profiles without this metadata retain their nominal
+contact and explicit approximation limits.
 
 The tip is still the principal contact marker. A near-edge point does **not** yet
 implement a simultaneous head/rim rimshot, a cross-stick butt strike, or a shoulder-on-

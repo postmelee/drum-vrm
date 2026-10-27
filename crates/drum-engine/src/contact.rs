@@ -61,8 +61,21 @@ pub fn target(piece: &KitPiece, articulation: &str, observer: Vec3) -> Vec3 {
         } else {
             [0., 0., -1.]
         };
-        let radius =
+        let mut radius =
             profile.points.last().unwrap()[0] * radial_fraction(piece.instrument, articulation);
+        if articulation == "bell" {
+            if let Some(bell_radius) = profile.bell_radius {
+                // Fixed mounting hardware does not shrink with a compact shell.
+                // Keep the musical contact inside the declared bell region,
+                // outside its central felt plus the complete tool's radius.
+                // If the bell is too small, normal collision checks still reject
+                // it: clamping never grants an own-hardware exemption.
+                let stick_radius = crate::stick_geometry::profile().terminal.last().unwrap()[1];
+                let mounting_clearance =
+                    crate::equipment::CYMBAL_FELT_RADIUS + stick_radius + crate::posture::MARGIN;
+                radius = radius.max(mounting_clearance / scale).min(bell_radius);
+            }
+        }
         let height = radial_height(&profile.points, radius).0;
         return add(
             origin,
@@ -336,6 +349,7 @@ mod tests {
                 origin,
                 rotation,
                 points: points.clone(),
+                bell_radius: None,
             });
         let scale = piece.radius / piece.geometry.as_ref().unwrap().reference_radius;
         let world_origin = add(piece.position, mul(origin, scale));
@@ -383,6 +397,49 @@ mod tests {
                 assert_eq!(hit, target(&piece, "edge", observer));
             }
         }
+    }
+    #[test]
+    fn compact_bell_contact_avoids_fixed_mount_without_leaving_declared_region() {
+        let mut piece = tilted_piece([0., 1., 0.]);
+        piece.geometry.as_mut().unwrap().reference_radius = 0.254;
+        let angle = 0.2_f64;
+        let rotation = [(angle / 2.).sin(), 0., 0., (angle / 2.).cos()];
+        piece.geometry.as_mut().unwrap().surface.radial_profile =
+            Some(crate::equipment::RadialSurfaceProfile {
+                origin: [0., 0.03, 0.12],
+                rotation,
+                points: vec![
+                    [0.008, -0.004],
+                    [0.03048, 0.],
+                    [0.06096, -0.022],
+                    [0.2032, -0.038],
+                    [0.254, -0.044],
+                ],
+                bell_radius: Some(0.06096),
+            });
+        let clearance = crate::equipment::CYMBAL_FELT_RADIUS
+            + crate::stick_geometry::profile().terminal.last().unwrap()[1]
+            + crate::posture::MARGIN;
+        for scale in [0.60, 0.68, 0.76, 1.] {
+            piece.radius = 0.254 * scale;
+            let (profile, origin, _) = radial_frame(&piece).unwrap();
+            let observer = add(origin, [0., 0.7, -0.5]);
+            let point = target(&piece, "bell", observer);
+            let local = crate::rig::rotate(inverse(rotation), sub(point, origin));
+            let radial = local[0].hypot(local[2]);
+            assert!(radial >= clearance - 1e-12);
+            assert!(radial <= profile.bell_radius.unwrap() * scale + 1e-12);
+            assert!(valid_target(&piece, point));
+            assert_eq!(point, target(&piece, "bell", observer));
+        }
+        // An undersized declared bell cannot be made feasible by moving its
+        // contact onto the bow. It remains subject to the equipment checks.
+        piece.radius = 0.254 * 0.3;
+        let (profile, origin, scale) = radial_frame(&piece).unwrap();
+        let point = target(&piece, "bell", add(origin, [0., 0.7, -0.5]));
+        let local = crate::rig::rotate(inverse(rotation), sub(point, origin));
+        assert!((local[0].hypot(local[2]) - profile.bell_radius.unwrap() * scale).abs() < 1e-12);
+        assert!(local[0].hypot(local[2]) < clearance);
     }
     #[test]
     fn restored_target_bounds_keep_legacy_anchors_without_accepting_arbitrary_offsets() {

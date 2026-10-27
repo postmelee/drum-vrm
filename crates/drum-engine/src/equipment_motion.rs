@@ -131,6 +131,48 @@ fn tapered_surface_clearance(
     }
     best
 }
+
+fn segment_bounds(start: Vec3, end: Vec3) -> [Vec3; 2] {
+    [
+        std::array::from_fn(|axis| start[axis].min(end[axis])),
+        std::array::from_fn(|axis| start[axis].max(end[axis])),
+    ]
+}
+
+/// The boxes enclose the segment axes, so their distance is a lower bound
+/// on capsule clearance. Prune against the running minimum, never a fixed
+/// collision threshold: negative penetration depths and pose costs must survive.
+fn support_minimum(
+    segments: [(Vec3, Vec3, f64); 4],
+    supports: &[equipment::EquipmentCapsule],
+    mut minimum: f64,
+) -> f64 {
+    let bounds = segments.map(|(start, end, _)| segment_bounds(start, end));
+    for rod in supports {
+        let obstacle = segment_bounds(rod.start, rod.end);
+        for (index, &(start, end, radius)) in segments.iter().enumerate() {
+            // Keep a conservative 1 nm band for floating-point boundary cases.
+            // This only requests more exact queries; it never changes clearance.
+            let threshold = minimum + radius + rod.radius + 1e-9;
+            let lower_squared: f64 = (0..3)
+                .map(|axis| {
+                    (bounds[index][0][axis] - obstacle[1][axis])
+                        .max(obstacle[0][axis] - bounds[index][1][axis])
+                        .max(0.0)
+                        .powi(2)
+                })
+                .sum();
+            if threshold <= 0.0 || lower_squared >= threshold * threshold {
+                continue;
+            }
+            minimum = minimum.min(
+                clearance::segment_distance(start, end, rod.start, rod.end) - radius - rod.radius,
+            );
+        }
+    }
+    minimum
+}
+
 pub fn hand_clearance(
     profile: &RigProfile,
     limb: usize,
@@ -238,16 +280,11 @@ pub fn hand_clearance(
             minimum = minimum.min(equipment::segment_box_clearance(a, b, r, pedal));
         }
     }
-    for rod in &ctx.geometry.supports {
-        for &(a, b, r) in arm
-            .iter()
-            .chain(std::iter::once(&(butt, tip, shaft_radius)))
-        {
-            minimum =
-                minimum.min(clearance::segment_distance(a, b, rod.start, rod.end) - r - rod.radius);
-        }
-    }
-    minimum
+    support_minimum(
+        [arm[0], arm[1], arm[2], (butt, tip, shaft_radius)],
+        &ctx.geometry.supports,
+        minimum,
+    )
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -399,6 +436,100 @@ fn correction_search<const PRUNE: bool>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn exhaustive_support_minimum(
+        segments: [(Vec3, Vec3, f64); 4],
+        supports: &[equipment::EquipmentCapsule],
+        mut minimum: f64,
+    ) -> f64 {
+        for rod in supports {
+            for (start, end, radius) in segments {
+                minimum = minimum.min(
+                    clearance::segment_distance(start, end, rod.start, rod.end)
+                        - radius
+                        - rod.radius,
+                );
+            }
+        }
+        minimum
+    }
+
+    #[test]
+    fn support_broadphase_preserves_exact_minima_for_seeded_and_degenerate_segments() {
+        let mut seed = 0x71e8_a34d_2f69_u64;
+        let mut sample = || {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((seed >> 32) as f64 / u32::MAX as f64) * 4. - 2.
+        };
+        for case in 0..256 {
+            let segments = std::array::from_fn(|i| {
+                let start = [sample(), sample(), sample()];
+                let end = if (case + i) % 7 == 0 {
+                    start
+                } else {
+                    add(start, [sample() * 0.25, sample() * 0.25, sample() * 0.25])
+                };
+                (start, end, sample().abs() * 0.02 + 0.003)
+            });
+            let supports: Vec<_> = (0..224)
+                .map(|i| {
+                    let start = [sample(), sample(), sample()];
+                    let end = match i % 5 {
+                        0 => start,
+                        1 => add(start, [0., sample(), 0.]),
+                        _ => add(start, [sample(), sample(), sample()]),
+                    };
+                    equipment::EquipmentCapsule {
+                        piece_id: "test-hardware".into(),
+                        role: "rod",
+                        start,
+                        end,
+                        radius: sample().abs() * 0.015 + 0.005,
+                    }
+                })
+                .collect();
+            for minimum in [f64::INFINITY, 0.2, 0.005, 0., -0.01, -0.10] {
+                assert_eq!(
+                    support_minimum(segments, &supports, minimum),
+                    exhaustive_support_minimum(segments, &supports, minimum),
+                    "case {case}, initial minimum {minimum}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn support_broadphase_keeps_tangent_near_tangent_and_deeper_negative_witnesses() {
+        let segments = [
+            ([-0.5, 0., 0.], [0.5, 0., 0.], 0.02),
+            ([2., -0.5, 0.], [2., 0.5, 0.], 0.015),
+            ([2.25, 0., 0.], [2.25, 0., 0.], 0.03),
+            ([0.5, 0., 0.], [-0.5, 0., 0.], 0.006),
+        ];
+        let mut supports = Vec::new();
+        for separation in [0.05 + 1e-10, 0.05, 0.05 - 1e-10, 0.02, 0.] {
+            supports.push(equipment::EquipmentCapsule {
+                piece_id: "test-hardware".into(),
+                role: "rod",
+                start: [-0.5, separation, 0.],
+                end: [0.5, separation, 0.],
+                radius: 0.03,
+            });
+            for minimum in [f64::INFINITY, 0., -0.001, -0.04, -0.10] {
+                assert_eq!(
+                    support_minimum(segments, &supports, minimum),
+                    exhaustive_support_minimum(segments, &supports, minimum)
+                );
+            }
+        }
+        assert_eq!(support_minimum(segments, &supports, -0.01), -0.05);
+        supports.reverse();
+        assert_eq!(
+            support_minimum(segments, &supports, f64::INFINITY),
+            exhaustive_support_minimum(segments, &supports, f64::INFINITY)
+        );
+    }
+
     #[test]
     fn shaft_middle_and_butt_are_obstacles_even_when_the_tip_is_clear() {
         let mut profile = RigProfile::primitive();
@@ -431,6 +562,7 @@ mod tests {
         ctx.geometry.bodies.clear();
         ctx.geometry.supports.push(equipment::EquipmentCapsule {
             piece_id: "stand".into(),
+            role: "rod",
             start: [-0.1, 1., -0.08],
             end: [0.1, 1., -0.08],
             radius: 0.01,
