@@ -18,7 +18,7 @@ export function inspectFBX(bytes: ArrayBuffer): { offset: number; bytes: number;
   const version = view.getUint32(23, true); if (version !== 7400 && version !== 7500) fail();
   const wide = version === 7500, head = wide ? 25 : 13;
   const uint = (p: number) => { const n = wide ? Number(view.getBigUint64(p, true)) : view.getUint32(p, true); if (!Number.isSafeInteger(n)) fail(); return n; };
-  let expanded = 0, entries = 0, nodes = 0, images = 0;
+  let expanded = 0, entries = 0, nodes = 0, images = 0, textureCount = 0, materialCount = 0;
   const arrays: { offset: number; bytes: number; expanded: number }[] = [];
   const models = new Set<number>(), links: [number, number][] = [];
   const node = (start: number, limit: number, depth: number): number => {
@@ -58,6 +58,8 @@ export function inspectFBX(bytes: ArrayBuffer): { offset: number; bytes: number;
     }
     if (cursor !== propertyEnd) fail();
     if (name === 'Video' && ++images > 64) fail();
+    if (name === 'Texture' && ++textureCount > 256) fail();
+    if (name === 'Material' && ++materialCount > 128) fail();
     if (name === 'Model' && typeof scalars[0] === 'number') models.add(scalars[0]);
     if (name === 'C' && scalars[0] === 'OO' && typeof scalars[1] === 'number' && typeof scalars[2] === 'number') links.push([scalars[1], scalars[2]]);
     while (cursor < end) { const next = node(cursor, end, depth + 1); if (next <= cursor) fail(); cursor = next; }
@@ -136,13 +138,20 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
     return pending;
   };
   const pending: Promise<void>[] = [];
+  const decoded = new Map<string, Promise<THREE.Source<HTMLImageElement>>>();
   const decode = (url: string, texture: THREE.Texture) => {
-    const task = (async () => {
-      const data = await read(url), objectUrl = URL.createObjectURL(new Blob([Uint8Array.from(data)])); urls.add(objectUrl);
-      const image = new Image(); image.src = objectUrl;
-      try { await image.decode(); texture.image = image; texture.needsUpdate = true; }
-      finally { URL.revokeObjectURL(objectUrl); urls.delete(objectUrl); }
-    })();
+    const key = /^(blob:|data:)/.test(url) ? url : imageKey(url);
+    let source = decoded.get(key);
+    if (!source) {
+      source = (async () => {
+        const data = await read(url), objectUrl = URL.createObjectURL(new Blob([Uint8Array.from(data)])); urls.add(objectUrl);
+        const image = new Image(); image.src = objectUrl;
+        try { await image.decode(); return new THREE.Source(image); }
+        finally { URL.revokeObjectURL(objectUrl); urls.delete(objectUrl); }
+      })();
+      source.catch(() => {}); decoded.set(key, source);
+    }
+    const task = source.then(imageSource => { texture.source = imageSource; texture.needsUpdate = true; });
     task.catch(() => {}); pending.push(task); return task;
   };
   const manager = new THREE.LoadingManager();

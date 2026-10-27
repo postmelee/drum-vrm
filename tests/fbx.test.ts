@@ -89,3 +89,8 @@ it('checks companion image dimensions and the aggregate decode budget before ima
   await expect(loadLocalFBX(file,[png(4097,1,'large.png')])).rejects.toThrow(/4096/);
   await expect(loadLocalFBX(file,Array.from({length:5},(_,i)=>png(4096,4096,`${i}.png`)))).rejects.toThrow(/64M/);
 });
+
+it('bounds texture objects even when many objects reuse a single image',()=>{
+  const doc=fbxDocument();for(let i=0;i<257;i++)doc[1].children!.push({name:'Texture',props:[BigInt(1000+i),'Image','']});
+  expect(()=>inspectFBX(encodeFBX(doc))).toThrow();
+});
