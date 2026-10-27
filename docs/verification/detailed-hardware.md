@@ -1,6 +1,7 @@
 # Detailed drum hardware verification
 
-This record covers the tom-holder/boom-stand increment following PR #57.
+This record covers [PR #59](https://github.com/postmelee/drum-vrm/pull/59),
+the tom-holder/boom-stand increment following PR #57.
 The [equipment contract](../../specs/architecture/equipment-contact.md) owns current
 rules and [manufacturer research](../research/drum-hardware.md) preserves sources.
 The owner requested implementation, multi-view inspection and Pages publication
@@ -71,7 +72,8 @@ The browser review uses the built-in posture study, automatic public-model
 selection, front/top/orbit side views and close-ups of the shared holder and boom
 joints. Local screenshots and numeric reports are retained under
 `.local/detailed-hardware/` and `.local/hardware-layout/`; they are not newly
-redistributed character assets. The PR records the exact reviewed commit and
+redistributed character assets. [PR #59](https://github.com/postmelee/drum-vrm/pull/59)
+records the exact reviewed commit and
 subsequent Pages workflow, integrated commit and served-artifact verification.
 
 ## Full-song boundary

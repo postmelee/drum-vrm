@@ -100,8 +100,9 @@ neck and tilter above its tripod.
 
 Boom stands use three nested tube diameters, locking collars, memory locks, a
 boom pivot, a straight boom with a rear tail, a separate cymbal tilter, sleeve and
-felt, and double-braced tripod legs with rubber feet. One leg points along the
-boom. A projected cymbal-centre check keeps the load within the support triangle;
+felt, and double-braced tripod legs with rubber feet. One leg points toward the
+boom within the bounded tripod-rotation search. A projected cymbal-centre check
+keeps the load within the support triangle;
 it is a geometric plausibility constraint, not a mass, torque or tipping analysis.
 Native cymbal mounts use the radial profile's local axis, not the sloped bow's
 contact normal. This keeps the mounting spindle aligned with the bell hole.

@@ -5,7 +5,8 @@ own measured results and publication evidence.
 
 ## Current batch and next work
 
-The detailed-hardware increment follows [PR #57](https://github.com/postmelee/drum-vrm/pull/57)
+The detailed-hardware [PR #59](https://github.com/postmelee/drum-vrm/pull/59)
+follows [PR #57](https://github.com/postmelee/drum-vrm/pull/57)
 (natural posture/contact) and [PR #55](https://github.com/postmelee/drum-vrm/pull/55)
 (VRM 0.0 import). The owner requested Pages publication of the completed hardware
 batch, with no tag or GitHub Release. Read the
