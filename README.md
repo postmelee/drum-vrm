@@ -49,7 +49,7 @@ Drum appearance changes do not change the sound, and the app does not reproduce 
 | --- | --- |
 | MIDI | `.mid` / `.midi`, SMF 0/1 with PPQ timing; 10 MiB; 300 seconds across selected tracks; 512 tracks; 200,000 events; 50,000 selected supported hits. |
 | WAV | PCM or float, mono/stereo; up to 100 MiB and 300 seconds. Start offset ±300 seconds. [Formats and trimming](docs/export.md). |
-| Character | Self-contained VRM 0.0/1.0 or rigged binary FBX 7.4/7.5, up to 50 MiB. FBX offers explicit bone/unit mapping and local PNG/JPEG assignment. [Bone, image and format limits](docs/models.md#supported-files). |
+| Character | Self-contained VRM 0.0/1.0 or rigged binary FBX 7.4/7.5, up to 50 MiB. FBX supports folder import, remaining-bone dropdowns, a 3D preview and local PNG/JPEG suggestions. [Bone, image and format limits](docs/models.md#supported-files). |
 | Drum appearance | Self-contained static GLB 2.0 `.glb`, up to 25 MiB; embedded resources, no skinned models. [Preparation and fitting](docs/calibration.md#replace-drum-bodies-while-keeping-hardware). |
 
 Humanoid motion preparation has a separate [6,000-control-time budget](specs/architecture/engine-contract.md#preparation-and-worker-boundary); dense scores may reach it before the MIDI input limits. Setup replanning can be cancelled without losing the current setup.

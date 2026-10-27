@@ -114,6 +114,27 @@ by stable material traversal index, uses sRGB and a white diffuse tint, and is
 saved with the original image identity. Other Phong/Lambert properties remain.
 This does not reconstruct authoring-tool toon/node graphs or layered materials.
 
+Folder selection collects VRM/FBX models and PNG/JPEG companions recursively,
+ignores unrelated files and asks which model to import when several exist. The
+same aggregate resource limits apply; ZIP extraction is outside this importer.
+Setup exposes unresolved required bones first. Dropdowns exclude used paths and
+incompatible mapped ancestry, preserve the current selection for repair, and
+show name-matching choices before an opt-in list of other eligible bones.
+A separate rest-pose preview marks the selected bone without changing source
+transforms. It owns and disposes its own renderer and controls; the source model
+remains owned by the staged import. Preview failure does not prevent manual setup.
+
+Unique generic material/image-name matches may propose base-color assignments;
+ties and recognized non-color map tokens remain unassigned. Original texture
+bindings and valid saved choices take precedence. Every preview update restores
+original maps/tints before applying current overrides, so clearing a choice is
+reversible. Adoption still validates and applies the explicit resulting config.
+After successful adoption only, browser storage remembers the most recent 10
+setups keyed by FBX SHA-256. Records contain settings and image names, never
+asset bytes. Restored settings pass schema and scene mapping validation; absent
+companions remain unassigned. Storage failure is nonfatal; project files remain
+the portable record. Cancel/failure does not update this cache.
+
 Conventional humanoid, Mixamo, suffix and Japanese bone names are suggestions,
 never model-specific rules. Ambiguous names remain unassigned. Validate the 15
 required bones and optional hierarchy before adopting. The rest head-to-hips and

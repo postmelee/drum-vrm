@@ -91,6 +91,48 @@ API, with a successful build, boundary tests and repeated embedded-image harness
 An unrelated private harness import-path error during development was
 corrected before the embedded-image test; it was not a production failure.
 
+## Setup usability follow-up — 2026-10-27
+
+Implementation: `9a3cddb` (stacked on the implementation above). The owner asked
+for remaining-candidate dropdowns and the proposed simpler import workflow.
+No Rust, WASM, dependency version or project schema changed in this follow-up.
+
+- Folder selection discovers models and PNG/JPEG companions in subfolders and
+  asks which model to use if multiple exist. Irrelevant package files are ignored.
+- Unresolved required bones are exposed first. Used/incompatible candidates are
+  excluded, conventional-name matches are shown first, and other eligible bones
+  are available through a checkbox. Current choices remain clearable. Assigned
+  and optional bones remain editable in disclosures.
+- An isolated rest-pose preview shows selected bone positions. Generic image-name
+  suggestions are reversible; original texture bindings and saved choices win.
+  Successful exact-FBX settings are remembered locally for 10 recent files.
+
+Checks: full suite **31 files / 229 tests passed**; focused FBX/setup/project
+checks **24 tests passed**. Typecheck, final production web build and documentation
+check passed. The existing large-chunk build advisory remains. New authored tests
+cover remaining-candidate exclusion/reappearance, ambiguous aliases, conservative
+image suggestions, storage limits/unavailability and folder file classification.
+
+Actual browser checks used the owner's private 866-bone model. Folder selection
+collected the FBX and five images in one action. The unresolved list contained
+head and both feet; filtered conventional choices were two head candidates and
+one candidate per foot. Five of six materials received unique image suggestions;
+the ambiguous eyebrow material remained manual. Bone markers, texture edits,
+clearing a texture back to the original material, automatic fitting and successful
+adoption were observed. The production preview on port 5180 repeated import and
+adoption, restored successful mappings/textures, and preserved the current model
+and last successful settings after a texture change was canceled. A multi-model
+selection displayed an explicit chooser and could be canceled. No warning/error
+console entries were captured in this production check.
+
+The 745-pixel layout stacked the preview above controls; a temporary 1280×900
+viewport verified the two-column layout and was reset afterward. Screenshots
+remain in ignored local evidence; no private model, texture or screenshot is
+tracked. Preview positions and filename suggestions do not establish deformation
+correctness, shader fidelity or new all-song performance guarantees. Folder image
+budgets are still aggregate; select a single extracted package rather than a
+large collection, and resolve duplicate image basenames before import.
+
 ## Limits and release boundary
 
 The implemented contract accepts binary FBX 7.4/7.5 only. It preserves supported
