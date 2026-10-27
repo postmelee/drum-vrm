@@ -138,7 +138,7 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
     return pending;
   };
   const pending: Promise<void>[] = [];
-  const decoded = new Map<string, Promise<THREE.Source<HTMLImageElement>>>();
+  const decoded = new Map<string, Promise<THREE.TextureSource<HTMLImageElement>>>();
   const decode = (url: string, texture: THREE.Texture) => {
     const key = /^(blob:|data:)/.test(url) ? url : imageKey(url);
     let source = decoded.get(key);
@@ -146,7 +146,7 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
       source = (async () => {
         const data = await read(url), objectUrl = URL.createObjectURL(new Blob([Uint8Array.from(data)])); urls.add(objectUrl);
         const image = new Image(); image.src = objectUrl;
-        try { await image.decode(); return new THREE.Source(image); }
+        try { await image.decode(); return new THREE.TextureSource(image); }
         finally { URL.revokeObjectURL(objectUrl); urls.delete(objectUrl); }
       })();
       source.catch(() => {}); decoded.set(key, source);
