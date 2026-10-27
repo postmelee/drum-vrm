@@ -287,3 +287,73 @@ reported 48 unassigned hits for Gold Ship on this study; successful import and
 zero socket error do not establish natural posture or skin clearance. Saved
 projects still require their exact engine hash; this rebuild does not silently
 migrate projects made with the previous WASM. No private assets were committed.
+
+## Shared fit failure investigation — 2026-10-27
+
+Analysis of `f5addde` and its WASM hash recorded above, requested after integration.
+No production fitting rule or served build was changed by this investigation.
+Private source models, measured profiles and temporary instrumentation remain
+under ignored `.local/fbx/`; no model-derived fixtures are added to the repository.
+
+The audit used the ordinary FBX/VRM adapters, automatic seat calculation and freshly
+measured Studio kit, with natural palm direction. Texture decoding was stubbed only
+in Node; skin, bone and vertex geometry remained intact. Japanese head/foot choices
+in the second FBX were resolved explicitly, as in its setup workflow. These are
+fresh nominal-baseline audits, not exact replays of a browser's previously fitted
+fallback layout.
+
+| Private input | Arm segment sum, approximately | Candidates | Search budget exhausted | Branch termination |
+| --- | --- | --- | --- | --- |
+| Gold Ship FBX | 0.423 m | 286 | No | All 26 branches rejected the initial hi-hat witnesses |
+| Jungle Pocket VRM 0.0 | 0.393 m | 19,391 | No | 18 branches stopped at hi-hat; 8 progressed to high tom |
+| Almond Eye FBX | 0.402 m | 26,940 | No | 18 branches stopped at hi-hat; 8 progressed to snare |
+
+These counts are layout candidates, not individual IK solutions. The configured
+budget remains 80,000. Increasing that budget alone would not change these runs.
+
+For Gold Ship's reference-forward branches at scales 1.00, 0.84, 0.68 and 0.60,
+all 22 articulation/height combinations per probe admitted a reachable solution
+and an anatomical-angle solution. Full body clearance rejected the larger-scale
+candidates. At 0.60, some impact/first-preparation witnesses passed, but none passed
+the 110 mm preparation probe's body-clearance gate; a complete probe set and
+whole-tool equipment access were therefore unavailable. The best anatomical
+candidate in that sampled final-probe grid had 1.699 mm forearm/torso clearance,
+below the common 2 mm requirement. This is a sampled proxy result, not evidence
+that the real skin intersects or that a human cannot play the posture.
+
+The other two inputs found hi-hat witnesses at smaller scales, then failed later
+placement constraints. The hi-hat failure cannot be generalized to every avatar.
+Removing measured body geometry uses the existing skeleton fallback; it still
+failed for all three inputs. Diagnostic-only ±150 mm forward seat translations
+also failed. Those ablations are not validated alternative seating solutions and
+do not justify deleting garment proxies, changing bone lengths or relaxing limits.
+
+Structural findings in the common implementation:
+
+- Automatic seating is calculated first from leg/pedal reach. `fit_kit` then
+  receives a fixed profile; it does not jointly optimize seating and hand targets.
+- `place_hihat_pedal` commits the first leg-feasible anchor from four candidates.
+  Subsequent height tests cannot reconsider its X/Z location when the hand fails.
+  The default requires a right-hand hi-hat and a left-snare/right-hi-hat pair.
+- Sequential repair locks earlier pieces. Failure at a later tom cannot backtrack
+  to an alternative valid snare/hat pair. Two placement orders are tried, not a
+  joint search over all earlier witnesses.
+- On failure, `uniform_fit` correctly returns the unchanged baseline, but replaces
+  trial information with the baseline's failed-piece lists. The UI's reach/posture
+  list is consequently not a trace of the constraint that stopped the search.
+
+Recommended common follow-up (proposed, not implemented): retain bounded, structured
+failure evidence first; then search seat, both pedals, snare and hi-hat as a coupled
+setup with hand and foot feasibility before committing an anchor. Keep a small
+ranked set of valid anchor witnesses so later pieces can backtrack within a shared
+budget. Preserve conventional instrument regions and hardware topology from #18;
+a central hi-hat or a rack tom in the snare row is not an acceptable numerical fix.
+Use deterministic local refinement near a feasible corridor without weakening
+posture/clearance thresholds. Any open-handed technique should be an explicit
+shared performance policy, consistently used by fitting and assignment, not a
+hidden per-model exception.
+
+Acceptance must cover native/public VRMs and the private VRM/FBX cohort, unchanged
+source timing/bone lengths, deterministic seek, whole-tool and pedal constraints,
+rendered layout/skin inspection and fitting latency. A complete static fit alone
+is insufficient to declare the musical performance or arbitrary models supported.

@@ -10,6 +10,10 @@ own measured results and publication evidence.
   automatic file settings, default VRM 0.0 shade compatibility, and concise menus.
   The feature branch now incorporates `main` through `6038e8e`; review the combined
   local build before integration. This is not a Pages deployment.
+  The shared-fit investigation found early hi-hat and later snare/tom search
+  failures across private VRM/FBX bodies. Next: structured failure evidence and
+  coupled seat/pedal/snare/hat witnesses, preserving #18 layout roles. See the
+  [investigation](verification/fbx-import.md#shared-fit-failure-investigation--2026-10-27).
   See [verification](verification/fbx-import.md) and the
   [import contract](../specs/architecture/rig-contract.md#fbx-import).
 
