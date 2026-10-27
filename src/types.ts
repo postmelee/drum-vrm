@@ -63,8 +63,9 @@ export const hitPieceId = (hit: Hit): PieceId => hit.pieceId ?? hit.instrument;
 export interface Hit { pieceId?: PieceId; articulation?: string; sourceEventId?: string; eventIndex?: number; timeUs?: number; id: number; time: number; tick: number; track: number; channel: number; note: number; velocity: number; instrument: Instrument; limb: number | null; target: Vec3; }
 export interface Diagnostic { code: string; message: string; hitId?: number; time?: number; }
 export interface TrackInfo { index: number; name: string; noteCount: number; drumNotes: number; channels: number[]; }
-export interface MidiInfo { tracks: TrackInfo[]; suggestedTracks: number[]; format: number; ppq: number; }
-export type MappingProfile = 'gm' | 'logicDkdGm';
+export interface MappingAnalysis { selected: MappingProfile | null; ambiguous: boolean; totalNotes: number; candidates: {profile: MappingProfile; mapped: number; unmapped: number}[]; }
+export interface MidiInfo { tracks: TrackInfo[]; suggestedTracks: number[]; format: number; ppq: number; suggestedChannel: number | null; mappingAnalysis: MappingAnalysis; }
+export type MappingProfile = 'gm' | 'logicDkdGm' | 'songsterrDownloader';
 export type HihatPolicy = 'literal'|'shortOpenClose';
 export interface Selection { tracks: number[]; channel: number | null; mappingProfile?: MappingProfile; countInNote75?: boolean; hihatPolicy?: HihatPolicy; hihatOpenness?: number; omittedSourceEventIds?: string[]; handOverrides?: Record<string,0|1>; }
 export type SourceMessage = { kind: 'noteOn'|'noteOff'; key: number; velocity: number }

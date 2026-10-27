@@ -122,6 +122,7 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
     let mut signatures = Vec::new();
     let mut diagnostics = Vec::new();
     let mut channel_ten_tracks = Vec::new();
+    let mut supported_tracks = Vec::new();
     for (index, track) in smf.tracks.iter().enumerate() {
         let mut info = TrackInfo {
             index,
@@ -133,6 +134,7 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
         let mut tick = 0u64;
         let mut ended = false;
         let mut has_channel_ten = false;
+        let mut has_supported_note = false;
         for (event_index, event) in track.iter().enumerate() {
             if ended {
                 return Err(format!(
@@ -195,6 +197,9 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
                         info.drum_notes += 1;
                     }
                     has_channel_ten |= c == 9;
+                    has_supported_note |= interpretation::MAPPING_PROFILES.iter().any(|profile| {
+                        interpretation::mapped_note(*profile, key.as_int()).is_some()
+                    });
                 }
                 _ => {}
             }
@@ -208,19 +213,36 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
         if has_channel_ten {
             channel_ten_tracks.push(index);
         }
+        if has_supported_note {
+            supported_tracks.push(index);
+        }
         info.channels.sort_unstable();
         tracks.push(info);
         track_ends.push(tick);
     }
+    let suggested_channel = (!channel_ten_tracks.is_empty()).then_some(9);
     let suggested_tracks = if channel_ten_tracks.is_empty() {
-        tracks
-            .iter()
-            .filter(|t| t.drum_notes > 0)
-            .map(|t| t.index)
-            .collect()
+        supported_tracks
     } else {
         channel_ten_tracks
     };
+    let mut note_counts = [0usize; 128];
+    for &index in &suggested_tracks {
+        for event in &smf.tracks[index] {
+            if let TrackEventKind::Midi {
+                channel,
+                message: MidiMessage::NoteOn { key, vel },
+            } = event.kind
+            {
+                if vel.as_int() > 0
+                    && suggested_channel.is_none_or(|selected| channel.as_int() == selected)
+                {
+                    note_counts[key.as_int() as usize] += 1;
+                }
+            }
+        }
+    }
+    let mapping_analysis = interpretation::analyze_mapping(&note_counts);
     tempos.sort_by_key(|t| (t.tick, t.track, t.event));
     let mut chosen = Vec::new();
     let mut i = 0;
@@ -301,6 +323,8 @@ pub fn parse(bytes: &[u8]) -> Result<Parsed<'_>, String> {
             suggested_tracks,
             format,
             ppq,
+            suggested_channel,
+            mapping_analysis,
         },
         track_ends,
         segments,

@@ -176,6 +176,8 @@ pub struct MidiInfo {
     pub suggested_tracks: Vec<usize>,
     pub format: u8,
     pub ppq: u16,
+    pub suggested_channel: Option<u8>,
+    pub mapping_analysis: crate::interpretation::MappingAnalysis,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

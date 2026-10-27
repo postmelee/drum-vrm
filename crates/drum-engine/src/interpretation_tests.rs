@@ -22,6 +22,187 @@ fn selection(profile: MappingProfile, count_in: bool) -> Selection {
 }
 
 #[test]
+fn songsterr_downloader_maps_only_verified_drum_articulations() {
+    use Instrument::*;
+    let profile = MappingProfile::SongsterrDownloader;
+    let expected = [
+        (0, Snare, "snare", "center"),
+        (1, Snare, "snare", "sideStick"),
+        (2, Snare, "snare", "rimshot"),
+        (3, Hihat, "hihat", "closed"),
+        (5, OpenHat, "openHat", "open"),
+        (6, PedalHat, "pedalHat", "footClose"),
+        (7, Kick, "kick", "center"),
+        (8, Kick, "kick", "center"),
+        (9, TomHigh, "tomHigh", "center"),
+        (10, TomHigh, "tomHigh", "center"),
+        (11, TomMid, "tomMid", "center"),
+        (12, TomMid, "tomMid", "center"),
+        (13, TomLow, "tomLow", "center"),
+        (87, TomLow, "tomLow", "center"),
+        (14, Ride, "ride", "edge"),
+        (15, Ride, "ride", "outer"),
+        (16, Ride, "ride", "bell"),
+        (18, Crash, "crash", "splash"),
+        (20, Crash, "crash", "china"),
+        (22, Crash, "crash", "crash"),
+        (24, Crash, "crashRight", "crash"),
+    ];
+    for note in 0..128 {
+        let actual = interpretation::mapped_note(profile, note);
+        if let Some((_, instrument, piece, articulation)) = expected.iter().find(|x| x.0 == note) {
+            let actual = actual.unwrap();
+            assert_eq!(actual.instrument, *instrument);
+            assert_eq!(actual.piece_id, *piece);
+            assert_eq!(actual.articulation, *articulation);
+        } else {
+            assert!(actual.is_none(), "unexpected mapping for {note}");
+        }
+    }
+    assert!(interpretation::mapped_note(MappingProfile::Gm, 0).is_none());
+    assert!(interpretation::mapped_note(MappingProfile::LogicDkdGm, 8).is_none());
+    assert_eq!(
+        interpretation::mapped_note(MappingProfile::Gm, 38)
+            .unwrap()
+            .instrument,
+        Snare
+    );
+}
+
+#[test]
+fn automatic_mapping_compares_all_profiles_and_distinguishes_semantic_ties() {
+    let analyze = |keys: &[u8]| {
+        let mut counts = [0usize; 128];
+        for &key in keys {
+            counts[key as usize] += 1;
+        }
+        interpretation::analyze_mapping(&counts)
+    };
+    let plain = analyze(&[36, 38, 42, 36]);
+    assert_eq!(plain.selected, Some(MappingProfile::Gm));
+    assert!(!plain.ambiguous); // GM and Logic give the same meanings here.
+    assert_eq!(plain.total_notes, 4);
+    assert_eq!(
+        plain
+            .candidates
+            .iter()
+            .map(|c| c.mapped)
+            .collect::<Vec<_>>(),
+        vec![4, 4, 0]
+    );
+    for key in [40, 52] {
+        let tied = analyze(&[36, key]);
+        assert_eq!(tied.selected, Some(MappingProfile::Gm));
+        assert!(tied.ambiguous); // Same hit count, different articulation/role.
+    }
+    let logic = analyze(&[32, 34, 36, 38]);
+    assert_eq!(logic.selected, Some(MappingProfile::LogicDkdGm));
+    assert!(!logic.ambiguous);
+    let compatibility = analyze(&[0, 3, 5, 8, 12, 22, 87, 4]);
+    assert_eq!(
+        compatibility.selected,
+        Some(MappingProfile::SongsterrDownloader)
+    );
+    assert_eq!(compatibility.candidates[2].unmapped, 1);
+    assert!(!compatibility.ambiguous);
+    assert!(analyze(&[0, 38]).ambiguous); // Disjoint supported subsets also disagree.
+    for keys in [&[][..], &[127, 127][..]] {
+        let empty = analyze(keys);
+        assert_eq!(empty.selected, None);
+        assert!(!empty.ambiguous);
+        assert!(empty.candidates.iter().all(|c| c.mapped == 0));
+    }
+}
+
+#[test]
+fn automatic_mapping_uses_only_suggested_tracks_and_channel_positive_notes() {
+    // Melodic notes outnumber drums, but must not bias channel-10 interpretation.
+    let bytes = file(&[
+        &[0, 0x90, 38, 80],
+        &[0, 0x90, 38, 80],
+        &[0, 0x90, 52, 80],
+        &[0, 0x99, 0, 90],
+        &[120, 0x99, 8, 0],
+        &[0, 0x89, 8, 80],
+    ]);
+    let info = crate::inspect(&bytes).unwrap();
+    assert_eq!(info.suggested_channel, Some(9));
+    assert_eq!(info.mapping_analysis.total_notes, 1);
+    assert_eq!(
+        info.mapping_analysis.selected,
+        Some(MappingProfile::SongsterrDownloader)
+    );
+    let nonstandard_channel = file(&[&[0, 0x92, 0, 90], &[120, 0x92, 8, 100]]);
+    let info = crate::inspect(&nonstandard_channel).unwrap();
+    assert_eq!(info.suggested_tracks, vec![0]);
+    assert_eq!(info.suggested_channel, None);
+    assert_eq!(info.mapping_analysis.total_notes, 2);
+    assert_eq!(
+        info.mapping_analysis.selected,
+        Some(MappingProfile::SongsterrDownloader)
+    );
+    // Inspection/recommendation does not change the default explicit planning API.
+    assert!(build_plan(&nonstandard_channel, &selection(MappingProfile::Gm, false)).is_err());
+}
+
+#[test]
+fn songsterr_downloader_preserves_evidence_and_reports_unsupported_notes() {
+    let bytes = file(&[
+        &[0, 0x99, 0, 93],
+        &[120, 0x89, 0, 64],
+        &[0, 0x99, 8, 0],
+        &[120, 0xff, 0x51, 3, 0x0b, 0x71, 0xb0],
+        &[120, 0x99, 8, 101],
+        &[120, 0x99, 87, 82],
+        &[120, 0x99, 4, 90],
+        &[120, 0x99, 23, 90],
+        &[120, 0x99, 38, 90],
+        &[0, 0xb9, 4, 12],
+    ]);
+    let gm = build_plan(&bytes, &selection(MappingProfile::Gm, false)).unwrap();
+    let plan = build_plan(
+        &bytes,
+        &selection(MappingProfile::SongsterrDownloader, false),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&plan.source_events).unwrap(),
+        serde_json::to_value(&gm.source_events).unwrap()
+    );
+    assert_eq!(plan.midi_hash, gm.midi_hash);
+    assert_eq!(plan.duration, gm.duration);
+    assert_eq!(
+        plan.hits
+            .iter()
+            .map(|h| (h.note, h.velocity, h.time_us))
+            .collect::<Vec<_>>(),
+        vec![(0, 93, 0), (8, 101, 437500), (87, 82, 625000)]
+    );
+    assert_eq!(plan.hits[2].source_event_id, "0:5");
+    assert_eq!(
+        plan.interpretations
+            .iter()
+            .filter(|i| i.kind == InterpretationKind::Unmapped)
+            .count(),
+        3
+    );
+    assert_eq!(
+        plan.diagnostics
+            .iter()
+            .filter(|d| d.code == "UNMAPPED_NOTE")
+            .count(),
+        3
+    );
+    let json = serde_json::to_string(&plan).unwrap();
+    assert!(json.contains("\"mappingProfile\":\"songsterrDownloader\""));
+    let loaded = load_motion(&json, None).unwrap();
+    assert_eq!(loaded.plan.interpretations, plan.interpretations);
+    let mut tampered = plan.clone();
+    tampered.mapping_profile = MappingProfile::Gm;
+    assert!(interpretation::validate_interpretation(&tampered).is_err());
+}
+
+#[test]
 fn source_messages_survive_mapping_without_becoming_strikes() {
     let bytes = file(&[
         &[0, 0x90, 38, 100],
