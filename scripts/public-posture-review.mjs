@@ -64,6 +64,7 @@ try {
       let start = performance.now();
       const fit = JSON.parse(wasm.fit_kit(JSON.stringify(initialProfile), JSON.stringify(kit))), fitMs = performance.now() - start;
       const layout = fit.complete ? fit.kit : kit, profile = rig.setCalibration(seat, layout);
+      const equipment = JSON.parse(wasm.kit_geometry(JSON.stringify(layout)));
       start = performance.now();
       run = wasm.Performance.from_json_with_profile(JSON.stringify(calibration.applyKitLayout(source, layout)), JSON.stringify(profile));
       const prepareMs = performance.now() - start, plan = JSON.parse(run.plan_json());
@@ -91,10 +92,13 @@ try {
       const sourceFactsPreserved = JSON.stringify(plan.sourceEvents) === JSON.stringify(source.sourceEvents);
       const result = { id, modelHash: provenance.sha256, wasmHash: hash(binary), plannerVersion: plan.plannerVersion, fitMs, prepareMs,
         profile, kit: layout, plan, fitComplete: fit.complete, scale: fit.scale, searchCandidates: fit.searchCandidates, capabilities: fit.capabilities,
-        sequence, impactMeasurements, unassigned: plan.hits.filter(hit => hit.limb === null).length, sourceFactsPreserved, deterministic, diagnostics: plan.diagnostics, samples };
+        sequence, impactMeasurements, equipmentUnresolved: equipment.unresolvedPieceIds,
+        unassigned: plan.hits.filter(hit => hit.limb === null).length, sourceFactsPreserved, deterministic, diagnostics: plan.diagnostics, samples };
       fs.writeFileSync(resolve(output, `${id}.json`), JSON.stringify(result, null, 2) + '\n');
       results.push({ id, fitComplete: result.fitComplete, scale: fit.scale, fitMs: Math.round(fitMs), prepareMs: Math.round(prepareMs), unassigned: result.unassigned, sourceFactsPreserved, deterministic });
-      if (!sourceFactsPreserved || !deterministic) process.exitCode = 1;
+      // This independently authored study is a regression gate, not a claim
+      // that an arbitrary full song has no impossible chords or path warnings.
+      if (!fit.complete || equipment.unresolvedPieceIds.length || result.unassigned || !sourceFactsPreserved || !deterministic) process.exitCode = 1;
     } finally { run?.free(); rig.dispose(); }
   }
   console.table(results);

@@ -45,7 +45,7 @@ export interface PieceGeometry {
   source: 'mesh-bounds' | 'procedural';
   body: { center: Vec3; halfExtents: Vec3 };
   surface: { center: Vec3; normal: Vec3; radius: number;
-    radialProfile?: { origin: Vec3; rotation: Quat; points: [number, number][] };
+    radialProfile?: { origin: Vec3; rotation: Quat; points: [number, number][]; bellRadius?: number };
     motion?: { kind: 'translation'; axis: Vec3; travelMeters: number } };
 }
 /** Shared Rust equipment geometry in the legacy Y-up planning coordinates. */
@@ -53,7 +53,7 @@ export interface KitGeometry {
   version: 1;
   mechanisms?: EquipmentMechanism[];
   bodies: { pieceId: string; center: Vec3; halfExtents: Vec3 }[];
-  supports: { pieceId: string; start: Vec3; end: Vec3; radius: number }[];
+  supports: { pieceId: string; start: Vec3; end: Vec3; radius: number; role?: string }[];
   pedals: { pieceId: string; kind: 'board' | 'base'; center: Vec3; halfExtents: Vec3 }[];
   unresolvedPieceIds: string[];
 }

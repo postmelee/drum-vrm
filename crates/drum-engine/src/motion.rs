@@ -7,7 +7,7 @@ use std::f64::consts::PI;
 mod prepared;
 #[path = "sticking.rs"]
 mod sticking;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v9";
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v10";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];

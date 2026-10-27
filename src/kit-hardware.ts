@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { kit_geometry } from './wasm/drum_engine';
 import { pieceInstrument, type KitPiece, type KitGeometry, type Vec3 } from './types';
+import { createHardwarePart } from './hardware-parts';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 /** Shared mounting frames are kit data, never an avatar or model-preset rule. */
 export interface PieceAnchors { contact: Vec3; mount: Vec3; }
@@ -15,7 +17,30 @@ export function pieceAnchors(piece: KitPiece): PieceAnchors {
   };
 }
 const canonical = (id: string): string => id === 'openHat' || id === 'pedalHat' ? 'hihat' : id;
-const up = new THREE.Vector3(0, 1, 0);
+
+/** Retain semantic nodes for inspection, but draw fixed details in material
+ * batches. Moving pedal/beater groups are deliberately outside these batches. */
+function batchFixedSupports(root: THREE.Group): void {
+  const buckets = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  root.updateMatrixWorld(true);
+  for (const part of root.children) {
+    if (!part.userData.segment) continue;
+    part.userData.renderBounds = new THREE.Box3().setFromObject(part, true).toJSON();
+    for (const node of [...part.children]) {
+      if (!(node instanceof THREE.Mesh) || Array.isArray(node.material)) continue;
+      const geometry = node.geometry.clone().applyMatrix4(node.matrixWorld);
+      const bucket = buckets.get(node.material) ?? []; bucket.push(geometry); buckets.set(node.material, bucket);
+      node.geometry.dispose(); part.remove(node);
+    }
+  }
+  for (const [material, geometries] of buckets) {
+    const merged = mergeGeometries(geometries, false);
+    geometries.forEach(geometry => geometry.dispose());
+    if (!merged) throw new Error('Cannot batch fixed hardware');
+    const mesh = new THREE.Mesh(merged, material); mesh.name = 'FixedHardwareBatch';
+    mesh.castShadow = mesh.receiveShadow = true; mesh.userData.hitResponseRole = 'hardware'; root.add(mesh);
+  }
+}
 
 /** Requires the shared WASM runtime to have initialized. Routing, body clearance
  * and unresolved results have one implementation in Rust. */
@@ -23,8 +48,7 @@ export function solveKitGeometry(kit: readonly KitPiece[]): KitGeometry {
   return JSON.parse(kit_geometry(JSON.stringify(kit))) as KitGeometry;
 }
 
-/** Render the exact routed collision primitives. A capsule's hemispherical ends
- * are visible too; the numerical radius is never smaller than the rendered rod. */
+/** Render semantic hardware inside the exact routed collision primitives. */
 export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], geometry = solveKitGeometry(kit)): THREE.Group {
   const root = new THREE.Group(); root.name = `Hardware/${piece.id}`;
   root.userData.pieceId = piece.id; root.userData.hitResponseRole = 'hardware';
@@ -32,6 +56,7 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], g
   root.userData.unresolved = geometry.unresolvedPieceIds.some(id => canonical(id) === piece.id);
   const metal = new THREE.MeshStandardMaterial({ color: 0x9ca0a3, metalness: .76, roughness: .3 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x26282b, metalness: .15, roughness: .7 });
+  const rubber = new THREE.MeshStandardMaterial({ color: 0x17191b, metalness: 0, roughness: .95 });
   const add = (shape: THREE.BufferGeometry, material: THREE.Material, center: Vec3) => {
     const mesh = new THREE.Mesh(shape, material); mesh.position.set(...center);
     mesh.castShadow = mesh.receiveShadow = true; root.add(mesh); return mesh;
@@ -41,11 +66,8 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], g
   }
   for (const [index, segment] of geometry.supports.entries()) {
     if (canonical(segment.pieceId) !== piece.id) continue;
-    const start = new THREE.Vector3(...segment.start), delta = new THREE.Vector3(...segment.end).sub(start), length = delta.length();
-    const center = start.clone().addScaledVector(delta, .5).toArray() as Vec3;
-    const mesh = add(length > 1e-8 ? new THREE.CapsuleGeometry(segment.radius, length, 4, 10) : new THREE.SphereGeometry(segment.radius, 12, 8), metal, center);
-    if (length > 1e-8) mesh.quaternion.setFromUnitVectors(up, delta.divideScalar(length));
-    mesh.name = `support/${index}`; mesh.userData.segment = structuredClone(segment); mesh.userData.pieceId = segment.pieceId;
+    const part = createHardwarePart(segment, { chrome: metal, dark, rubber });
+    part.name = `support/${segment.role ?? 'rod'}/${index}`; root.add(part);
   }
   for (const [index, pedal] of geometry.pedals.entries()) {
     if (canonical(pedal.pieceId) !== piece.id) continue;
@@ -76,8 +98,10 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], g
   root.userData.supportAssembly = pieceInstrument(piece) === 'tomHigh' || pieceInstrument(piece) === 'tomMid' ? 'bass-mounted-tom'
     : pieceInstrument(piece) === 'tomLow' ? 'floor-tom-legs' : pieceInstrument(piece) === 'hihat' ? 'direct-hihat'
       : pieceInstrument(piece) === 'snare' ? 'snare-basket' : pieceInstrument(piece) === 'kick' ? 'bass-pedal' : 'boom-cymbal';
-  if (!geometry.supports.some(segment => canonical(segment.pieceId) === piece.id)) metal.dispose();
-  if (!geometry.pedals.some(pedal => canonical(pedal.pieceId) === piece.id)) dark.dispose();
+  batchFixedSupports(root);
+  const usedMaterials = new Set<THREE.Material>();
+  root.traverse(node => { if (node instanceof THREE.Mesh) (Array.isArray(node.material) ? node.material : [node.material]).forEach(value => usedMaterials.add(value)); });
+  [metal, dark, rubber].filter(material => !usedMaterials.has(material)).forEach(material => material.dispose());
   return root;
 }
 function dispose(root: THREE.Object3D): void {

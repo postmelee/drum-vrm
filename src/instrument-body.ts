@@ -140,7 +140,8 @@ export function measureInstrumentGeometry(root: THREE.Object3D, piece: KitPiece,
     const origin = new THREE.Vector3(), rotation = new THREE.Quaternion(), scale = new THREE.Vector3();
     profileTransform.decompose(origin, rotation, scale);
     radialProfile = { origin: offset(origin), rotation: rotation.toArray(),
-      points: (profileMesh.userData.radialProfile as [number, number][]).map(([radius, height]) => [radius * Math.abs(scale.x) / ratio, height * scale.y / ratio]) };
+      points: (profileMesh.userData.radialProfile as [number, number][]).map(([radius, height]) => [radius * Math.abs(scale.x) / ratio, height * scale.y / ratio]),
+      ...(typeof profileMesh.userData.bellRadius === 'number' ? { bellRadius: profileMesh.userData.bellRadius * Math.abs(scale.x) / ratio } : {}) };
   }
     const measured: PieceGeometry = {
     version: 1, referenceRadius, source,
@@ -151,7 +152,7 @@ export function measureInstrumentGeometry(root: THREE.Object3D, piece: KitPiece,
   // Rebuilding the same appearance after a fitted radius change must retain its
   // serialized reference shape instead of accumulating floating-point drift.
   const previous = piece.geometry;
-  const numbers = (value: PieceGeometry) => [value.referenceRadius, ...value.body.center, ...value.body.halfExtents, ...value.surface.center, ...value.surface.normal, value.surface.radius, ...(value.surface.radialProfile ? [...value.surface.radialProfile.origin, ...value.surface.radialProfile.rotation, ...value.surface.radialProfile.points.flat()] : []), ...(value.surface.motion ? [...value.surface.motion.axis, value.surface.motion.travelMeters] : [])];
+  const numbers = (value: PieceGeometry) => [value.referenceRadius, ...value.body.center, ...value.body.halfExtents, ...value.surface.center, ...value.surface.normal, value.surface.radius, ...(value.surface.radialProfile ? [...value.surface.radialProfile.origin, ...value.surface.radialProfile.rotation, ...value.surface.radialProfile.points.flat(), ...(value.surface.radialProfile.bellRadius === undefined ? [] : [value.surface.radialProfile.bellRadius])] : []), ...(value.surface.motion ? [...value.surface.motion.axis, value.surface.motion.travelMeters] : [])];
   if (previous?.source === source && numbers(previous).length === numbers(measured).length && numbers(previous).every((value, index) => Math.abs(value - numbers(measured)[index]) < 1e-6)) return structuredClone(previous);
   return measured;
 }

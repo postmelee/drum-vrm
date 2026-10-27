@@ -104,3 +104,15 @@ Tested head `e16fee1a700cc851a18786cf415722239b108ac6` and integrated main candi
 belongs to the [preset verification record](verification/character-presets.md).
 This approval does not cover a release/tag or further motion changes; Twist fit
 and approach-contact limitations remain explicit.
+
+## 2026-10-27 — Detailed hardware Pages batch
+
+The owner requested realistic tom holders and crash stands, multi-view layout
+inspection, and publication: “완료 후 내가 pages에서 확인 가능하게 배포해줘.”
+This covers the detailed hardware increment and its pending prerequisites,
+PR #55 (VRM 0.0 imports) and PR #57 (natural posture/contact), reviewed together
+on the hardware branch. The [verification record](verification/detailed-hardware.md)
+records tests and the explicitly incomplete full-song motion boundary. Its linked
+PR publication record identifies the exact integrated commit, CI and served
+artifact after manual deployment. No release/tag or randomized strike variation
+is included, and this does not authorize later unrelated deployment.

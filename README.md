@@ -25,7 +25,7 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 | Version | Availability |
 | --- | --- |
 | Repository / local build | Includes VRM 0.0/1.0 local import and the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. See the separate Pages row for the public build. |
-| [Pages build](https://postmelee.github.io/drum-vrm/) | Deployed batch [`d23a940`](https://github.com/postmelee/drum-vrm/commit/d23a9400abc9461633f26a9b805659026626a633): Selectable official VRM samples, English/Korean interface, full-song demo, measured equipment/contact planning and two-stick count-in, plus automatic fitting, MIDI/WAV preview and local projects. [Deployment verification and known limits](docs/verification/character-presets.md#pages-publication). |
+| [Pages build](https://postmelee.github.io/drum-vrm/) | Manually published, separately from repository changes. [Current batch verification and publication record](docs/verification/detailed-hardware.md) identifies the tested build, deployment and known limits; [previous public batch](docs/verification/character-presets.md#pages-publication) retains its exact commit. |
 | [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
 The guides describe this repository build. Check the deployed commit before assuming a newer local change is public; detailed development checks remain in the linked [verification records](docs/README.md#verification).

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
 pub const CLEARANCE: f64 = 0.005;
+pub const CYMBAL_FELT_RADIUS: f64 = 0.017;
 pub const APPROACH_HEIGHT: f64 = 0.12;
 pub const HIHAT_MAX_OPENING: f64 = 0.025;
 pub const HIHAT_PEDAL_TO_AXIS: f64 = 0.12;
@@ -20,6 +21,9 @@ pub struct LocalBox {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RadialSurfaceProfile {
+    /// Optional semantic outer bell radius in the profile's local metric frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bell_radius: Option<f64>,
     pub origin: Vec3,
     pub rotation: [f64; 4],
     /// Increasing radii and their surface heights in the local +Y frame.
@@ -65,6 +69,8 @@ pub struct EquipmentBox {
 #[serde(rename_all = "camelCase")]
 pub struct EquipmentCapsule {
     pub piece_id: String,
+    /// Semantic part used by rendering; the capsule remains the collision envelope.
+    pub role: &'static str,
     pub start: Vec3,
     pub end: Vec3,
     pub radius: f64,
@@ -119,7 +125,9 @@ pub fn valid_piece_geometry(piece: &KitPiece) -> bool {
                     && (0.0..=HIHAT_MAX_OPENING).contains(&motion.travel_meters)
             })
             && g.surface.radial_profile.as_ref().is_none_or(|profile| {
-                finite(profile.origin, 3.0)
+                profile.bell_radius.is_none_or(|r| {
+                    r.is_finite() && r > 0.0 && profile.points.last().is_some_and(|p| r <= p[0])
+                }) && finite(profile.origin, 3.0)
                     && profile.rotation.iter().all(|v| v.is_finite())
                     && (profile.rotation.iter().map(|v| v * v).sum::<f64>() - 1.0).abs() < 1e-5
                     && (2..=32).contains(&profile.points.len())
@@ -179,7 +187,15 @@ pub fn local_geometry(piece: &KitPiece) -> PieceGeometry {
             half_extents,
         },
         surface: Surface {
-            radial_profile: None,
+            // The authored fallback is an analytic flat cymbal surface. Its
+            // semantic bell region lets contact selection avoid mounting felt
+            // after compact fitting, just like a measured native surface.
+            radial_profile: cymbal.then_some(RadialSurfaceProfile {
+                bell_radius: Some(r * 0.24),
+                origin: [0.0, 0.0, r * 0.5],
+                rotation: [0.0, 0.0, 0.0, 1.0],
+                points: vec![[0.0, 0.0], [r, 0.0]],
+            }),
             motion: None,
             center: if cymbal {
                 [0.0, 0.0, r * 0.5]
@@ -207,6 +223,7 @@ pub fn surface(piece: &KitPiece) -> Surface {
             .radial_profile
             .as_ref()
             .map(|profile| RadialSurfaceProfile {
+                bell_radius: profile.bell_radius.map(|r| r * scale),
                 origin: add(piece.position, profile.origin.map(|v| v * scale)),
                 rotation: profile.rotation,
                 points: profile
@@ -378,36 +395,11 @@ pub fn playable_pair(a: &KitPiece, b: &KitPiece) -> bool {
 fn capsule(piece: &KitPiece, start: Vec3, end: Vec3, radius: f64) -> EquipmentCapsule {
     EquipmentCapsule {
         piece_id: piece.id.clone(),
+        role: "rod",
         start,
         end,
         radius,
     }
-}
-fn stand(piece: &KitPiece, base: Vec3, top: Vec3, rotation: f64) -> Vec<EquipmentCapsule> {
-    let mut rods = vec![capsule(piece, base, top, 0.011)];
-    // The height-adjustment collar is a short thick capsule and participates in
-    // the same checks as the structural tubing.
-    let collar = [base[0], top[1] * 0.55, base[2]];
-    rods.push(capsule(
-        piece,
-        add(collar, [0.0, -0.01, 0.0]),
-        add(collar, [0.0, 0.01, 0.0]),
-        0.023,
-    ));
-    for leg in 0..3 {
-        let angle = leg as f64 * std::f64::consts::TAU / 3.0 + rotation;
-        rods.push(capsule(
-            piece,
-            [base[0], (top[1] * 0.6).min(0.25), base[2]],
-            [
-                base[0] + angle.sin() * 0.19,
-                0.012,
-                base[2] + angle.cos() * 0.19,
-            ],
-            0.011,
-        ));
-    }
-    rods
 }
 /// Keep a direct-drive hi-hat above the pedal's toe-side mechanism. The
 /// contact anchor may differ from its actual measured central mast axis.
@@ -576,6 +568,18 @@ fn same_owner(a: &str, b: &str, kit: &[KitPiece]) -> bool {
             )
         })
 }
+fn rod_box_clear(rod: &EquipmentCapsule, obstacle: &EquipmentBox) -> bool {
+    // A separating coordinate proves full capsule clearance. Keep the exact
+    // segment/box query for overlapping expanded boxes only.
+    (0..3).any(|axis| {
+        rod.start[axis].min(rod.end[axis]) - obstacle.center[axis] - obstacle.half_extents[axis]
+            >= rod.radius + CLEARANCE
+            || obstacle.center[axis]
+                - obstacle.half_extents[axis]
+                - rod.start[axis].max(rod.end[axis])
+                >= rod.radius + CLEARANCE
+    }) || segment_box_clearance(rod.start, rod.end, rod.radius, obstacle) >= CLEARANCE
+}
 fn rods_clear(
     rods: &[EquipmentCapsule],
     bodies: &[EquipmentBox],
@@ -584,184 +588,23 @@ fn rods_clear(
 ) -> bool {
     rods.iter().all(|rod| {
         bodies.iter().chain(boards).all(|obstacle| {
-            same_owner(&rod.piece_id, &obstacle.piece_id, kit)
-                || segment_box_clearance(rod.start, rod.end, rod.radius, obstacle) >= CLEARANCE
+            same_owner(&rod.piece_id, &obstacle.piece_id, kit) || rod_box_clear(rod, obstacle)
         })
     })
 }
-fn route(
-    piece: &KitPiece,
-    bodies: &[EquipmentBox],
-    boards: &[EquipmentBox],
-    kit: &[KitPiece],
-) -> (Vec<EquipmentCapsule>, bool) {
-    let physical = body(piece).expect("routed equipment has body");
-    let cymbal = matches!(
-        piece.instrument,
-        Instrument::Hihat | Instrument::Crash | Instrument::Ride
-    );
-    let mount = if cymbal {
-        [
-            physical.center[0],
-            physical.center[1] + physical.half_extents[1] + 0.012,
-            physical.center[2],
-        ]
-    } else {
-        [
-            physical.center[0],
-            physical.center[1] - physical.half_extents[1] - 0.014,
-            physical.center[2],
-        ]
-    };
-    if piece.instrument == Instrument::TomLow {
-        let mut rods = Vec::new();
-        for leg in 0..3 {
-            let angle = leg as f64 * std::f64::consts::TAU / 3.0 + 0.4;
-            let radial = [angle.sin(), 0.0, angle.cos()];
-            let r = physical.half_extents[0].max(physical.half_extents[2]) + 0.012;
-            let start = [
-                physical.center[0] + radial[0] * r,
-                (physical.center[1] - physical.half_extents[1] * 0.3).max(0.08),
-                physical.center[2] + radial[2] * r,
-            ];
-            let bend = [start[0], (start[1] * 0.42).max(0.04), start[2]];
-            let foot = [
-                start[0] + radial[0] * 0.07,
-                0.012,
-                start[2] + radial[2] * 0.07,
-            ];
-            rods.push(capsule(piece, start, bend, 0.011));
-            rods.push(capsule(piece, bend, foot, 0.011));
-        }
-        let clear = rods_clear(&rods, bodies, boards, kit);
-        return (rods, clear);
-    }
-    if matches!(piece.instrument, Instrument::TomHigh | Instrument::TomMid) {
-        if let Some(kick) = kit.iter().find(|p| p.instrument == Instrument::Kick) {
-            let bass = body(kick).expect("kick body");
-            let start = [
-                bass.center[0],
-                bass.center[1] + bass.half_extents[1] + 0.017,
-                bass.center[2],
-            ];
-            // Shared central holder with independent L-arms. Never add a separate
-            // tripod below each rack tom or pass a post through another shell.
-            // Both branches share a holder below the lowest rack shell. Raising
-            // each holder to its own tom's underside made the higher branch
-            // cross a neighbouring lower shell, despite a valid tom layout.
-            let lowest_mount = kit
-                .iter()
-                .filter(|p| matches!(p.instrument, Instrument::TomHigh | Instrument::TomMid))
-                .filter_map(body)
-                .map(|b| b.center[1] - b.half_extents[1] - 0.014)
-                .fold(mount[1], f64::min);
-            let holder_height = (start[1] + 0.12).min(lowest_mount - 0.03).max(start[1]);
-            let elbow = [start[0], holder_height, start[2]];
-            let rods = vec![
-                capsule(piece, start, elbow, 0.011),
-                capsule(piece, elbow, mount, 0.010),
-            ];
-            let clear = rods_clear(&rods, bodies, boards, kit);
-            return (rods, clear);
-        }
-        // A standalone rack tom may use a dedicated stand when no bass assembly
-        // exists; this is a semantic attachment fallback, never an avatar rule.
-    }
-    let build = |dx: f64, dz: f64, rotation: f64| {
-        let base = [mount[0] + dx, 0.025, mount[2] + dz];
-        let top = [
-            base[0],
-            (mount[1]
-                - if cymbal && piece.instrument != Instrument::Hihat && dx.hypot(dz) > 0.01 {
-                    0.12
-                } else {
-                    0.0
-                })
-            .max(0.09),
-            base[2],
-        ];
-        let mut rods = stand(piece, base, top, rotation);
-        if distance(top, mount) > 1e-9 {
-            rods.push(capsule(piece, top, mount, 0.011));
-        }
-        if cymbal {
-            rods.push(capsule(
-                piece,
-                [mount[0], piece.position[1] - 0.02, mount[2]],
-                mount,
-                0.006,
-            ));
-        } else {
-            // Basket fingers attach to the underside. The shaft never extends
-            // through a lower shell as the old fixed y-.42 support could do.
-            for i in 0..3 {
-                let angle = i as f64 * std::f64::consts::TAU / 3.0;
-                rods.push(capsule(
-                    piece,
-                    mount,
-                    [
-                        mount[0] + angle.sin() * piece.radius * 0.8,
-                        mount[1] + 0.014,
-                        mount[2] + angle.cos() * piece.radius * 0.8,
-                    ],
-                    0.009,
-                ));
-            }
-        }
-        if piece.instrument == Instrument::Hihat {
-            if let Some(pedal) = kit.iter().find(|p| p.instrument == Instrument::PedalHat) {
-                rods.push(capsule(
-                    piece,
-                    [
-                        pedal.position[0],
-                        0.04,
-                        pedal.position[2] + HIHAT_PEDAL_TO_AXIS,
-                    ],
-                    [pedal.position[0], 0.04, pedal.position[2] + 0.08],
-                    0.011,
-                ));
-            }
-        }
-        rods
-    };
-    let original = if cymbal && piece.instrument != Instrument::Hihat {
-        build(if mount[0] < 0.0 { -0.16 } else { 0.16 }, 0.10, 0.4)
-    } else {
-        build(0.0, 0.0, 0.4)
-    };
-    if rods_clear(&original, bodies, boards, kit) {
-        return (original, true);
-    }
-    // Straight hi-hat linkage cannot silently turn into a remote boom stand.
-    // Other stands use bounded offsets and tripod rotations, nearest first.
-    for step in 0..=5 {
-        if piece.instrument == Instrument::Hihat && step > 0 {
-            break;
-        }
-        for direction in 0..if step == 0 { 1 } else { 12 } {
-            let outward = if mount[0] < 0.0 { -1.0 } else { 1.0 };
-            let angle = (direction as f64) * std::f64::consts::TAU / 12.0;
-            let offset = step as f64 * 0.1;
-            for rotation in [0.4, 0.8, 1.2] {
-                let rods = build(
-                    outward * angle.cos() * offset,
-                    angle.sin() * offset,
-                    rotation,
-                );
-                if rods_clear(&rods, bodies, boards, kit) {
-                    return (rods, true);
-                }
-            }
-        }
-    }
-    (original, false)
-}
+#[path = "equipment_hardware.rs"]
+mod hardware;
 
 pub fn kit_geometry(kit: &[KitPiece]) -> EquipmentGeometry {
     let bodies: Vec<_> = kit.iter().filter_map(body).collect();
     let pedals = pedals(kit);
     let mechanisms = mechanisms(kit);
-    let mut supports = Vec::new();
+    let mut supports: Vec<_> = kit
+        .iter()
+        .filter(|p| matches!(p.instrument, Instrument::Kick | Instrument::PedalHat))
+        .flat_map(pedal_hardware)
+        .collect();
+    supports.extend(hardware::rack_holder(kit));
     let mut unresolved = BTreeSet::new();
     // A direct hi-hat cannot be disconnected from its pedal. Report mismatches;
     // the common fitting transaction is responsible for moving the body anchor.
@@ -801,16 +644,13 @@ pub fn kit_geometry(kit: &[KitPiece]) -> EquipmentGeometry {
                 }
             }
         }
-        if matches!(a.instrument, Instrument::Kick | Instrument::PedalHat) {
-            supports.extend(pedal_hardware(a));
-        }
         if matches!(
             a.instrument,
             Instrument::Kick | Instrument::PedalHat | Instrument::OpenHat
         ) {
             continue;
         }
-        let (rods, clear) = route(a, &bodies, &pedals, kit);
+        let (rods, clear) = hardware::route(a, &bodies, &pedals, kit, &supports);
         if !clear {
             unresolved.insert(a.id.clone());
         }
@@ -820,11 +660,18 @@ pub fn kit_geometry(kit: &[KitPiece]) -> EquipmentGeometry {
     // own mount/footboard attachments are the only intended overlaps.
     for rod in &supports {
         for obstacle in bodies.iter().chain(&pedals) {
-            if !same_owner(&rod.piece_id, &obstacle.piece_id, kit)
-                && segment_box_clearance(rod.start, rod.end, rod.radius, obstacle) < CLEARANCE
+            if !same_owner(&rod.piece_id, &obstacle.piece_id, kit) && !rod_box_clear(rod, obstacle)
             {
                 unresolved.insert(rod.piece_id.clone());
                 unresolved.insert(obstacle.piece_id.clone());
+            }
+        }
+    }
+    for (i, a) in supports.iter().enumerate() {
+        for b in &supports[i + 1..] {
+            if !hardware::supports_clear(a, b, kit) {
+                unresolved.insert(a.piece_id.clone());
+                unresolved.insert(b.piece_id.clone());
             }
         }
     }
