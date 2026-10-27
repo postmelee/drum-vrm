@@ -60,3 +60,16 @@ Browser checks covered both switch directions, English three-card text, a dark
 receiving completion in the newly selected language. Reloading the English URL
 retained English. Syntax, documentation and diff checks passed. The English review
 screenshot is local at `/private/tmp/drum-vrm-toast-design-en.png`.
+
+## Compact content-driven height
+
+Owner follow-up on 2026-10-27 removes fixed card height assumptions and reduces
+bottom padding to 4 px desktop / 2 px narrow. The card and its text column now use
+flex layout; descriptions have no paragraph margins and text rows use a 2 px gap.
+Missing descriptions/actions reserve no space, while 32/44 px controls stay intact.
+
+Browser-computed success-card heights were 89.59 px desktop and 97.59 px in the
+390 px narrow preview. Narrow action and close controls both remained 44 px high.
+The no-action result card measured 51.59 px, confirming content-dependent height.
+English and Korean narrow previews were inspected; the local screenshot is
+`/private/tmp/drum-vrm-toast-compact.png`. Syntax, diff and docs checks passed.

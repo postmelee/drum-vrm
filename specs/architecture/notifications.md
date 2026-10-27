@@ -41,10 +41,17 @@ into long toasts. Colors never substitute for labels.
 - At 700 px and below: one card below the toolbar/camera strip, 12 px side margins,
   including safe-area insets. Do not place cards over transport or the piano roll.
   A narrow inspector may be temporarily overlaid; dismissal must remain reachable.
-- Cards: 8 px radius, 14 px top/side padding and 8 px bottom padding, 1 px border,
-  restrained shadow, 10 px internal
+- Cards: content-driven flex layout with auto height and no fixed/minimum card
+  height. Desktop padding is 10 px top, 12 px sides, 4 px bottom; narrow/touch
+  layouts use 8 px top, 10 px sides, 2 px bottom. Text rows have a 2 px gap and
+  no paragraph margins; absent descriptions/actions leave no empty rows.
+  Keep 8 px radius, 1 px border, restrained shadow, 10 px internal
   gap; use existing light/dark tokens. Opaque surface, readable 14 px title and
   12–13 px optional description. No blurred or translucent text background.
+  Narrow layouts use an 8 px icon/content gap. Content flexes with `min-width: 0`;
+  title, detail and action text wrap naturally, never using clipping or line clamps
+  to achieve a smaller height. Button hit targets still impose their own minimum
+  height; do not shrink the 32/44 px interaction areas to flatten a card.
 - Reuse the system font and `--bg`, `--surface`, `--control`, `--border`, `--text`,
   `--muted`, `--active`, `--focus` from `src/style.css`; do not introduce a separate
   green-tinted palette. Actions use the selection blue (`--focus: #3274c8`), with
