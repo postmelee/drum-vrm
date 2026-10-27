@@ -1,10 +1,92 @@
 import { describe, expect, it } from 'vitest';
-import { Bone, Group, Quaternion, Vector3 } from 'three';
-import { createRestRigPose, legacyPositionToNative, legacyQuaternionToNative, NativeHumanoidRigAdapter, type PalmOrientation } from '../src/rig-humanoid';
+import { Bone, BufferGeometry, Float32BufferAttribute, Group, MeshBasicMaterial, Quaternion, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3 } from 'three';
+import { createRestRigPose, legacyPositionToNative, legacyQuaternionToNative, NativeHumanoidRigAdapter, NormalizedHumanoidRigAdapter, type PalmOrientation } from '../src/rig-humanoid';
 import type { KitPiece } from '../src/types';
-import { DEFAULT_PEDALS } from '../src/kit-default';
+import { DEFAULT_KIT, DEFAULT_PEDALS } from '../src/kit-default';
+import { pedalToolRotation } from '../src/pedal-frame';
 
 describe('semantic humanoid and hand-local tools', () => {
+  it('places independently authored shoe soles on yawed pedals without changing leg lengths', () => {
+    const source=new NativeHumanoidRigAdapter(), original=source.getProfile();
+    source.humanoid.resetNormalizedPose(); source.humanoid.update(); source.root.updateMatrixWorld(true);
+    const shoes=(['left','right'] as const).map((side,index)=>{
+      const ankle=source.humanoid.getRawBoneNode(`${side}Foot`)! as Bone;
+      const position=ankle.getWorldPosition(new Vector3()), depth=[.12,.08][index];
+      const vertices:number[]=[], indices:number[]=[], weights:number[]=[];
+      for(const y of [-depth,.02])for(let x=0;x<5;x++)for(let z=0;z<8;z++){
+        vertices.push(position.x+(x-2)*.02,position.y+y,position.z+z*.03-.03);
+        indices.push(0,0,0,0);weights.push(1,0,0,0);
+      }
+      const geometry=new BufferGeometry();
+      geometry.setAttribute('position',new Float32BufferAttribute(vertices,3));
+      geometry.setAttribute('skinIndex',new Uint16BufferAttribute(indices,4));
+      geometry.setAttribute('skinWeight',new Float32BufferAttribute(weights,4));
+      const mesh=new SkinnedMesh(geometry,new MeshBasicMaterial());
+      source.root.add(mesh);source.root.updateMatrixWorld(true);mesh.bind(new Skeleton([ankle]));
+      return {mesh,depth};
+    });
+    const rig=new NormalizedHumanoidRigAdapter(source.humanoid,source.root,'authored-shoes');
+    const measured=rig.getProfile(), kit=structuredClone(DEFAULT_KIT);
+    kit.find(piece=>piece.id==='pedalHat')!.pedalForward=[-.6,0,.8];
+    for(let side=0;side<2;side++){
+      expect(measured.gripOffsets[side+2][1]).toBeCloseTo(-shoes[side].depth,6);
+      expect(measured.tipOffsets[side+2]).toEqual(original.tipOffsets[side+2]);
+    }
+    const calibration=rig.getAutomaticCalibration(kit), profile=rig.setCalibration(calibration,kit);
+    const pose=createRestRigPose(profile,kit);rig.applyPose(pose);
+    expect(profile.lengths).toEqual(original.lengths);
+    for(let side=0;side<2;side++){
+      const {mesh}=shoes[side];mesh.skeleton.update();
+      const minY=Math.min(...Array.from({length:mesh.geometry.getAttribute('position').count},(_,i)=>mesh.getVertexPosition(i,new Vector3()).applyMatrix4(mesh.matrixWorld).y));
+      expect(minY).toBeCloseTo(profile.restTips[side+2][1],6);
+      expect(rig.getContactSamples()[side+2].errorMeters).toBeLessThan(1e-6);
+    }
+    rig.setCalibration({...calibration,seatHeight:calibration.seatHeight-.03},kit);
+    expect(rig.setCalibration(calibration,kit).gripOffsets.slice(2)).toEqual(measured.gripOffsets.slice(2));
+    rig.dispose();
+  });
+  it('uses pedal yaw once for automatic seat height, ready ankle and rendered sole', () => {
+    const rig = new NativeHumanoidRigAdapter(), base = rig.getProfile();
+    const kit: KitPiece[] = [
+      {id:'pedalHat', label:'Hat', position:[-.38,.08,.48], radius:.1, pedalForward:[-.6,0,.8]},
+      {id:'kick', label:'Kick', position:[.22,.08,.55], radius:.1},
+    ];
+    let expectedHeight=.73;
+    for (let limb=2;limb<4;limb++) {
+      const offset=new Vector3(...base.gripOffsets[limb]).add(new Vector3(...base.tipOffsets[limb]))
+        .applyQuaternion(pedalToolRotation(kit[limb-2],base.contactRotations[limb]));
+      const ankle=new Vector3(...kit[limb-2].position).sub(offset), relative=new Vector3(...base.roots[limb]).sub(new Vector3(...base.pelvis));
+      const reach=(base.lengths[limb][0]+base.lengths[limb][1])*.94;
+      const horizontal=(ankle.x-relative.x)**2+(ankle.z-.14-relative.z)**2;
+      expectedHeight=Math.min(expectedHeight,ankle.y+Math.sqrt(reach*reach-horizontal)-relative.y);
+    }
+    const calibration=rig.getAutomaticCalibration(kit);
+    expect(calibration.seatHeight).toBeCloseTo(expectedHeight,12);
+    const profile=rig.setCalibration(calibration,kit), pose=createRestRigPose(profile,kit);
+    expect(profile.bendPoles[2]).toEqual([-.6,0,.8]);
+    expect(profile.bendPoles[3]).toEqual(base.bendPoles[3]);
+    const straightKnee = structuredClone(profile); straightKnee.bendPoles[2] = [0,0,1];
+    const straightPose = createRestRigPose(straightKnee,kit);
+    expect(pose[27]).toBeLessThan(straightPose[27] - .02);
+    expect(Array.from(pose.slice(30,36))).toEqual(Array.from(straightPose.slice(30,36)));
+    for(let limb=2;limb<4;limb++) for(let segment=0;segment<2;segment++) {
+      const a = new Vector3().fromArray(pose,limb*12+segment*3), b = new Vector3().fromArray(pose,limb*12+(segment+1)*3);
+      expect(a.distanceTo(b)).toBeCloseTo(base.lengths[limb][segment],6);
+    }
+    // The profile remains a neutral semantic foot frame; each evaluator adds
+    // layout yaw once, so repeated setup/score changes cannot accumulate it.
+    expect(profile.contactRotations.slice(2)).toEqual(base.contactRotations.slice(2));
+    const q=new Quaternion().fromArray(pose,65), direction=new Vector3(0,0,1).applyQuaternion(q);
+    expect(direction.distanceTo(new Vector3(-.6,0,.8))).toBeLessThan(1e-7);
+    expect(new Vector3().fromArray(pose,33).distanceTo(new Vector3(...kit[0].position))).toBeLessThan(1e-6);
+    rig.applyPose(pose);
+    expect(rig.getContactSamples().slice(2).every(sample=>sample.errorMeters<1e-6)).toBe(true);
+    expect(createRestRigPose(rig.setCalibration(calibration,kit),kit)).toEqual(pose);
+    const legacyKit=structuredClone(kit); delete legacyKit[0].pedalForward;
+    expect(rig.setCalibration(calibration,legacyKit).bendPoles[2]).toEqual([0,0,1]);
+    expect(pedalToolRotation(undefined,[0,0,0,1]).toArray()).toEqual([0,0,0,1]);
+    rig.dispose();
+  });
   it('uses a real positive-scale hierarchy with fingers and measured lengths', () => {
     const rig = new NativeHumanoidRigAdapter();
     expect(rig.humanoid.getRawBoneNode('leftHand')).toBeInstanceOf(Bone);
@@ -47,7 +129,7 @@ describe('semantic humanoid and hand-local tools', () => {
     expect(() => rig.setCalibration({seatHeight: NaN, seatForward: 0})).toThrow('Seat');
     expect(() => rig.setCalibration({seatHeight: .6, seatForward: .51})).toThrow('Seat');
     expect(rig.getProfile()).toEqual(profile);
-    const auto = rig.getAutomaticCalibration(kit); expect(auto.seatHeight).toBeGreaterThanOrEqual(.3); expect(auto.seatForward).toBe(.06);
+    const auto = rig.getAutomaticCalibration(kit); expect(auto.seatHeight).toBeGreaterThanOrEqual(.3); expect(auto.seatForward).toBe(.14);
     rig.dispose();
   });
   it.each<PalmOrientation>(['natural', 'up', 'inward', 'down'])('aligns resting wrists with forearms and carries %s palm roll in the forearm', palmOrientation => {
@@ -99,7 +181,7 @@ describe('semantic humanoid and hand-local tools', () => {
     expect(points[1].distanceTo(points[2])).toBeCloseTo(profile.lengths[2][1], 6); rig.dispose();
   });
   it('renders actual parented stick tips without stretching limbs and repeats after seek', () => {
-    const rig = new NativeHumanoidRigAdapter(), profile = rig.getProfile(), pose = createRestRigPose(profile), initial = rig.getContactSamples();
+    const rig = new NativeHumanoidRigAdapter(), profile = rig.getProfile(), pose = createRestRigPose(profile, DEFAULT_KIT), initial = rig.getContactSamples();
     const changed = pose.slice();
     // Change the hand orientation and corresponding tool target, keeping the wrist fixed.
     const q = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), -.3);

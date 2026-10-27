@@ -1,10 +1,47 @@
 import { describe, expect, it } from 'vitest';
-import { applyKitLayout, moveKitTarget, validateKitLayout } from '../src/kit-calibration';
-import type { Instrument, KitPiece, PerformancePlan } from '../src/types';
+import { applyKitLayout, moveKitTarget, sameKitLayout, validateKitLayout } from '../src/kit-calibration';
+import { pieceInstrument, type Instrument, type KitPiece, type PerformancePlan } from '../src/types';
 
 const ids: Instrument[]=['kick','snare','hihat','openHat','pedalHat','tomHigh','tomMid','tomLow','crash','ride'];
 const kit=():KitPiece[]=>ids.map(id=>({id,label:id,position:[0,id==='kick'||id==='pedalHat'?.08:1,.5],radius:.2}));
 describe('physical layout recalibration',()=>{
+  it('round-trips semantic pedal direction and rejects non-horizontal or non-unit frames',()=>{
+    const layout=kit(); layout.find(piece=>piece.id==='pedalHat')!.pedalForward=[-.6,0,.8];
+    const restored=JSON.parse(JSON.stringify(layout)); validateKitLayout(restored);
+    expect(sameKitLayout(layout,restored)).toBe(true);
+    const shifted=structuredClone(restored);delete shifted.find((piece:KitPiece)=>piece.id==='pedalHat')!.pedalForward;
+    expect(sameKitLayout(layout,shifted)).toBe(false);
+    for(const direction of [[0,0,0],[0,0,2],[0,.1,Math.sqrt(.99)],[NaN,0,1]]){
+      const invalid=structuredClone(layout);invalid.find(piece=>piece.id==='pedalHat')!.pedalForward=direction as [number,number,number];
+      expect(()=>validateKitLayout(invalid)).toThrow();
+    }
+    const kick=structuredClone(layout);kick.find(piece=>piece.id==='kick')!.pedalForward=[0,0,1];
+    expect(()=>validateKitLayout(kick)).toThrow();
+  });
+  it('retains a bounded absolute tripod phase without accepting it on a non-tripod mount',()=>{
+    const layout=kit();layout.find(piece=>piece.id==='snare')!.standRotation=Math.PI/2;
+    const restored=validateKitLayout(JSON.parse(JSON.stringify(layout)));
+    expect(sameKitLayout(layout,restored)).toBe(true);
+    for(const value of [NaN,Infinity,Math.PI+.01]){
+      const bad=structuredClone(layout);bad.find(piece=>piece.id==='snare')!.standRotation=value;
+      expect(()=>validateKitLayout(bad)).toThrow();
+    }
+    const bad=structuredClone(layout);bad.find(piece=>piece.id==='tomLow')!.standRotation=0;
+    expect(()=>validateKitLayout(bad)).toThrow();
+  });
+  it('keeps equivalent serialized setup but detects physical and semantic edits',()=>{
+    const accepted=kit(), serialized=accepted.map(piece=>({radius:piece.radius,instrument:pieceInstrument(piece),label:piece.label,position:[...piece.position] as [number,number,number],id:piece.id}));
+    serialized[1].radius+=Number.EPSILON;
+    expect(sameKitLayout(accepted,serialized)).toBe(true);
+    const moved=structuredClone(serialized);moved[1].position[1]+=.001;
+    expect(sameKitLayout(accepted,moved)).toBe(false);
+    const resized=structuredClone(serialized);resized[1].radius+=.0001;
+    expect(sameKitLayout(accepted,resized)).toBe(false);
+    const relabeled=structuredClone(serialized);relabeled[1].label='Edited snare';
+    expect(sameKitLayout(accepted,relabeled)).toBe(false);
+    const nonfinite=structuredClone(serialized);nonfinite[1].radius=NaN;
+    expect(sameKitLayout(accepted,nonfinite)).toBe(false);
+  });
   it('couples hi-hat surfaces while preserving the independently placed pedal',()=>{
     const original=kit(), moved=moveKitTarget(original,'hihat',[-.4,.9,.6]);
     expect(moved.find(p=>p.id==='openHat')!.position).toEqual([-.4,.9,.6]);

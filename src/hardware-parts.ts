@@ -38,12 +38,12 @@ export function createHardwarePart(segment: Support, materials: HardwareMaterial
     add(new THREE.CylinderGeometry(r * .13, r * .13, r * 1.8, 10), materials.chrome, new THREE.Vector3(), new THREE.Euler(0, 0, Math.PI / 2));
     for (const sign of [-1, 1]) add(new THREE.BoxGeometry(r * .48, r * .16, r * .32), materials.chrome, new THREE.Vector3(sign * r * .60, 0, 0), new THREE.Euler(0, 0, sign * .18));
   };
-  if (['tomBall', 'boomPivot', 'cymbalTilter', 'basketTilter'].includes(role)) {
+  if (['tomBall', 'mountBall', 'boomPivot', 'cymbalTilter', 'basketTilter'].includes(role)) {
     clamp(true);
     // Side discs make a tilter's axle visible; no rendered joint is larger
     // than the conservative sphere used by fitting and stick inspection.
     for (const sign of [-1, 1]) add(new THREE.CylinderGeometry(r * .55, r * .55, r * .12, 16), materials.chrome, new THREE.Vector3(sign * r * .67, 0, 0), new THREE.Euler(0, 0, Math.PI / 2));
-  } else if (['collar', 'memoryLock', 'tomClamp', 'tomSocket'].includes(role)) {
+  } else if (['collar', 'memoryLock', 'tomClamp', 'tomSocket', 'standClamp'].includes(role)) {
     clamp();
   } else if (role === 'rubberFoot' || role === 'basketGrip') {
     // The collision capsule is tangent to the floor. A smaller decorative

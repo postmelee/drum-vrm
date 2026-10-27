@@ -1,11 +1,11 @@
-import { Quaternion, SkinnedMesh, Vector3, type Object3D } from 'three';
+import { Matrix4, Quaternion, SkinnedMesh, Vector3, type Object3D } from 'three';
 import type { VRMHumanoid, VRMHumanBoneName } from '@pixiv/three-vrm';
-import type { BodyGeometry, RigProfile, Quat, Vec3 } from './types';
+import type { BodyBox, BodyGeometry, RigProfile, Quat, Vec3 } from './types';
 
 /** Sampling is deterministic and bounded across the whole model, not per mesh.
  * Bounds are estimates of weighted surface vertices, not triangle containment.
- * Garments weighted to torso/arms contribute; hair/head/legs are excluded by
- * semantic weights and the torso height band. No material or avatar names. */
+ * Garments contribute to their semantic torso/limb regions; head/hair are
+ * excluded. No material or avatar names. */
 export const MAX_BODY_SAMPLES = 12000;
 const MIN_REGION_SAMPLES = 24;
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
@@ -42,11 +42,13 @@ export function skeletonBodyGeometry(profile: RigProfile): BodyGeometry {
     torso: { center: [(profile.roots[0][0] + profile.roots[1][0]) / 2, (low + high) / 2, (profile.roots[0][2] + profile.roots[1][2]) / 2],
       halfExtents: [clamp(width * .44, .055, .30), Math.max(.01, (high - low) / 2), clamp(width * .29, .045, .20)] },
     armRadii: [0, 1].map(i => { const upper = clamp(profile.lengths[i][0] * .085, .015, .035); return [upper, upper * .8]; }) as BodyGeometry['armRadii'],
+    legRadii: [2, 3].map(i => [clamp(profile.lengths[i][0] * .14, .025, .09), clamp(profile.lengths[i][1] * .10, .02, .07)]) as NonNullable<BodyGeometry['legRadii']>,
+    footRadii: [.04, .04],
     handRadii: [.025, .025], handCenters: [[0, 0, 0], [0, 0, 0]] };
 }
 
-type Region = 'torso' | 'leftUpperArm' | 'leftLowerArm' | 'leftHand' | 'rightUpperArm' | 'rightLowerArm' | 'rightHand';
-const REGIONS: Region[] = ['torso', 'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightUpperArm', 'rightLowerArm', 'rightHand'];
+type Region = 'torso' | `${'left' | 'right'}${'UpperArm' | 'LowerArm' | 'Hand' | 'UpperLeg' | 'LowerLeg' | 'Foot'}`;
+const REGIONS: Region[] = ['torso', ...(['left', 'right'] as const).flatMap(side => (['UpperArm', 'LowerArm', 'Hand', 'UpperLeg', 'LowerLeg', 'Foot'] as const).map(part => `${side}${part}` as Region))];
 
 /** Input vertices are world positions before the seated translation. The adapter
  * owns the native→engine reflection and supplies that single conversion here. */
@@ -59,11 +61,12 @@ export function measureBodyGeometry(
   for (const [name, bone] of Object.entries(humanoid.rawHumanBones)) {
     const region: Region | null = ['hips', 'spine', 'chest', 'upperChest'].includes(name) ? 'torso'
       : REGIONS.includes(name as Region) ? name as Region
-        : /^(left|right)(Thumb|Index|Middle|Ring|Little)/.test(name) ? `${name.startsWith('left') ? 'left' : 'right'}Hand` : null;
+        : /^(left|right)(Thumb|Index|Middle|Ring|Little)/.test(name) ? `${name.startsWith('left') ? 'left' : 'right'}Hand`
+          : name === 'leftToes' ? 'leftFoot' : name === 'rightToes' ? 'rightFoot' : null;
     groups.set(bone.node, region);
   }
-  // Extra twist bones inherit the nearest semantic parent. Explicit head/leg
-  // mappings stop traversal, preventing hair and skirts from becoming torso.
+  // Extra twist bones inherit the nearest semantic parent. Explicit semantic
+  // boundaries prevent head decoration or leg garments from becoming torso.
   const classify = (bone: Object3D): Region | null => {
     for (let node: Object3D | null = bone; node; node = node.parent) if (groups.has(node)) return groups.get(node)!;
     return null;
@@ -71,16 +74,34 @@ export function measureBodyGeometry(
   const meshes: SkinnedMesh[] = [];
   source.updateMatrixWorld(true);
   source.traverse(node => { if (node instanceof SkinnedMesh && node.geometry.getAttribute('position') && node.geometry.getAttribute('skinIndex') && node.geometry.getAttribute('skinWeight')) meshes.push(node); });
-  const total = meshes.reduce((sum, mesh) => sum + mesh.geometry.getAttribute('position').count, 0);
+  // glTF primitives can share one position buffer while drawing disjoint index
+  // ranges. Sampling the whole buffer measures unused outfits/accessories and
+  // repeats unrelated surfaces for every material primitive.
+  const drawnVertices = meshes.map(mesh => {
+    const geometry = mesh.geometry, index = geometry.index;
+    const available = index?.count ?? geometry.getAttribute('position').count;
+    const begin = Math.max(0, geometry.drawRange.start), end = Math.min(available, begin + geometry.drawRange.count);
+    const drawn = new Set<number>();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    const ranges = Array.isArray(mesh.material) ? geometry.groups : [{ start: begin, count: end - begin, materialIndex: 0 }];
+    for (const group of ranges) {
+      if (materials[group.materialIndex ?? 0]?.visible === false) continue;
+      for (let i = Math.max(begin, group.start); i < Math.min(end, group.start + group.count); i++) drawn.add(index ? index.getX(i) : i);
+    }
+    return [...drawn].sort((a, b) => a - b);
+  });
+  const total = drawnVertices.reduce((sum, vertices) => sum + vertices.length, 0);
   const stride = Math.max(1, Math.ceil(total / MAX_BODY_SAMPLES));
   const points = new Map<Region, Vector3[]>(REGIONS.map(region => [region, []]));
   let offset = 0, sampled = 0;
-  for (const mesh of meshes) {
+  for (const [meshIndex, mesh] of meshes.entries()) {
+    const vertices = drawnVertices[meshIndex];
     const position = mesh.geometry.getAttribute('position'), indices = mesh.geometry.getAttribute('skinIndex'), weights = mesh.geometry.getAttribute('skinWeight');
-    if (position.count !== indices.count || position.count !== weights.count || indices.itemSize !== 4 || weights.itemSize !== 4) { offset += position.count; continue; }
+    if (position.count !== indices.count || position.count !== weights.count || indices.itemSize !== 4 || weights.itemSize !== 4) { offset += vertices.length; continue; }
     mesh.skeleton.update();
     const boneRegions = mesh.skeleton.bones.map(classify);
-    for (let i = (stride - offset % stride) % stride; i < position.count; i += stride) {
+    for (let sample = (stride - offset % stride) % stride; sample < vertices.length; sample += stride) {
+      const i = vertices[sample];
       const votes = new Map<Region, number>();
       let totalWeight = 0;
       for (let j = 0; j < 4; j++) {
@@ -97,8 +118,67 @@ export function measureBodyGeometry(
       if (![p.x, p.y, p.z].every(Number.isFinite)) continue;
       points.get(selected[0])!.push(p); sampled++;
     }
-    offset += position.count;
+    offset += vertices.length;
   }
+  const rawPoint = (name: VRMHumanBoneName) => { const node = humanoid.getRawBoneNode(name); return node ? toProfile(node.getWorldPosition(new Vector3())) : null; };
+  const segmentRadius = (region: Region, start: VRMHumanBoneName, end: VRMHumanBoneName) => {
+    const a = rawPoint(start), b = rawPoint(end); if (!a || !b) return null;
+    const axis = b.clone().sub(a), length = axis.length(); if (length < .03) return null; axis.divideScalar(length);
+    const radii = points.get(region)!.flatMap(p => {
+      const d = p.clone().sub(a), along = d.dot(axis);
+      return along >= length * .05 && along <= length * .95 ? [d.addScaledVector(axis, -along).length()] : [];
+    });
+    return radii.length >= MIN_REGION_SAMPLES ? clamp(percentile(radii, .98) + .003, .005, .25) : null;
+  };
+  const bodyRight = new Vector3(...profile.roots[1]).sub(new Vector3(...profile.roots[0])).normalize();
+  const legEnvelopes: (BodyBox | null)[] = [], footEnvelopes: (BodyBox | null)[] = [];
+  const legFrames: (Quat | null)[] = [];
+  const localBox = (vertices: Vector3[], transform: (p: Vector3) => Vector3): BodyBox | null => {
+    if (vertices.length < MIN_REGION_SAMPLES) return null;
+    const local = vertices.map(p => transform(p.clone()));
+    const limits = [0, 1, 2].map(i => { const values = local.map(p => p.getComponent(i)); return [percentile(values, .01) - .003, percentile(values, .99) + .003]; });
+    const center = limits.map(([low, high]) => (low + high) / 2) as Vec3;
+    const halfExtents = limits.map(([low, high]) => (high - low) / 2) as Vec3;
+    if (Math.hypot(...center) > 3 || halfExtents.some(n => n < .001 || n > 1)) return null;
+    return { center, halfExtents };
+  };
+  // Leg regions are independent of torso sample coverage. A mesh with sparse
+  // torso weights must still retain measured trousers/shoes rather than silently
+  // replacing every lower-limb envelope with skeleton proportions.
+  for (const [limb, side] of (['left', 'right'] as const).entries()) {
+    for (const [segment, name, next] of [[0, `${side}UpperLeg`, `${side}LowerLeg`], [1, `${side}LowerLeg`, `${side}Foot`]] as const) {
+      const radius = segmentRadius(name, name, next);
+      if (radius !== null) { fallback.legRadii![limb][segment] = radius; fallback.source = 'mesh-estimate'; }
+      const a = rawPoint(name), b = rawPoint(next);
+      let envelope: BodyBox | null = null;
+      let frame: Quat | null = null;
+      if (a && b) {
+        const y = b.clone().sub(a).normalize(), x = bodyRight.clone().addScaledVector(y, -bodyRight.dot(y)).normalize();
+        const z = x.clone().cross(y);
+        if (x.lengthSq() > .9) {
+          const length = a.distanceTo(b);
+          const vertices = points.get(name)!.filter(p => { const along = p.clone().sub(a).dot(y); return along >= length * .05 && along <= length * .95; });
+          envelope = localBox(vertices, p => { p.sub(a); return new Vector3(p.dot(x), p.dot(y), p.dot(z)); });
+          if (envelope) frame = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(x, y, z)).normalize().toArray();
+        }
+      }
+      legEnvelopes.push(envelope);
+      legFrames.push(frame);
+    }
+    const vertices = points.get(`${side}Foot`)!, ankle = rawPoint(`${side}Foot`);
+    const inverse = new Quaternion(...profile.contactRotations[limb + 2]).invert();
+    footEnvelopes.push(ankle ? localBox(vertices, p => p.sub(ankle).applyQuaternion(inverse)) : null);
+    if (vertices.length >= MIN_REGION_SAMPLES) {
+      const radius = segmentRadius(`${side}Foot`, `${side}Foot`, `${side}Toes`) ?? handCapsule(vertices).radius;
+      fallback.footRadii![limb] = clamp(radius, .005, .25); fallback.source = 'mesh-estimate';
+    }
+  }
+  if (legEnvelopes.every(Boolean)) {
+    fallback.legBoxes = [[legEnvelopes[0]!, legEnvelopes[1]!], [legEnvelopes[2]!, legEnvelopes[3]!]];
+    fallback.legRestFrames = [[legFrames[0]!, legFrames[1]!], [legFrames[2]!, legFrames[3]!]];
+  }
+  if (footEnvelopes.every(Boolean)) fallback.footBoxes = [footEnvelopes[0]!, footEnvelopes[1]!];
+  if (fallback.source === 'mesh-estimate') fallback.sampleCount = sampled;
   const right = new Vector3(...profile.roots[1]).sub(new Vector3(...profile.roots[0])); right.y = 0; right.normalize();
   if (right.lengthSq() < .9) return fallback;
   const forward = new Vector3(-right.z, 0, right.x), origin = new Vector3(...fallback.torso.center);
@@ -113,13 +193,10 @@ export function measureBodyGeometry(
   if (rx < .01 || rz < .01 || rx > 1 || rz > 1 || tuple(center).some(v => Math.abs(v) > 10)) return fallback;
   const result = structuredClone(fallback); result.source = 'mesh-estimate'; result.sampleCount = sampled;
   result.torso = { center: tuple(center), halfExtents: [rx, fallback.torso.halfExtents[1], rz] };
-  const rawPoint = (name: VRMHumanBoneName) => { const node = humanoid.getRawBoneNode(name); return node ? toProfile(node.getWorldPosition(new Vector3())) : null; };
   for (const [limb, side] of (['left', 'right'] as const).entries()) {
     for (const [segment, name, next] of [[0, `${side}UpperArm`, `${side}LowerArm`], [1, `${side}LowerArm`, `${side}Hand`]] as const) {
-      const a = rawPoint(name), b = rawPoint(next); if (!a || !b) continue;
-      const axis = b.clone().sub(a), length = axis.length(); if (length < .03) continue; axis.divideScalar(length);
-      const radii = points.get(name)!.flatMap(p => { const d = p.clone().sub(a), along = d.dot(axis); return along >= length * .05 && along <= length * .95 ? [d.addScaledVector(axis, -along).length()] : []; });
-      if (radii.length >= MIN_REGION_SAMPLES) result.armRadii[limb][segment] = clamp(percentile(radii, .98) + .003, .005, .25);
+      const radius = segmentRadius(name, name, next);
+      if (radius !== null) result.armRadii[limb][segment] = radius;
     }
     const hand = rawPoint(`${side}Hand`), vertices = points.get(`${side}Hand`)!;
     if (!hand || !handToolRotations || vertices.length < MIN_REGION_SAMPLES) continue;
@@ -152,6 +229,35 @@ export function validateBodyGeometry(value: unknown): asserts value is BodyGeome
   vector(torso.center, 3, -10, 10); vector(torso.halfExtents, 3, .01, 1);
   if (!Array.isArray(geometry.armRadii) || geometry.armRadii.length !== 2) throw new Error('Invalid arm geometry.');
   geometry.armRadii.forEach(v => vector(v, 2, .005, .25)); vector(geometry.handRadii, 2, .005, .25);
+  if (geometry.legRadii !== undefined) {
+    if (!Array.isArray(geometry.legRadii) || geometry.legRadii.length !== 2) throw new Error('Invalid leg geometry.');
+    geometry.legRadii.forEach(v => vector(v, 2, .005, .25));
+  }
+  if (geometry.footRadii !== undefined) vector(geometry.footRadii, 2, .005, .25);
+  const limbBox = (value: unknown) => {
+    const shape = object(value);
+    vector(shape.center, 3, -3, 3);
+    if (Math.hypot(...shape.center as number[]) > 3) throw new Error('Invalid limb box offset.');
+    vector(shape.halfExtents, 3, .001, 1);
+  };
+  if (geometry.legBoxes !== undefined) {
+    if (!Array.isArray(geometry.legBoxes) || geometry.legBoxes.length !== 2) throw new Error('Invalid leg boxes.');
+    geometry.legBoxes.forEach(pair => { if (!Array.isArray(pair) || pair.length !== 2) throw new Error('Invalid leg boxes.'); pair.forEach(limbBox); });
+  }
+  if (geometry.legRestFrames !== undefined) {
+    if (geometry.legBoxes === undefined || !Array.isArray(geometry.legRestFrames) || geometry.legRestFrames.length !== 2) throw new Error('Invalid leg rest frames.');
+    geometry.legRestFrames.forEach(pair => {
+      if (!Array.isArray(pair) || pair.length !== 2) throw new Error('Invalid leg rest frames.');
+      pair.forEach(frame => {
+        vector(frame, 4, -1, 1);
+        if (Math.abs((frame as number[]).reduce((sum, n) => sum + n * n, 0) - 1) > .001) throw new Error('Invalid leg rest frame rotation.');
+      });
+    });
+  }
+  if (geometry.footBoxes !== undefined) {
+    if (!Array.isArray(geometry.footBoxes) || geometry.footBoxes.length !== 2) throw new Error('Invalid foot boxes.');
+    geometry.footBoxes.forEach(limbBox);
+  }
   if (geometry.handCenters !== undefined) {
     if (!Array.isArray(geometry.handCenters) || geometry.handCenters.length !== 2) throw new Error('Invalid hand geometry centers.');
     geometry.handCenters.forEach(v => { vector(v, 3, -.5, .5); if (Math.hypot(...v as number[]) > .5) throw new Error('Invalid hand geometry offset.'); });

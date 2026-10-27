@@ -26,7 +26,7 @@ solve all of them.
 
 The implementation deliberately has no avatar-name selector in the solver. A model
 adapter provides measurements and semantic capabilities. The same numeric pipeline
-handles the default skeleton and every accepted VRM.
+handles the default skeleton and every accepted VRM or FBX humanoid.
 
 ## From rest pose to seated profile
 
@@ -37,23 +37,60 @@ floating-point movement across adjustments.
 
 Automatic fitting estimates a starting height from both pedal targets and measured
 leg reach. The current heuristic reserves a fraction of total leg extension and uses
-a shared forward reference. It does not optimize shoulder comfort, wrist limits,
+a shared forward reference. The left-knee bend preference follows the accepted
+hi-hat pedal's horizontal heel-to-toe direction; the kick-leg preference is
+unchanged. Candidate measurement restores the previous pedal frame as well as
+the seat. It does not optimize shoulder comfort, wrist limits,
 skin clearance or all drum targets. Implementation details live in
 [`getAutomaticCalibration`](../../src/rig-humanoid.ts).
 
+## Reference arrangement and setup ownership
+
+The automatic fitter uses one conventional right-handed five-piece arrangement:
+snare between the legs, two rack toms in a shallow forward row, floor tom on the
+right flank, a linked left hi-hat/pedal, and reachable outer cymbals. This is the
+product's reference family, not a universal rule for all drummers. Its measured
+surface relationships are checked independently of reach and hardware clearance;
+assigning every note cannot substitute for preserving that arrangement.
+
+The reference is reviewed from fixed top, front, left, right and player views.
+Elevated cymbals may overlap drums in top projection when three-dimensional body,
+hardware and complete-stick approach checks pass. Two rack toms must not become
+front/back rows merely because independent targets can be reached there.
+
+Character or physical-equipment replacement may produce a new bounded fit. Once
+accepted, that character's measured kit and seat are the session setup. MIDI/demo
+selection, note editing, ordinary preparation, playback and seeking consume the
+same setup; they do not fit it again. A source-preparation transaction captures
+the kit/profile before asynchronous work and cannot install a result against a
+different setup. Exact project restoration keeps the saved arrangement.
+
+Manual adjustment remains explicit. A failed bounded search retains the preceding
+usable setup and exposes reach, arrangement and clearance reasons separately.
+The reference arrangement does not certify relaxed posture, skin/clothing
+clearance or the complete route of a fast fill; these remain separate checks.
+
 ## Bounded kit fitting
+
+The combined grouped-layout, lower-limb and seat search is under integration
+validation; see the [integration record](../../docs/verification/shared-fit-integration.md).
+The [reference-layout record](../../docs/verification/reference-layout.md) and
+[earlier recovery record](../../docs/verification/fbx-import.md#shared-fit-recovery-candidate--2026-10-27)
+retain their original tested commits and limits, not combined-candidate acceptance.
 
 Different arm-to-leg ratios can require target layout changes even when both feet
 reach their pedals. [fit.rs](../../crates/drum-engine/src/fit.rs) proposes a layout
 from the measured body, with the snare posture as the first reference. It fits
 hand-played surfaces in two stages:
 
-1. Try local repair of the current layout, then uniform scales
-   `1.00, 0.92, 0.84, 0.76, 0.68, 0.60`. Positions scale about
-   `[0, 1.235, 0.06]` metres; contact radii and the complete measured body dimensions
-   scale together. Each scale tries the snare-reference height shift, bounded to
-   ±0.5 m, with the reference forward shift bounded to −0.25–+0.10 m, then the same
-   height with zero forward shift. Lateral shift is zero. At the first successful
+1. Try local repair of the current layout, then shell/layout factors
+   `1.00, 0.92, 0.84, 0.76`. Positions scale about
+   `[0, 1.235, 0.06]` metres; snare/tom contact radii and their complete measured shell dimensions
+   scale together. Hi-hat, crash and ride diameters remain nominal; their positions
+   still participate in the layout fit. Each scale tries the snare-reference height shift, bounded to
+   ±0.5 m, with the reference forward shift bounded to −0.25–+0.10 m. All coarse
+   scales get this translation before zero-forward-shift alternatives. Lateral
+   shift is zero. At the first successful
    coarse scale, at most three 2% probes between it and the preceding coarse scale
    seek a larger feasible result.
 2. Repair local placement with snare and hi-hat first, then try floor-tom-first and
@@ -67,7 +104,8 @@ hand-played surfaces in two stages:
 
 The kick and its pedal remain fixed. The direct hi-hat is a coupled pedal/mast/cymbal
 assembly: its seed places the mast left of the snare by both radii plus 35 mm and
-50 mm farther from the player. The pedal is 120 mm behind the mast. At most 250 mm lateral
+50 mm farther from the player. The pedal contact is 120 mm behind the mast along
+its `pedalForward`, aimed from the seated left-leg root toward that mast. At most 250 mm lateral
 or forward/back movement from the input pedal is allowed. Preferred and original
 axis combinations are tested at board pitch `0, −0.09, −0.18` rad with the real
 sole offset, leg lengths and a 55–155° interior knee range. A failed seed retains
@@ -77,34 +115,55 @@ in height. Before locking a snare candidate, the search requires a feasible
 hi-hat height and a clear snare/hi-hat pair, including both complete-tool approaches.
 This avoids using the hi-hat mast corridor for a locally convenient snare.
 
-If this fast pass fails for a measured humanoid, the shared
-[recovery search](../../crates/drum-engine/src/fit_joint.rs) revisits coupled anchors:
+The two rack toms are placed as a group: one shallow left/right row with shared
+height/depth and bounded spacing. Individual reach cannot split them into front/back
+rows. Floor-tom candidates remain on the right flank; the measured shell and its
+supports must also clear the seated thighs, shins and footwear. The optional suspended
+preset places its host stand before the supported floor tom. Physical mount metadata,
+including an accepted `standRotation`, is retained in the resulting kit.
 
-- Translate the seated body by Y `0, ±0.06, ±0.12` m and Z `0, +0.08, −0.08,
-  +0.16, +0.24` m within the existing seat limits. Roots, torso proxy and rest
-  references move together; limb lengths, tool offsets and body dimensions do not.
-  Both feet must pass the same three pitch/knee probes; the kick stays fixed.
-- At scales `1, 0.84, 0.68, 0.60`, test hi-hat pedal offsets from the derived anchor
-  of X `0, +0.06, −0.06, +0.12, +0.18` m and Z `0, −0.06, +0.06, −0.12` m,
-  still within 250 mm of the input pedal. Test height in 25 mm steps up to ±250 mm.
-  Keep the least-displaced valid anchor for each seat/scale, then revisit up to
-  three valid snare choices and both placement orders if later pieces fail.
-- Recovery requires the snare between hip roots (minimum half-width 120 mm),
-  hi-hat at least 80 mm left and 20 mm above the snare, rack toms at least 100 mm
-  forward with high tom left of mid tom and at most 150 mm row separation, floor
-  tom at least 100 mm right within 250 mm of the snare row, and ride at least
-  100 mm right. These are common layout priors, not avatar exceptions. Existing
-  fast-pass successes retain their previous placement; broader role repair is
-  still tracked in #18.
+Lower-limb checks evaluate board pitches `0, −0.09, −0.18` rad using real bone lengths,
+yawed pedal contacts and [measured numeric envelopes](rig-contract.md#numeric-body-geometry).
+They test bodies, stands and both boards. Only the foot's intended own-board contact
+is excluded; a shin, another pedal or an unrelated stand has no such exemption.
+The 5 mm equipment margin is unchanged. Local leg envelopes follow the measured
+rest frame transported by the minimum swing from rest to posed segment direction;
+foot envelopes follow the actual yawed/pitched tool frame. The finite skeleton shin
+ends at the ankle rather than extending a rounded cap below it. These are setup
+samples, not a continuous skinned collision simulation.
 
-Anchor generation spends at most 20,000 additional candidates and stops by total
-60,000, reserving work for placement. Each placement branch spends at most 8,000.
-Seat/scale ranking favors smaller seat displacement, then compactness and anchor
-movement. These finite choices are not an exhaustive optimizer.
+One repair/certification pipeline uses two deterministic budget allocations.
+The initial nominal-layout pass has 12,000 candidates and coarse cached hand/pair
+queries. Refined nominal-seat retries get 6,000 candidates each, with the initial
+pass included in a 30,000 total. The remaining request budget is reserved for
+body-anchored shell families: 6,000 per attempt and 24,000 per seat. Child quota
+exhaustion does not close later siblings. Unused allowance remains available;
+all attempts together are still capped at 80,000, not an exhaustive search.
 
-All branches share a maximum of 80,000 layout candidates; exact hand and pair
+For profiles with `handFrames`, both allocations use seat Y `0, ±0.06, ±0.12` m
+and Z `0, +0.08, −0.08, +0.16, +0.24` m, ordered by squared displacement.
+Keep pelvis height within 0.3–1.2 m and its absolute Z within 0.5 m. Without
+`handFrames`, only the original seat is searched. The fixed kick must pass the
+pitch/knee gate before a seat retry; the movable left pedal is checked per generated
+assembly. Every final certificate checks both existing pedals with the same real
+sole offset, reach annulus and 55–155° knee range.
+
+When a valid snare/hat reference blocks later placement, revisit up to three
+distinct validated snare positions per pedal assembly, using the same repair path
+and both placement orders. Previously failed positions are excluded; repeated
+probes remain charged to the shared budget. At most three assemblies passing
+the hat precheck receive these deeper attempts. No physical criterion is relaxed.
+
+Each candidate translates world roots, hand references, torso center and pivot
+together. Bone lengths, neutral contact rotations, local `legBoxes`/`footBoxes`
+and `legRestFrames` remain unchanged. Each pedal branch refreshes foot targets
+and the left knee direction from its `pedalForward`, matching adapter calibration.
+Thus yaw is composed once with the neutral foot rotation and board pitch, while
+measured local boxes are not translated a second time.
+
+All passes share a maximum of 80,000 layout candidates; exact hand and pair
 memoization each retain at most 100,000 entries. Each direct-hat assembly's height
-witnesses are filtered once per branch before snare lookahead, avoiding repeated
+witnesses are filtered once per placement-order attempt before snare lookahead, avoiding repeated
 impossible hat tests for every snare candidate. Exhausting one piece's candidates
 ends that local branch. `searchCandidates` and `searchLimitReached` disclose work
 and budget exhaustion. Failure means this bounded search found no complete result;
@@ -120,9 +179,10 @@ For profiles with `handFrames`, `complete` requires designated hands to pass rea
 and skeletal posture checks at contact and two preparation samples. The samples are
 `(vertical lift in metres, tool pitch in radians)`: `(0, 0)`, `(0.055, −0.20)` and
 `(0.11, −0.42)`. Common wrist-pitch offsets are `0, ±0.15, ±0.30, ±0.45, ±0.60`
-rad. The fast fit keeps the five original elbow candidates. Recovery and shared
-contact queries can refine the same −0.8–+0.8 rad interval in 0.05 rad steps when
-the coarse witnesses fail; anatomical limits and the 2 mm margin stay unchanged.
+rad. Initial cached queries keep the five original elbow candidates. Seat retries
+and shared contact queries can refine the same −0.8–+0.8 rad interval in 0.05 rad
+steps when coarse witnesses fail; anatomical limits and the 2 mm body margin
+stay unchanged. Final certification uses the shared refined queries for every result.
 Fitting requires these probes at neutral torso yaw;
 optional runtime facing must preserve the actual pitched contacts rather than rescue
 an otherwise unreachable layout. Snare center/rim-side regions, hat bow/edge, ride
@@ -173,31 +233,33 @@ without `handFrames` retain static reach checks without these posture guards.
 
 Candidates also use the [common equipment/contact geometry](equipment-contact.md):
 measured or procedural body boxes, projected head access and generated support/pedal
-envelopes. `complete` requires the corresponding layout and designated-hand
-whole-tool posture probes, as well as body reach/posture checks. Adding a later
-instrument must preserve the previously placed instruments' contact approaches and
+envelopes. Every returned proposal, including an unchanged input, undergoes the same
+final certification: arrangement, lower-limb clearance, equipment clearance,
+designated-hand whole-tool/body posture and required-pair checks determine `complete`.
+Adding a later instrument must preserve the previously placed instruments' contact approaches and
 required pair witnesses. A reachable tip
 alone is insufficient when its shaft or arm intersects equipment. This is a bounded
 proxy search, not certification of every frame, transfer speed, anatomical comfort,
 skin, exact meshes or support-to-support clearance.
 
-The proposal records the uniform `scale` and `translation`, plus `pieceAdjustments`
-entries containing `pieceId` and local `translation`. `seatOffset` is the winning
-body translation, applied atomically with that kit before replanning. Up to 32
-`searchFailures` entries aggregate `{stage, pieceId, branches}` for rejected
-hi-hat witnesses, placement, feet or coupled anchors. These describe searched
-branches, whereas the failed-piece lists describe the returned layout.
-If no complete candidate exists,
+The proposal records the shell/layout `scale` and common `translation`, plus
+`pieceAdjustments` entries containing `pieceId` and local `translation`.
+`seatOffset` is the winning body translation, applied atomically with that kit
+before replanning. Up to 32 `searchFailures` entries aggregate
+`{stage, pieceId, branches}` for `hihat-witness`, `placement` and `feet` failures.
+These describe rejected search branches; the failed-piece lists and
+`layoutViolations` describe the returned layout. If no complete candidate exists,
 return the **original layout unchanged**, `scale: 1`, zero translation,
 `pieceAdjustments: []`, zero `seatOffset` and `complete: false`. `unreachablePieceIds` identifies reach
 or posture failures; `clearancePieceIds` identifies unresolved common equipment geometry.
+`layoutViolations` separates arrangement and lower-limb clearance failures.
 The browser automatically applies a complete fit when importing a character or
 restoring the built-in rig, and offers persistent undo. Incomplete fitting retains
 a usable previous layout and explicit warnings. Repeated imports start from the
 last explicit layout baseline rather than repeatedly shrinking an automatic result.
 Saved project reopening bypasses fitting and restores the recorded setup exactly.
 Fitting a successful result again leaves the layout unchanged and returns no local
-adjustments. These numeric guards do not establish universal fit across VRM body
+adjustments. These numeric guards do not establish universal fit across VRM or FBX body
 shapes; rendered comparisons remain necessary.
 
 The result includes `capabilities`: a bounded ordered left/right target-pair audit,
@@ -386,8 +448,11 @@ Literal open/close notes and explicit short-open/close interpretation feed one
 absolute-time hi-hat state used by the left foot, upper cymbal and stick target.
 Source meaning remains in [MIDI interpretation](midi-interpretation.md).
 This implements repeatable kinematics, not measured pedal pressure or a complete
-heel-up/down force model. A sole socket is not the shoe mesh; support and skin
-clearance still require visible inspection.
+heel-up/down force model. Measured footwear supplies the neutral sole height from its lower vertical percentile
+(without the 3 mm envelope inflation); a model without footwear samples keeps the
+explicit 25 mm ankle-to-sole fallback. Toe reach and bone lengths are unchanged.
+A sole socket is not the full shoe mesh; support and skin clearance still require
+visible inspection.
 
 ## Stable mounts and replaceable drum bodies
 

@@ -30,9 +30,14 @@ describe('character adoption ownership',()=>{
   });
   it('measures a candidate calibration without leaving changes in the displayed rig',()=>{
     const {previous,scene}=session(),profile=scene.getRigProfile(),calibration=scene.getCalibration();
+    const contacts=previous.getContactSamples();
     const candidate=scene.measureCalibration({...calibration,seatHeight:calibration.seatHeight+.05,palmOrientation:'down'},[]);
     expect(candidate).not.toEqual(profile);
     expect(JSON.stringify(scene.getRigProfile())).toBe(JSON.stringify(profile));expect(scene.getCalibration()).toEqual(calibration);
+    expect(previous.getContactSamples()).toEqual(contacts);
+    // The displayed rig still owns its yawed default pedal, even while the
+    // scene/candidate kit is empty. Future omitted-kit calls retain that frame.
+    expect(previous.setCalibration(calibration).bendPoles[2]).toEqual(profile.bendPoles[2]);
     expect(()=>scene.measureCalibration({...calibration,seatHeight:10},[])).toThrow();
     expect(JSON.stringify(scene.getRigProfile())).toBe(JSON.stringify(profile));previous.dispose();
   });

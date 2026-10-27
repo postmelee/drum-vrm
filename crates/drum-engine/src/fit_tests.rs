@@ -1,6 +1,45 @@
 use super::*;
 use crate::model::default_kit;
 use crate::rig::HandControlFrame;
+
+#[test]
+fn final_snare_miss_check_preserves_a_refined_only_ready_witness() {
+    // Independently authored body dimensions, not measurements from an avatar.
+    // This ready pose needs an intermediate elbow swivel: contact probes pass,
+    // but the coarse five-angle pair search has no witness. Final certification
+    // must preserve the same refined witness as the runtime posture solver.
+    let mut p = profile(1.0);
+    p.roots[0][0] = -0.24;
+    p.roots[1][0] = 0.24;
+    p.body_geometry = Some(
+        serde_json::from_value(serde_json::json!({
+            "version": 1, "source": "skeleton-fallback", "sampleCount": 0,
+            "torso": {"center": [0., 0.95, 0.06], "halfExtents": [0.13, 0.24, 0.08]},
+            "armRadii": [[0.025, 0.02], [0.025, 0.02]], "handRadii": [0.025, 0.025]
+        }))
+        .unwrap(),
+    );
+    p.validate().unwrap();
+    let mut snare = default_kit()
+        .into_iter()
+        .find(|piece| piece.instrument == Instrument::Snare)
+        .unwrap();
+    snare.position = [-0.1, 0.78, 0.30];
+    let kit = [snare];
+    let before = serde_json::to_string(&(&p, &kit)).unwrap();
+    assert!(!snare_ready_fits_cached(&p, &kit[0], &FitCache::default()));
+    let refined = FitCache::default();
+    refined.refine.set(true);
+    assert!(snare_ready_fits_cached(&p, &kit[0], &refined));
+    assert!(piece_targets(&p, &kit[0])
+        .iter()
+        .all(|&target| { (0..2).all(|limb| hand_posture_fits(&p, limb, target)) }));
+    assert!(snare_ready_fits(&p, &kit[0]));
+    assert!(missed(&p, &kit, true).is_empty());
+    assert!(missed(&p, &kit, true).is_empty());
+    assert_eq!(serde_json::to_string(&(&p, &kit)).unwrap(), before);
+}
+
 fn profile(scale: f64) -> RigProfile {
     let mut p = RigProfile::primitive();
     let y = 1.235 - (1.0 - scale) * 0.25;
@@ -32,13 +71,6 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
         let before = serde_json::to_string(&original).unwrap();
         let fitted = fit_kit(&profile, &original).unwrap();
         assert!(fitted.search_candidates <= MAX_FIT_LAYOUT_CANDIDATES);
-        if scale == 0.65 {
-            assert!(
-                fitted.complete,
-                "coupled recovery must fit this independently authored short-arm body"
-            );
-            assert_ne!(fitted.seat_offset, [0.; 3]);
-        }
         if !fitted.complete {
             // Adding physical equipment can make a formerly reachable skeleton
             // fixture infeasible within the bounded compact-layout search.
@@ -53,21 +85,28 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
             assert!(fitted.piece_adjustments.is_empty());
             continue;
         }
-        let profile = joint::translated_profile(&profile, fitted.seat_offset, &fitted.kit);
-        let refined = FitCache::default();
-        refined.refine.set(true);
-        if fitted.seat_offset != [0.; 3] {
-            assert!(joint::roles_complete(&profile, &fitted.kit));
-            assert!(joint::feet_fit(&profile, &fitted.kit));
-        }
-        assert!((0.6..=1.0).contains(&fitted.scale));
+        // The accepted transaction adopts both the seat and pedal frame before
+        // any posture check or subsequent fit consumes the resulting kit.
+        let profile = fit_profile::candidate(&profile, fitted.seat_offset, &fitted.kit);
+        assert!((MIN_FIT_SCALE..=1.0).contains(&fitted.scale));
         assert!(fitted.clearance_piece_ids.is_empty());
         assert!(kit_clearance_ids(&fitted.kit).is_empty());
         assert!((-0.25..=0.10).contains(&fitted.translation[2]));
         assert_eq!(before, serde_json::to_string(&original).unwrap());
         for (old, new) in original.iter().zip(&fitted.kit) {
             if hand_piece(old) {
-                assert!((new.radius - old.radius * fitted.scale).abs() < 1e-12);
+                let expected_radius = if matches!(
+                    old.instrument,
+                    Instrument::Snare
+                        | Instrument::TomHigh
+                        | Instrument::TomMid
+                        | Instrument::TomLow
+                ) {
+                    old.radius * fitted.scale
+                } else {
+                    old.radius
+                };
+                assert!((new.radius - expected_radius).abs() < 1e-12);
                 let uniform =
                     transform(std::slice::from_ref(old), fitted.scale, fitted.translation);
                 let shift = fitted
@@ -91,7 +130,11 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
                     assert!((old.position[0] - new.position[0]).abs() <= 0.25);
                     assert!((old.position[2] - new.position[2]).abs() <= 0.25);
                     for pitch in [0.0, -0.09, -0.18] {
-                        let q = crate::rig::pitch_rotation(profile.contact_rotations[2], pitch);
+                        let q = crate::equipment::pedal_rotation(
+                            new,
+                            profile.contact_rotations[2],
+                            pitch,
+                        );
                         let ankle = crate::motion::sub(
                             crate::equipment::pedal_contact(new, pitch),
                             profile.offset(2, q),
@@ -114,10 +157,10 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
             ) < 1e-9
         );
         let snare = fitted.kit.iter().find(|piece| piece.id == "snare").unwrap();
-        assert!(snare_ready_fits_cached(&profile, snare, &refined));
+        assert!(snare_ready_fits(&profile, snare));
         for piece in &fitted.kit {
             assert!(
-                piece_posture_fits(&profile, piece, &refined),
+                piece_posture_fits(&profile, piece, &FitCache::default()),
                 "{}",
                 piece.id
             );
@@ -146,7 +189,7 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
         }
         let repeated = fit_kit(&profile, &fitted.kit).unwrap();
         assert!(repeated.complete);
-        assert_eq!(repeated.seat_offset, [0.; 3]);
+        assert_eq!(repeated.seat_offset, [0.0; 3]);
         assert_eq!(repeated.scale, 1.0);
         assert_eq!(repeated.translation, [0.0; 3]);
         assert!(repeated.piece_adjustments.is_empty());
@@ -155,6 +198,115 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
             serde_json::to_string(&fitted.kit).unwrap()
         );
     }
+}
+
+#[test]
+fn unchanged_pedal_fit_requires_knee_posture_as_well_as_reach_and_clearance() {
+    // Independently authored pedal-only rigs isolate knee posture from hand and
+    // arrangement search. Every case has reachable real bones and clear hardware.
+    // The low/high hips violate opposite knee bounds; the middle case is valid.
+    for (limb, instrument, x) in [(2, Instrument::PedalHat, -1.), (3, Instrument::Kick, 1.)] {
+        for (hip_height, expected_complete) in [(0.30, false), (0.66, true), (0.91, false)] {
+            let mut profile = RigProfile::primitive();
+            // Keep the untested leg's idle foot reachable at every preparation
+            // pitch as well. The primitive's rearward hip otherwise reaches its
+            // outer annulus at -0.18 even though this kit has no pedal for it.
+            for side in 2..4 {
+                profile.roots[side][1] = 0.66;
+                profile.roots[side][2] = 0.14;
+                profile.grip_offsets[side] = [0., -0.025, 0.];
+                profile.tip_offsets[side] = [0., 0., 0.16];
+            }
+            profile.roots[limb] = [x, hip_height, 0.14];
+            let mut pedal = default_kit()
+                .into_iter()
+                .find(|p| p.instrument == instrument)
+                .unwrap();
+            pedal.position = [x, 0.08, 0.55];
+            pedal.pedal_forward = None;
+            let kit = vec![pedal];
+            let profile = fit_profile::candidate(&profile, [0.; 3], &kit);
+            let geometry = crate::equipment::kit_geometry(&kit);
+            assert!(geometry.unresolved_piece_ids.is_empty());
+            assert!(
+                lower_limb::violations(&profile, &kit, &geometry).is_empty(),
+                "hip={hip_height} limb={limb}: {:?}",
+                lower_limb::diagnostics(&profile, &kit, &geometry)
+            );
+            assert_eq!(fit_profile::feet_fit(&profile, &kit), expected_complete);
+
+            let result = fit_kit(&profile, &kit).unwrap();
+            assert_eq!(
+                result.complete, expected_complete,
+                "hip={hip_height} limb={limb}"
+            );
+            assert_eq!(result.seat_offset, [0.; 3]);
+            assert_eq!(result.kit[0].position, kit[0].position);
+            assert_eq!(result.kit[0].radius, kit[0].radius);
+            if expected_complete {
+                let again = fit_kit(&profile, &result.kit).unwrap();
+                assert!(again.complete);
+                assert_eq!(again.seat_offset, [0.; 3]);
+                assert_eq!(again.search_candidates, 0);
+            } else {
+                assert!(result.unreachable_piece_ids.contains(&kit[0].id));
+            }
+        }
+    }
+}
+
+#[test]
+fn stand_phase_pruning_preserves_invariant_shell_rejection_without_spending_budget() {
+    // An independently authored negative case places the upper thigh axes in
+    // the snare shell. Turning the tripod cannot move that shell or either hip.
+    let mut profile = RigProfile::primitive();
+    profile.roots[2] = [-0.1, 0.66, 0.14];
+    profile.roots[3] = [0.1, 0.66, 0.14];
+    for limb in 2..4 {
+        profile.grip_offsets[limb] = [0., -0.025, 0.];
+        profile.tip_offsets[limb] = [0., 0., 0.16];
+    }
+    let mut snare = default_kit()
+        .into_iter()
+        .find(|p| p.instrument == Instrument::Snare)
+        .unwrap();
+    snare.position = [0., 0.79, 0.32];
+    snare.stand_rotation = Some(0.7);
+    let mut kit = vec![snare];
+    let original = serde_json::to_string(&kit).unwrap();
+    let mut shell_only = crate::equipment::kit_geometry(&kit);
+    shell_only.supports.clear();
+    assert_eq!(
+        lower_limb::violations(&profile, &kit, &shell_only),
+        vec!["left-leg-clearance:snare", "right-leg-clearance:snare"]
+    );
+
+    // Exhaust the unpruned phase set using full routed hardware and the exact
+    // lower-limb check, independently of the new early-rejection branch.
+    for step in 0..24 {
+        let mut phase_kit = kit.clone();
+        phase_kit[0].stand_rotation =
+            Some(-std::f64::consts::PI + step as f64 * std::f64::consts::PI / 12.);
+        let full_geometry = crate::equipment::kit_geometry(&phase_kit);
+        let failures = lower_limb::violations(&profile, &phase_kit, &full_geometry);
+        assert_eq!(
+            failures,
+            vec!["left-leg-clearance:snare", "right-leg-clearance:snare"],
+            "phase step={step}"
+        );
+    }
+
+    let cache = FitCache::default();
+    assert!(!choose_leg_clear_stand_phase(
+        &profile,
+        &mut kit,
+        0,
+        &[],
+        &cache
+    ));
+    assert_eq!(cache.candidates.get(), 0);
+    assert!(!cache.exhausted.get());
+    assert_eq!(serde_json::to_string(&kit).unwrap(), original);
 }
 
 #[test]
@@ -196,9 +348,7 @@ fn annulus_reach_is_not_accepted_as_a_safe_near_snare_posture() {
     let profile = profile(1.0);
     let target = [-0.18, 1.05, 0.35];
     assert!(profile.reachable(0, target));
-    assert!(!crate::contact_feasibility::hand_probe_fits(
-        &profile, 0, target, None, None
-    ));
+    assert!(!hand_posture_fits(&profile, 0, target));
     let mut kit = default_kit();
     kit.iter_mut()
         .find(|piece| piece.id == "snare")
@@ -213,10 +363,13 @@ fn annulus_reach_is_not_accepted_as_a_safe_near_snare_posture() {
         result.search_limit_reached,
         result.search_candidates
     );
+    let profile = fit_profile::candidate(&profile, result.seat_offset, &result.kit);
     let fitted_snare = result.kit.iter().find(|p| p.id == "snare").unwrap();
     assert_ne!(fitted_snare.position, target);
     assert!(snare_ready_fits(&profile, fitted_snare));
     let again = fit_kit(&profile, &result.kit).unwrap();
+    assert!(again.complete);
+    assert_eq!(again.seat_offset, [0.0; 3]);
     assert_eq!(
         serde_json::to_string(&again.kit).unwrap(),
         serde_json::to_string(&result.kit).unwrap()
@@ -270,6 +423,11 @@ fn measured_body_pair_capability_and_ready_pose_share_the_fit_contract() {
         },
         arm_radii: [[0.03, 0.024]; 2],
         hand_radii: [0.03; 2],
+        leg_radii: None,
+        foot_radii: None,
+        leg_boxes: None,
+        leg_rest_frames: None,
+        foot_boxes: None,
         hand_centers: None,
         hand_capsules: None,
         sample_count: 1000,
@@ -280,6 +438,7 @@ fn measured_body_pair_capability_and_ready_pose_share_the_fit_contract() {
         "{:?} {:?}",
         result.unreachable_piece_ids, result.capabilities
     );
+    let profile = fit_profile::candidate(&profile, result.seat_offset, &result.kit);
     let audit = result.capabilities.as_ref().unwrap();
     assert_eq!(audit.geometry_source, "mesh-estimate");
     assert!(audit.required_pairs_available);
@@ -336,10 +495,13 @@ fn measured_body_pair_capability_and_ready_pose_share_the_fit_contract() {
         crate::posture::ready_pose(&profile, &result.kit).unwrap()
     );
     let old = serde_json::to_string(&result.kit).unwrap();
-    assert_eq!(
-        old,
-        serde_json::to_string(&fit_kit(&profile, &result.kit).unwrap().kit).unwrap()
-    );
+    let repeated = fit_kit(&profile, &result.kit).unwrap();
+    assert!(repeated.complete);
+    assert_eq!(repeated.seat_offset, [0.0; 3]);
+    assert_eq!(repeated.scale, 1.0);
+    assert_eq!(repeated.translation, [0.0; 3]);
+    assert!(repeated.piece_adjustments.is_empty());
+    assert_eq!(old, serde_json::to_string(&repeated.kit).unwrap());
 }
 
 #[test]
@@ -355,6 +517,11 @@ fn measured_body_is_validated_and_turns_without_changing_extents() {
         },
         arm_radii: [[0.03, 0.02]; 2],
         hand_radii: [0.025; 2],
+        leg_radii: None,
+        foot_radii: None,
+        leg_boxes: None,
+        leg_rest_frames: None,
+        foot_boxes: None,
         hand_centers: None,
         hand_capsules: None,
         sample_count: 100,
@@ -369,13 +536,34 @@ fn measured_body_is_validated_and_turns_without_changing_extents() {
         turned.body_geometry.as_ref().unwrap().torso.half_extents,
         p.body_geometry.as_ref().unwrap().torso.half_extents
     );
-    for field in ["version", "source", "sampleCount", "armRadii", "handRadii"] {
+    for field in [
+        "version",
+        "source",
+        "sampleCount",
+        "armRadii",
+        "handRadii",
+        "legRadii",
+        "footRadii",
+        "legBoxes",
+        "footBoxes",
+    ] {
         let mut value = serde_json::to_value(&p).unwrap();
         value["bodyGeometry"][field] = match field {
             "version" => serde_json::json!(2),
             "source" => serde_json::json!("unverified"),
             "sampleCount" => serde_json::json!(1000001),
-            "armRadii" => serde_json::json!([[0.0, 0.02], [0.03, 0.02]]),
+            "armRadii" | "legRadii" => serde_json::json!([[0.0, 0.02], [0.03, 0.02]]),
+            "legBoxes" => serde_json::json!(vec![
+                vec![
+                    serde_json::json!({"center":[0.,0.,0.],"halfExtents":[0.,0.1,0.1]});
+                    2
+                ];
+                2
+            ]),
+            "footBoxes" => serde_json::json!(vec![
+                serde_json::json!({"center":[4.,0.,0.],"halfExtents":[0.1,0.1,0.1]});
+                2
+            ]),
             _ => serde_json::json!([0.9, 0.025]),
         };
         assert!(
@@ -387,8 +575,11 @@ fn measured_body_is_validated_and_turns_without_changing_extents() {
 
 #[test]
 fn native_ready_pose_fits_real_equipment_without_stacked_heads_or_buried_shafts() {
-    // Original application geometry, generated from the public native adapter
-    // and procedural Studio. No downloaded avatar or private media is bundled.
+    // Generated by reference-layout-review.mjs --mode inputs --models native.
+    // This current-default fixture includes current hand frames, measured leg/foot
+    // envelopes, the yawed hi-hat pedal and the approved Studio arrangement. Old palm-up frames
+    // and untilted hardware do not represent the current adapter's measurements.
+    // No downloaded avatar or private media is bundled.
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/native-equipment.json")).unwrap();
     let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
@@ -399,6 +590,7 @@ fn native_ready_pose_fits_real_equipment_without_stacked_heads_or_buried_shafts(
         "{:?} {:?} budget={}",
         result.unreachable_piece_ids, result.clearance_piece_ids, result.search_limit_reached
     );
+    let profile = fit_profile::candidate(&profile, result.seat_offset, &result.kit);
     assert!(
         result.scale >= 0.8,
         "native kit should not require toy-sized drums"
@@ -409,6 +601,20 @@ fn native_ready_pose_fits_real_equipment_without_stacked_heads_or_buried_shafts(
         geometry: crate::equipment::kit_geometry(&result.kit),
     };
     assert!(ctx.geometry.unresolved_piece_ids.is_empty());
+    assert!(layout::violations(&profile, &result.kit).is_empty());
+    assert!(lower_limb::violations(&profile, &result.kit, &ctx.geometry).is_empty());
+    for original in kit.iter().filter(|p| {
+        matches!(
+            p.instrument,
+            Instrument::Hihat | Instrument::OpenHat | Instrument::Crash | Instrument::Ride
+        )
+    }) {
+        let fitted = result.kit.iter().find(|p| p.id == original.id).unwrap();
+        assert_eq!(
+            fitted.radius, original.radius,
+            "cymbal diameters remain nominal"
+        );
+    }
     assert!(result
         .kit
         .iter()
@@ -417,6 +623,9 @@ fn native_ready_pose_fits_real_equipment_without_stacked_heads_or_buried_shafts(
     assert!(crate::posture::ready_pose(&profile, &result.kit).is_ok());
     let again = fit_kit(&profile, &result.kit).unwrap();
     assert!(again.complete);
+    assert_eq!(again.seat_offset, [0.0; 3]);
+    assert_eq!(again.translation, [0.0; 3]);
+    assert!(again.piece_adjustments.is_empty());
     assert_eq!(again.scale, 1.0);
     assert_eq!(
         serde_json::to_string(&result.kit).unwrap(),
@@ -450,88 +659,95 @@ fn required_pair_checks_reuse_geometry_without_changing_results() {
 }
 
 #[test]
-fn coupled_seat_translation_preserves_measured_body_and_tool_geometry() {
-    let fixture: serde_json::Value =
-        serde_json::from_str(include_str!("fixtures/native-equipment.json")).unwrap();
-    let p: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
-    let kit: Vec<KitPiece> = serde_json::from_value(fixture["kit"].clone()).unwrap();
-    let offset = [0., 0.06, 0.08];
-    let moved = joint::translated_profile(&p, offset, &kit);
-    assert_eq!(moved.lengths, p.lengths);
-    assert_eq!(moved.grip_offsets, p.grip_offsets);
-    assert_eq!(moved.tip_offsets, p.tip_offsets);
-    for i in 0..4 {
-        for (axis, delta) in offset.iter().enumerate() {
-            assert_eq!(moved.roots[i][axis], p.roots[i][axis] + delta);
-        }
-    }
-    let before = p.body_geometry.as_ref().unwrap();
-    let after = moved.body_geometry.as_ref().unwrap();
-    assert_eq!(before.arm_radii, after.arm_radii);
-    assert_eq!(before.torso.half_extents, after.torso.half_extents);
-    assert_eq!(
-        serde_json::to_string(&before.hand_capsules).unwrap(),
-        serde_json::to_string(&after.hand_capsules).unwrap()
-    );
-    for (axis, delta) in offset.iter().enumerate() {
-        assert_eq!(after.torso.center[axis], before.torso.center[axis] + delta);
-    }
-    assert_eq!(
-        moved.rest_tips[2],
-        kit.iter()
-            .find(|p| p.instrument == Instrument::PedalHat)
-            .unwrap()
-            .position
-    );
-    assert_eq!(
-        moved.rest_tips[3],
-        kit.iter()
-            .find(|p| p.instrument == Instrument::Kick)
-            .unwrap()
-            .position
-    );
-}
-
-#[test]
-fn coupled_regions_reject_rack_toms_in_the_snare_row_and_a_central_hat() {
-    let p = profile(1.);
-    let mut kit = default_kit();
-    let all: Vec<_> = (0..kit.len()).collect();
-    let high = kit
-        .iter()
-        .position(|p| p.instrument == Instrument::TomHigh)
-        .unwrap();
-    let hat = kit
-        .iter()
-        .position(|p| p.instrument == Instrument::Hihat)
-        .unwrap();
-    assert!(joint::roles_valid(&p, &kit, &all, high));
-    let snare = kit
-        .iter()
-        .find(|p| p.instrument == Instrument::Snare)
-        .unwrap()
-        .position;
-    kit[high].position[2] = snare[2];
-    assert!(!joint::roles_valid(&p, &kit, &all, high));
-    kit = default_kit();
-    kit[hat].position[0] = snare[0];
-    assert!(!joint::roles_valid(&p, &kit, &all, hat));
-}
-
-#[test]
-fn search_failure_trace_survives_returning_the_unchanged_layout() {
-    let p = profile(0.8);
+fn reference_layout_rejects_reachable_but_reordered_parts() {
+    let profile = profile(1.0);
     let kit = default_kit();
-    let result = fit_kit(&p, &kit).unwrap();
-    assert!(result.search_candidates <= MAX_FIT_LAYOUT_CANDIDATES);
-    assert!(!result.complete);
-    {
-        assert!(!result.search_failures.is_empty());
-        assert!(result.search_failures.iter().all(|f| f.branches > 0));
-        assert_eq!(result.seat_offset, [0.; 3]);
-        for (a, b) in kit.iter().zip(&result.kit) {
-            assert_eq!(a.position, b.position);
-            assert_eq!(a.radius, b.radius);
+    assert!(layout::violations(&profile, &kit).is_empty());
+    let snare_x = kit.iter().find(|p| p.id == "snare").unwrap().position[0];
+    let floor_x = kit.iter().find(|p| p.id == "tomLow").unwrap().position[0];
+    // Move the floor tom to the wrong side of the snare, independently of the seed depth.
+    let floor_wrong_sector = [snare_x - floor_x - 0.2, 0., 0.];
+    for (id, translation, expected) in [
+        ("tomMid", [0., -0.17, -0.32], "rack-row"),
+        ("tomHigh", [0., 0., -0.4], "tomHigh-ahead-of-snare"),
+        ("tomLow", floor_wrong_sector, "floor-flank"),
+        ("snare", [0.2, 0., 0.], "snare-body-center"),
+        ("hihat", [0.6, 0., 0.], "hihat-left-above-snare"),
+        ("ride", [-0.8, 0., 0.], "ride-right-sector"),
+        ("crashRight", [-0.8, 0., 0.], "crashRight-outer-sector"),
+    ] {
+        let mut altered = kit.clone();
+        let p = altered.iter_mut().find(|p| p.id == id).unwrap();
+        for (axis, offset) in translation.iter().enumerate() {
+            p.position[axis] += offset;
         }
+        assert!(
+            layout::violations(&profile, &altered)
+                .iter()
+                .any(|v| v == expected),
+            "{id}"
+        );
     }
+}
+
+#[test]
+fn compact_reference_layout_preserves_relationships_and_body_centre() {
+    let mut profile = profile(1.0);
+    let translation = [0.35, 0.1, 0.15];
+    let mut kit = default_kit();
+    for p in &mut kit {
+        p.radius *= MIN_FIT_SCALE;
+        p.position = std::array::from_fn(|i| p.position[i] * MIN_FIT_SCALE + translation[i]);
+    }
+    profile.pelvis = std::array::from_fn(|i| profile.pelvis[i] * MIN_FIT_SCALE + translation[i]);
+    assert!(layout::violations(&profile, &kit).is_empty());
+}
+
+#[test]
+fn nonstandard_tom_roles_do_not_panic_in_group_search() {
+    let mut kit = default_kit();
+    kit.iter_mut()
+        .find(|p| p.instrument == Instrument::TomMid)
+        .unwrap()
+        .instrument = Instrument::TomHigh;
+    assert!(fit_kit(&profile(1.0), &kit).is_ok());
+}
+
+#[test]
+fn family_quota_exhaustion_keeps_siblings_within_the_shared_budget() {
+    let cache = FitCache::default();
+    cache.limit.set(7);
+    for expected in [3, 6, 7] {
+        cache.scoped(3, || {
+            while cache.candidate() {}
+            assert!(cache.exhausted.get());
+        });
+        assert_eq!(cache.candidates.get(), expected);
+        assert_eq!(cache.exhausted.get(), expected == 7);
+        assert_eq!(cache.limit.get(), 7);
+    }
+    assert!(!cache.candidate());
+    assert_eq!(cache.candidates.get(), 7);
+}
+
+#[test]
+fn incomplete_compact_search_visits_all_coarse_shell_families() {
+    let mut p = profile(1.0);
+    p.lengths[0] = [0.05, 0.05];
+    p.lengths[1] = [0.05, 0.05];
+    for limb in 0..2 {
+        let wrist = crate::motion::add(p.roots[limb], [0., -0.06, 0.04]);
+        p.rest_tips[limb] = crate::motion::add(wrist, p.offset(limb, p.contact_rotations[limb]));
+    }
+    p.validate().unwrap();
+    let cache = FitCache::default();
+    cache.refine.set(true);
+    cache.limit.set(24_000);
+    let result = uniform_fit(&p, &default_kit(), &cache, false).unwrap();
+    assert!(!result.complete);
+    assert!(cache
+        .family_visits
+        .borrow()
+        .starts_with(&[1.0, 0.92, 0.84, MIN_FIT_SCALE]));
+    assert!(cache.candidates.get() <= 24_000);
 }

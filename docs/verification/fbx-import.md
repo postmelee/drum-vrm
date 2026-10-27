@@ -361,6 +361,11 @@ is insufficient to declare the musical performance or arbitrary models supported
 
 ## Shared fit recovery candidate — 2026-10-27
 
+The later [reference-layout integration](shared-fit-integration.md) supersedes
+this candidate's runtime contract and records its stronger lower-limb/nominal
+cymbal gates and incomplete imported-model acceptance. Results below remain
+specific to the earlier standalone candidate.
+
 Standalone follow-up to the investigation above on `codex/fbx-character-import`,
 based on `cc479ac`. This is not the concurrent `codex/reference-kit-layout` work
 and is not a Pages deployment. Final WASM SHA-256:

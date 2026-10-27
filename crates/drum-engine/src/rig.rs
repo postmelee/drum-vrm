@@ -44,6 +44,22 @@ pub struct BodyGeometry {
     pub torso: TorsoGeometry,
     pub arm_radii: [[f64; 2]; 2],
     pub hand_radii: [f64; 2],
+    /// Optional measured thigh/shin and footwear envelope radii. Older profiles
+    /// use an explicit segment-proportion fallback rather than zero thickness.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leg_radii: Option<[[f64; 2]; 2]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foot_radii: Option<[f64; 2]>,
+    /// Upper/lower-leg boxes in their segment-local orthonormal frame.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leg_boxes: Option<[[TorsoGeometry; 2]; 2]>,
+    /// Local box basis in measured rest-world coordinates. Its +Y is the
+    /// measured segment direction; transport by the renderer's minimum swing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub leg_rest_frames: Option<[[Quat; 2]; 2]>,
+    /// Footwear boxes in the neutral tool frame, relative to the ankle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub foot_boxes: Option<[TorsoGeometry; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hand_centers: Option<[Vec3; 2]>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -181,6 +197,40 @@ impl RigProfile {
                     .any(|r| !r.is_finite() || !(0.01..=1.0).contains(r))
                 || !body.arm_radii.iter().flatten().all(radius)
                 || !body.hand_radii.iter().all(radius)
+                || body
+                    .leg_radii
+                    .as_ref()
+                    .is_some_and(|r| !r.iter().flatten().all(radius))
+                || body
+                    .foot_radii
+                    .as_ref()
+                    .is_some_and(|r| !r.iter().all(radius))
+                || body.leg_boxes.as_ref().is_some_and(|legs| {
+                    legs.iter().flatten().any(|b| {
+                        !point(&b.center)
+                            || distance(b.center, [0.; 3]) > 3.
+                            || b.half_extents
+                                .iter()
+                                .any(|v| !v.is_finite() || !(0.001..=1.).contains(v))
+                    })
+                })
+                || body.foot_boxes.as_ref().is_some_and(|feet| {
+                    feet.iter().any(|b| {
+                        !point(&b.center)
+                            || distance(b.center, [0.; 3]) > 3.
+                            || b.half_extents
+                                .iter()
+                                .any(|v| !v.is_finite() || !(0.001..=1.).contains(v))
+                    })
+                })
+                || body.leg_rest_frames.as_ref().is_some_and(|frames| {
+                    body.leg_boxes.is_none()
+                        || frames.iter().flatten().any(|q| {
+                            q.iter()
+                                .any(|v| !v.is_finite() || !(-1.0..=1.0).contains(v))
+                                || (q.iter().map(|v| v * v).sum::<f64>() - 1.).abs() > 0.001
+                        })
+                })
                 || body.hand_centers.as_ref().is_some_and(|centers| {
                     centers
                         .iter()

@@ -64,8 +64,11 @@ new measured geometry without a new measurement transaction.
 ## Layout, hardware and access
 
 The shared result contains `bodies`, `supports`, `pedals`, `mechanisms` and
-`unresolvedPieceIds`. Body boxes and pedal footboard/base boxes use metres; supports
-are finite capsules with endpoints and radii. Closed/open hi-hat aliases share one
+`unresolvedPieceIds`. Boxes use metre-valued world `center` and local `halfExtents`.
+Body boxes are axis-aligned; pedal footboard/base boxes also carry an optional
+xyzw `rotation` (identity when absent). Segment queries transform into that local
+frame, and box separation uses the oriented axes. Supports are finite capsules
+with endpoints and radii. Closed/open hi-hat aliases share one
 body; pedal contacts remain distinct. Own mount attachments and linked hi-hat
 hardware are intentional overlaps, not blanket exclusions for nearby instruments.
 
@@ -98,6 +101,28 @@ unreachable mounts instead of stretching their connectors. Floor-tom brackets
 join three independent legs to the shell. The snare basket retains a connected
 neck and tilter above its tripod.
 
+Snare baskets use a 225 mm tripod radius; boom cymbal and direct hi-hat stands
+use 300 mm. These are shared engineering dimensions. Optional
+`KitPiece.standRotation` fixes the first tripod leg's absolute world-Y phase in
+radians (`−π…π`), with X/Z direction `[sin(phase), cos(phase)]`. It is supported on
+snare, hi-hat, crash and ride stands. If absent, routing selects a bounded phase;
+if present, it may move the stand base within existing limits but cannot silently
+select another phase. This lets fitting test the real tripod adjustment against
+seated legs while preserving the instrument's position. It is not a collision
+exemption. Saved layouts retain the accepted phase.
+
+An optional `mount: {kind: 'standClamp', supportPieceId: 'ride'}` selects a
+suspended floor tom. Only `tomLow` may depend on a distinct ride/crash stand
+without its own mount; absence retains the three floor legs. Dependency order
+routes that host before the tom. A physical clamp, 50 mm socket, ball joint,
+horizontal/vertical L-rod and shell bracket replace the legs. The clamp accepts
+15.9–28.6 mm pipe diameters; the arm is bounded to 25–380 mm horizontally,
+80–300 mm rise and 35 mm receiver insertion. Only the clamp sleeve and short
+socket may overlap their named host's vertical tube. Both the cymbal and tom
+body-centre projections must lie inside the host tripod triangle. Other supports,
+the shell and the rod retain collision checks. A failed route stays unresolved;
+the preset does not hide legs and draw an unchecked connector.
+
 Boom stands use three nested tube diameters, locking collars, memory locks, a
 boom pivot, a straight boom with a rear tail, a separate cymbal tilter, sleeve and
 felt, and double-braced tripod legs with rubber feet. One leg points toward the
@@ -118,7 +143,11 @@ Fixed hardware is merged by material per instrument; the kick beater remains
 separately articulated. Detail therefore does not add a draw call per screw.
 
 The direct hi-hat mast is constrained to the pedal's toe-side axis, 0.12 m ahead
-of the sole anchor. Measured body offsets determine the corresponding hi-hat
+of the sole anchor **along its own horizontal direction**. Hi-hat tripod legs
+rotate with this frame: one leg points toward the toe side, leaving a gap toward
+the heel rather than running a leg through the footboard. The bounded route
+search may rotate the tripod further; body/leg clearance remains a separate test.
+Measured body offsets determine the corresponding hi-hat
 contact anchor. A mismatch above 3 mm remains unresolved; no long lateral linkage
 or implicit remote hi-hat conceals it. Common fitting keeps this relationship.
 
@@ -146,11 +175,24 @@ a transverse axle, a physical contact and normal, and bounded travel. It is a
 kinematic mechanism evaluated at absolute song time, not a frame-integrated
 physics simulation.
 
-- A footboard rotates about `[x, y − 0.012, z − 0.13]` relative to its sole anchor.
+`KitPiece.pedalForward` is an optional horizontal unit vector on `pedalHat`.
+Omitting it preserves the legacy world +Z direction. Values must be finite,
+have `abs(y) ≤ 1e-8` and unit-length error ≤ `1e-6`; a kick cannot carry this
+field because its beater and bass assembly retain their common fixed axis.
+The direction maps semantic local +Z from heel toward mast and local +X to the
+transverse hinge. Automatic placement derives it from the seated left leg and
+mast, without avatar-name rules. Saved layouts preserve it; score changes and
+seeking do not reorient the accepted setup.
+
+- With sole anchor `T` and horizontal yaw `Q`, the footboard hinge is
+  `H = T + Q · [0, −0.012, −0.13]`. At pitch `θ`, the shared sole point is
+  `H + Q · Rx(θ) · [0, 0.012, 0.13]`. `mechanisms.boardRotation` carries `Q`.
   The engine rotates the sole contact about the same hinge and solves the leg
   without changing bone lengths. At zero pitch, the original contact is exact.
   The renderer consumes the semantic foot quaternion rather than inventing a
-  second foot animation.
+  second foot animation. Neutral profile foot rotations remain unchanged;
+  evaluation composes layout yaw once. Automatic seat height, ready pose,
+  contact feasibility, footboard rendering and collision boxes use that frame.
 - The kick's beater sphere has radius 28 mm. At impact its front surface meets the
   batter plane, separately from the footboard contact. Its shaft and sphere share
   a pivot at the pedal axle. A smooth 70 ms approach and 100 ms recovery envelope

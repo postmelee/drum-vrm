@@ -1,11 +1,20 @@
 //! Mechanical hardware topology. Numeric capsules own both clearance and the
 //! renderer's detail envelope; individual screws do not multiply motion queries.
 use super::*;
+#[path = "equipment_mount.rs"]
+mod mounts;
+
+pub(super) fn routing_order(kit: &[KitPiece]) -> Vec<&KitPiece> {
+    mounts::routing_order(kit)
+}
 
 pub const MAX_TOM_ARM: f64 = 0.38;
 const MAX_TOM_RISE: f64 = 0.30;
 const MAX_BOOM: f64 = 0.45;
 const TRIPOD_RADIUS: f64 = 0.30;
+// Snare baskets sit between the seated legs. A compact base is a distinct
+// mechanical family, not a uniform copy of the wider boom-cymbal stand.
+const SNARE_TRIPOD_RADIUS: f64 = 0.225;
 
 fn part(piece: &KitPiece, role: &'static str, a: Vec3, b: Vec3, radius: f64) -> EquipmentCapsule {
     let mut rod = capsule(piece, a, b, radius);
@@ -109,7 +118,10 @@ fn rack_joint(a: &EquipmentCapsule, b: &EquipmentCapsule, kit: &[KitPiece]) -> b
 }
 
 pub(super) fn supports_clear(a: &EquipmentCapsule, b: &EquipmentCapsule, kit: &[KitPiece]) -> bool {
-    if same_owner(&a.piece_id, &b.piece_id, kit) || rack_joint(a, b, kit) {
+    if same_owner(&a.piece_id, &b.piece_id, kit)
+        || rack_joint(a, b, kit)
+        || mounts::joint(a, b, kit)
+    {
         return true;
     }
     let clearance = a.radius + b.radius + CLEARANCE;
@@ -138,6 +150,11 @@ fn clear(
 }
 
 fn stand(piece: &KitPiece, base: Vec3, top: Vec3, rotation: f64) -> Vec<EquipmentCapsule> {
+    let radius = if piece.instrument == Instrument::Snare {
+        SNARE_TRIPOD_RADIUS
+    } else {
+        TRIPOD_RADIUS
+    };
     let lower_end = [base[0], top[1] * 0.43, base[2]];
     let middle_end = [base[0], top[1] * 0.73, base[2]];
     let mut rods = vec![
@@ -170,9 +187,9 @@ fn stand(piece: &KitPiece, base: Vec3, top: Vec3, rotation: f64) -> Vec<Equipmen
     for leg in 0..3 {
         let angle = leg as f64 * std::f64::consts::TAU / 3.0 + rotation;
         let foot = [
-            base[0] + angle.sin() * TRIPOD_RADIUS,
+            base[0] + angle.sin() * radius,
             0.018,
-            base[2] + angle.cos() * TRIPOD_RADIUS,
+            base[2] + angle.cos() * radius,
         ];
         let knee = std::array::from_fn(|axis| leg_hub[axis] * 0.35 + foot[axis] * 0.65);
         rods.push(part(piece, "tripodLeg", leg_hub, foot, 0.013));
@@ -308,6 +325,9 @@ pub(super) fn route(
     kit: &[KitPiece],
     existing: &[EquipmentCapsule],
 ) -> (Vec<EquipmentCapsule>, bool) {
+    if piece.mount.is_some() {
+        return mounts::route(piece, bodies, boards, kit, existing);
+    }
     let physical = body(piece).expect("routed equipment has body");
     let cymbal = matches!(
         piece.instrument,
@@ -386,6 +406,7 @@ pub(super) fn route(
     } else {
         (head.normal, axis_add(lower_rim_center, head.normal, -0.035))
     };
+    let attached_loads = mounts::loads(piece, kit);
     let build = |dx: f64, dz: f64, rotation: f64, boom_drop: f64| {
         let base = [mount[0] + dx, 0.025, mount[2] + dz];
         let boom = cymbal && piece.instrument != Instrument::Hihat;
@@ -407,11 +428,22 @@ pub(super) fn route(
             .max(0.12),
             base[2],
         ];
-        let phase = if boom && dx.hypot(dz) > 1e-9 {
-            (-dx).atan2(-dz) + rotation
-        } else {
-            rotation
-        };
+        let phase = piece.stand_rotation.unwrap_or_else(|| {
+            if piece.instrument == Instrument::Hihat {
+                // A leg points away from the heel; the two rear legs straddle the
+                // shoe/footboard corridor rather than cutting across its centre.
+                let direction = kit
+                    .iter()
+                    .find(|p| p.instrument == Instrument::PedalHat)
+                    .map(pedal_forward)
+                    .unwrap_or([0., 0., 1.]);
+                direction[0].atan2(direction[2]) + rotation
+            } else if boom && dx.hypot(dz) > 1e-9 {
+                (-dx).atan2(-dz) + rotation
+            } else {
+                rotation
+            }
+        });
         let mut rods = stand(piece, base, top, phase);
         if boom {
             let direction = sub(tilter, top);
@@ -484,18 +516,18 @@ pub(super) fn route(
                 rods.push(part(
                     piece,
                     "pedalLink",
-                    [
-                        pedal.position[0],
-                        0.04,
-                        pedal.position[2] + HIHAT_PEDAL_TO_AXIS,
-                    ],
-                    [pedal.position[0], 0.04, pedal.position[2] + 0.08],
+                    pedal_frame_point(pedal, [0., 0.04 - pedal.position[1], HIHAT_PEDAL_TO_AXIS]),
+                    pedal_frame_point(pedal, [0., 0.04 - pedal.position[1], 0.08]),
                     0.011,
                 ));
             }
         }
         let valid = if boom {
-            distance(top, tilter) <= MAX_BOOM && load_projection_supported(base, mount, phase)
+            distance(top, tilter) <= MAX_BOOM
+                && load_projection_supported(base, mount, phase)
+                && attached_loads
+                    .iter()
+                    .all(|&load| load_projection_supported(base, load, phase))
         } else if !cymbal {
             distance(top, mount) <= 0.10
         } else {
@@ -504,10 +536,19 @@ pub(super) fn route(
         (rods, valid)
     };
     let outward = if mount[0] < 0.0 { -1.0 } else { 1.0 };
+    // A rear-facing snare leg leaves the front sector open for both pedal
+    // strokes. The phase remains part of the shared physical routing search.
+    let initial_phase = if piece.instrument == Instrument::Snare {
+        std::f64::consts::PI
+    } else {
+        0.4
+    };
     let (original, valid) = if cymbal && piece.instrument != Instrument::Hihat {
         build(outward * 0.20, 0.12, 0., 0.10)
+    } else if piece.instrument == Instrument::Hihat {
+        build(0., 0., 0., 0.10)
     } else {
-        build(0., 0., 0.4, 0.10)
+        build(0., 0., initial_phase, 0.10)
     };
     if valid && clear(&original, bodies, boards, kit, existing) {
         return (original, true);
@@ -518,7 +559,16 @@ pub(super) fn route(
         }
         for direction in 0..if step == 0 { 1 } else { 24 } {
             let angle = direction as f64 * std::f64::consts::TAU / 24.;
-            for rotation in [0., 0.2, -0.2, 0.4, -0.4] {
+            for &phase_delta in if piece.stand_rotation.is_some() {
+                &[0.][..]
+            } else {
+                &[0., 0.2, -0.2, 0.4, -0.4][..]
+            } {
+                let rotation = if piece.instrument == Instrument::Snare {
+                    initial_phase + phase_delta
+                } else {
+                    phase_delta
+                };
                 for &drop in if cymbal && piece.instrument != Instrument::Hihat {
                     &[0.10, 0.04, 0.06, 0.18, 0.26, 0.34][..]
                 } else {
@@ -538,4 +588,105 @@ pub(super) fn route(
         }
     }
     (original, false)
+}
+
+#[cfg(test)]
+mod hardware_family_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_tripod_phase_is_absolute_for_snare_boom_and_hihat() {
+        for instrument in [Instrument::Snare, Instrument::Ride, Instrument::Hihat] {
+            let mut kit = crate::model::default_kit();
+            kit.retain(|piece| {
+                piece.instrument == instrument || piece.instrument == Instrument::PedalHat
+            });
+            for angle in [-1.0_f64, 0.7] {
+                kit.iter_mut()
+                    .find(|piece| piece.instrument == instrument)
+                    .unwrap()
+                    .stand_rotation = Some(angle);
+                let geometry = kit_geometry(&kit);
+                let id = instrument.default_piece_id();
+                let base = geometry
+                    .supports
+                    .iter()
+                    .find(|part| part.piece_id == id && part.role == "tubeLower")
+                    .unwrap()
+                    .start;
+                let leg = geometry
+                    .supports
+                    .iter()
+                    .find(|part| part.piece_id == id && part.role == "tripodLeg")
+                    .unwrap();
+                let actual = (leg.end[0] - base[0]).atan2(leg.end[2] - base[2]);
+                assert!(
+                    (actual - angle).abs() < 1e-9,
+                    "{instrument:?}: {actual} != {angle}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn compact_snare_base_preserves_the_pedal_and_seated_foot_corridor() {
+        let mut kit = crate::model::default_kit();
+        kit.retain(|piece| {
+            matches!(
+                piece.instrument,
+                Instrument::Snare | Instrument::Kick | Instrument::PedalHat
+            )
+        });
+        let snare = kit
+            .iter_mut()
+            .find(|piece| piece.instrument == Instrument::Snare)
+            .unwrap();
+        snare.position = [-0.0156, 0.825, 0.511];
+        // Independently generated Studio snare measurement, not imported art.
+        snare.geometry=Some(serde_json::from_value(serde_json::json!({
+            "version":1,"referenceRadius":0.1778,"source":"procedural",
+            "body":{"center":[0.,-0.0678343554,0.0045341708],"halfExtents":[0.1913595082,0.0842273128,0.1945067039]},
+            "surface":{"center":[0.,0.0000195116,0.0002790259],"normal":[0.,0.9975640502598242,-0.0697564737441253],"radius":0.1706629661}
+        })).unwrap());
+        let geometry = kit_geometry(&kit);
+        assert!(!geometry.unresolved_piece_ids.contains(&"snare".to_string()));
+        let supports: Vec<_> = geometry
+            .supports
+            .iter()
+            .filter(|part| part.piece_id == "snare")
+            .collect();
+        let base = supports
+            .iter()
+            .find(|part| part.role == "tubeLower")
+            .unwrap()
+            .start;
+        let feet: Vec<_> = supports
+            .iter()
+            .filter(|part| part.role == "tripodLeg")
+            .collect();
+        assert_eq!(feet.len(), 3);
+        assert!(feet
+            .iter()
+            .all(|part| ((part.end[0] - base[0]).hypot(part.end[2] - base[2])
+                - SNARE_TRIPOD_RADIUS)
+                .abs()
+                < 1e-9));
+        // Foot capsule through flat and raised toe phases: the former 300 mm
+        // boom-style base entered this corridor by more than 35 mm.
+        for (heel, toe) in [
+            ([0.2, 0.105, 0.4562166], [0.2, 0.12, 0.62]),
+            ([0.2, 0.09835399, 0.45013833], [0.2, 0.14243372, 0.60859014]),
+        ] {
+            for part in &supports {
+                let gap = crate::clearance::segment_distance(heel, toe, part.start, part.end)
+                    - 0.04
+                    - part.radius;
+                assert!(
+                    gap >= CLEARANCE,
+                    "{} enters the foot corridor: {gap}",
+                    part.role
+                );
+            }
+        }
+    }
 }

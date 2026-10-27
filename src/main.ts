@@ -15,17 +15,18 @@ import { studioTemplate } from './studio-template';
 import { prepareAutomaticFit, fittedCalibration } from './automatic-fit';
 import { DrumTimeline, createTimelineNotes } from './timeline';
 import { arrangementOf, nearestNoteGroup, noteSources, withArrangementEdit, type Arrangement } from './arrangement';
-import { DrumScene } from './scene';
+import { DrumScene, type CameraView } from './scene';
 import { setButtonIcon } from './icons';
 import { NativeHumanoidRigAdapter, type HumanoidCalibration } from './rig-humanoid';
 import { moveKitTarget } from './kit-calibration';
+import { applyKitHardwarePreset, kitHardwarePreset, type KitHardwarePresetId } from './kit-layout-presets';
 import { VRMHumanoidRigAdapter } from './rig-vrm';
 import { loadLocalVRM, type VRMInspection } from './vrm-import';
 import { CHARACTER_PRESETS, characterAssetUrl, loadCharacterPreset, type CharacterPreset } from './character-presets';
 import { VRMUtils } from '@pixiv/three-vrm';
 import type { KitPresetId } from './model-procedural';
 import { EngineClient } from './engine';
-import { preparePerformance } from './preparation';
+import { preparePerformanceInSetup } from './preparation';
 import { DrumAudio } from './audio';
 import { importGuidance } from './import-guidance';
 import { automaticImportSelection, automaticMappingMessage, mappingLabel } from './automatic-mapping';
@@ -134,6 +135,7 @@ function setTheme(next: 'light' | 'dark') {
 }
 function selectedPiece() { return get<HTMLSelectElement>('piece').value as PieceId; }
 function refreshPiece() {
+  get<HTMLSelectElement>('kit-hardware').value = kitHardwarePreset(scene.getKitLayout());
   const visual = scene.getPieceVisual(selectedPiece());
   get<HTMLSelectElement>('piece-model').value = visual.source==='library'||visual.source==='imported'?'asset':visual.model;
   get<HTMLInputElement>('piece-finish').value = visual.finish;
@@ -235,9 +237,9 @@ get('analysis-source').onclick=()=>{openPanel('source');get<HTMLDetailsElement>(
 function showFitResult(result: Awaited<ReturnType<typeof prepareAutomaticFit>>) {
   fitProposal=result.proposal;fitState=result.applied?msg("Automatic body fit applied", "체형 자동 맞춤 적용"):msg("Automatic fit needs attention", "자동 맞춤 확인 필요");
   bindText(get('calibration-message'), ''); // The summary stays here; full fit evidence lives in Analysis.
-  bindText(get('fit-details'), result.message);
   refreshFitState();
-  if(result.applied){message(result.message);notify(msg("The drum layout has been fitted to the character.", "캐릭터에 맞게 드럼 배치를 조정했습니다."));}
+  bindText(get('fit-details'), result.message);
+  if(result.applied){message(result.message);notify(result.message);}
   else message(msg("Automatic fitting could not meet the constraints. See Character → Manual adjustment or Analysis.", "자동 맞춤 조건을 만족하지 못했습니다. 캐릭터의 수동 보정 또는 분석을 확인하세요."),true);
 }
 async function fitInBackground(profile: RigProfile, kit: readonly KitPiece[]) {
@@ -256,7 +258,7 @@ async function autoFitCurrent() {
   audio?.pause();modelBusy=true;controls();bindText(get('calibration-message'), msg("Fitting to character…", "체형에 맞추는 중…"));
   const previous={seat:scene.getCalibration(),kit:scene.getKitLayout()};
   try {
-    const seat={...scene.getAutomaticCalibration(),palmOrientation:previous.seat.palmOrientation};
+    const seat={...scene.getAutomaticCalibration(fitBaseline),palmOrientation:previous.seat.palmOrientation};
     const result=await prepareAutomaticFit(scene.measureCalibration(seat,fitBaseline),fitBaseline,previous.kit,fitInBackground);
     if(result.applied){
       if(!await applyCalibration(fittedCalibration(seat,result),result.kit,'calibration-message',true))return;
@@ -432,12 +434,12 @@ get<HTMLSelectElement>('character-preset').onchange=e=>{
   if(id==='native')void resetCharacter();
   else {const preset=CHARACTER_PRESETS.find(entry=>entry.id===id);if(preset)void importCharacter(preset);else refreshCharacterPreset();}
 };
-async function synchronizeEquipmentAppearance() {
+async function synchronizeEquipmentAppearance(requireCompleteFit=false) {
   await scene.whenEquipmentReady();
   const measured=scene.getKitLayout();
   const baseline=scene.measureKitLayout(fitBaseline);
   const seat={...scene.rig.getAutomaticCalibration(baseline),palmOrientation:scene.getCalibration().palmOrientation};
-  const result=await prepareAutomaticFit(scene.measureCalibration(seat,baseline),baseline,measured,fitInBackground);
+  const result=await prepareAutomaticFit(scene.measureCalibration(seat,baseline),baseline,measured,fitInBackground,{requireComplete:requireCompleteFit});
   const chosenSeat=result.applied?fittedCalibration(seat,result):scene.getCalibration();
   if(!await applyCalibration(chosenSeat,result.kit,'model-message',true))throw new Error(msg("Could not prepare the performance with the new instrument dimensions.", "새 악기 치수로 연주를 다시 준비하지 못했습니다."));
   await scene.whenEquipmentReady();
@@ -446,7 +448,7 @@ async function synchronizeEquipmentAppearance() {
   const unresolved=scene.getEquipmentDiagnostics();
   if(unresolved.length)message(msg("Instrument/support layout needs attention: {0}", "악기·받침대 배치 확인 필요: {0}", unresolved.join(', ')),true);
 }
-async function changeEquipment(change:()=>void|Promise<unknown>, commit:()=>void=()=>{}) {
+async function changeEquipment(change:()=>void|Promise<unknown>, commit:()=>void=()=>{}, options:{requireCompleteFit?:boolean}={}) {
   if(busy||exporting||modelBusy)return false;
   audio?.pause();modelBusy=true;controls();
   const previous={kit:scene.getKitLayout(),seat:scene.getCalibration(),baseline:fitBaseline,undo:preFitSetup,proposal:fitProposal,state:fitState};
@@ -454,7 +456,7 @@ async function changeEquipment(change:()=>void|Promise<unknown>, commit:()=>void
   try {
     const parts=new Map<PieceId,File>();for(const ref of sourceReferences)if(ref.kind==='drumPart'){const file=projectFiles.get(ref.sha256);if(file)parts.set(ref.pieceId!,file);}
     rollback=await scene.prepareProjectAppearance(committedPreset as KitPresetId,previous.kit.filter(piece=>!['openHat','pedalHat'].includes(piece.id)).map(piece=>({id:piece.id,settings:scene.getPieceVisual(piece.id)})),parts);
-    changed=true;await change();await synchronizeEquipmentAppearance();commit();refreshPiece();return true;
+    changed=true;await change();await synchronizeEquipmentAppearance(options.requireCompleteFit);commit();refreshPiece();return true;
   }
   catch(error){
     if(changed&&rollback){rollback.apply(previous.kit);scene.setCalibration(previous.seat);await scene.whenEquipmentReady();fitBaseline=previous.baseline;preFitSetup=previous.undo;fitProposal=previous.proposal;fitState=previous.state;refreshFitState();refreshCalibration();refreshTarget();refreshPiece();if(plan)updateFrame(audio?.currentTime??0);else await refreshIdlePose();}
@@ -469,6 +471,12 @@ get<HTMLSelectElement>('kit-preset').onchange=async e=>{
   input.value=committedPreset;
 };
 get<HTMLSelectElement>('piece').onchange=()=>{scene.selectPiece(selectedPiece());get<HTMLSelectElement>('target-piece').value=selectedPiece();refreshPiece();refreshTarget();};
+get<HTMLSelectElement>('kit-hardware').onchange=async e=>{
+  const preset=(e.target as HTMLSelectElement).value as KitHardwarePresetId;
+  bindText(get('model-message'),msg("Preparing hardware layout…", "하드웨어 배치를 준비하고 있습니다…"));
+  await changeEquipment(()=>{fitBaseline=applyKitHardwarePreset(fitBaseline,preset);scene.setKitHardwarePreset(preset);},undefined,{requireCompleteFit:true});
+  refreshPiece();
+};
 scene.onPieceSelect=id=>{if(!id)return;get<HTMLSelectElement>('piece').value=id==='openHat'||id==='pedalHat'?'hihat':id;get<HTMLSelectElement>('target-piece').value=id==='openHat'?'hihat':id;refreshPiece();refreshTarget();};
 get<HTMLSelectElement>('piece-model').onchange=e=>{const id=selectedPiece(),model=(e.target as HTMLSelectElement).value as 'standard'|'deep'|'compact';void changeEquipment(()=>scene.setPieceVisual(id,{model}),()=>{sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart'||ref.pieceId!==id);});};
 get<HTMLInputElement>('piece-finish').oninput=e=>scene.setPieceVisual(selectedPiece(),{finish:(e.target as HTMLInputElement).value});
@@ -571,11 +579,11 @@ async function prepare(generation: number,restoreTime=0) {
 }
 async function prepareSelection(data: Uint8Array, selection: DrumProject['selection'], generation: number, restoreTime=0) {
   message(msg("Preparing strikes and limb motion…", "타격과 손발 동작을 준비하고 있습니다…"));
-  const prepared=await preparePerformance({candidate:()=>engine.plan(data,selection,false),
+  const prepared=await preparePerformanceInSetup({setup:{profile:scene.getRigProfile(),kit:scene.getKitLayout()},candidate:()=>engine.plan(data,selection,false),
     audio:async candidate=>{message(wav?msg("Aligning WAV to the performance…", "WAV를 연주 시간에 맞추고 있습니다…"):msg("Preparing synthesized drum audio…", "합성 드럼 오디오를 준비하고 있습니다…"));
       const aligned=wav?alignWavToPlan(wav.buffer,candidate,wavOffset):null;
       return {buffer:aligned?.buffer??await synthesis.run(candidate),alignment:aligned?.info};},
-    commit:candidate=>engine.restorePlan(candidate,scene.getRigProfile(),scene.getKitLayout()),current:()=>generation===loadGeneration});
+    commit:(candidate,profile,kit)=>engine.restorePlan(candidate,profile,kit),current:()=>generation===loadGeneration});
   if(!prepared)return false;
   plan = prepared.plan;preparedSelection=selection;arrangement=arrangementOf(plan);
   if(prepared.audio.alignment)showWavInfo(prepared.audio.alignment);
@@ -1040,7 +1048,7 @@ get('play').onclick=async()=>{
 get('reset').onclick=()=>{audio?.pause();audio?.seek(0);updateFrame(0);status(msg("Ready", "준비 완료"),'ready');};
 get<HTMLInputElement>('seek').oninput=()=>{audio?.seek(Number(get<HTMLInputElement>('seek').value));updateFrame(Number(get<HTMLInputElement>('seek').value));};
 get<HTMLInputElement>('volume').oninput=()=>audio?.setVolume(Number(get<HTMLInputElement>('volume').value));
-for(const button of document.querySelectorAll<HTMLButtonElement>('[data-camera]'))button.onclick=()=>{scene.setCamera(button.dataset.camera as 'stage'|'front'|'top'|'player');for(const other of document.querySelectorAll('[data-camera]'))other.setAttribute('aria-pressed',String(other===button));};
+for(const button of document.querySelectorAll<HTMLButtonElement>('[data-camera]'))button.onclick=()=>{scene.setCamera(button.dataset.camera as CameraView);for(const other of document.querySelectorAll('[data-camera]'))other.setAttribute('aria-pressed',String(other===button));};
 get<HTMLInputElement>('background').oninput=()=>scene.setBackground(get<HTMLInputElement>('background').value);
 get('cancel-export').onclick=()=>exportController?.abort();
 get('export').onclick=async()=>{

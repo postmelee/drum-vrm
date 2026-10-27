@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import type { VRMHumanBoneName } from '@pixiv/three-vrm';
 import { Bone, BufferGeometry, Float32BufferAttribute, Group, MeshBasicMaterial, Quaternion, Skeleton, SkinnedMesh, Uint16BufferAttribute, Vector3 } from 'three';
 import { MAX_BODY_SAMPLES, measureBodyGeometry, skeletonBodyGeometry, validateBodyGeometry } from '../src/body-geometry';
 import { createRestRigPose, NativeHumanoidRigAdapter, NormalizedHumanoidRigAdapter } from '../src/rig-humanoid';
@@ -31,7 +32,120 @@ function authoredSkin(rig: NativeHumanoidRigAdapter, depth: number, repeats = 1,
   return { source, mesh };
 }
 
+/** Independent cylinder around the left thigh, with no torso surface. */
+function authoredLegSkin(rig: NativeHumanoidRigAdapter, radius: number, name: VRMHumanBoneName = 'leftUpperLeg', next: VRMHumanBoneName = 'leftLowerLeg', offset = 0) {
+  const upper = rig.humanoid.getRawBoneNode(name)! as Bone;
+  const lower = rig.humanoid.getRawBoneNode(next)!;
+  const a = upper.getWorldPosition(new Vector3()), b = lower.getWorldPosition(new Vector3());
+  const axis = b.clone().sub(a).normalize(), side = new Vector3(1, 0, 0).cross(axis).normalize();
+  const other = axis.clone().cross(side), positions: number[] = [], indices: number[] = [], weights: number[] = [];
+  for (let layer = 1; layer <= 4; layer++) for (let i = 0; i < 64; i++) {
+    const angle = i * Math.PI / 32;
+    positions.push(...a.clone().lerp(b, layer / 5).addScaledVector(side, offset + radius * Math.cos(angle)).addScaledVector(other, radius * Math.sin(angle)).toArray());
+    indices.push(0, 0, 0, 0); weights.push(1, 0, 0, 0);
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('skinIndex', new Uint16BufferAttribute(indices, 4));
+  geometry.setAttribute('skinWeight', new Float32BufferAttribute(weights, 4));
+  const source = new Group(), mesh = new SkinnedMesh(geometry, new MeshBasicMaterial());
+  source.add(mesh); source.updateMatrixWorld(true); mesh.bind(new Skeleton([upper]));
+  return source;
+}
+
 describe('semantic sampled body geometry', () => {
+  it('measures thigh thickness independently of missing torso samples and preserves the other leg fallback', () => {
+    const rig = new NativeHumanoidRigAdapter(), profile = rig.getProfile();
+    const narrow = measureBodyGeometry(authoredLegSkin(rig, .04), rig.humanoid, profile, reflect);
+    const wide = measureBodyGeometry(authoredLegSkin(rig, .08), rig.humanoid, profile, reflect);
+    expect(wide.source).toBe('mesh-estimate'); expect(wide.sampleCount).toBe(256);
+    expect(narrow.legRadii![0][0]).toBeCloseTo(.043, 5);
+    expect(wide.legRadii![0][0]).toBeCloseTo(.083, 5);
+    expect(wide.legRadii![1]).toEqual(skeletonBodyGeometry(profile).legRadii![1]);
+    expect(wide.torso).toEqual(skeletonBodyGeometry(profile).torso);
+    expect(measureBodyGeometry(authoredLegSkin(rig, .08), rig.humanoid, profile, reflect)).toEqual(wide);
+    expect(() => validateBodyGeometry(wide)).not.toThrow(); rig.dispose();
+  });
+  it('keeps an offset garment envelope offset instead of inflating the entire leg radius', () => {
+    const rig = new NativeHumanoidRigAdapter(), source = new Group();
+    for (const side of ['left', 'right'] as const) {
+      source.add(authoredLegSkin(rig, .04, `${side}UpperLeg`, `${side}LowerLeg`, .08));
+      source.add(authoredLegSkin(rig, .04, `${side}LowerLeg`, `${side}Foot`, .08));
+    }
+    const geometry = measureBodyGeometry(source, rig.humanoid, rig.getProfile(), reflect);
+    expect(geometry.legBoxes).toBeDefined();
+    for (const pair of geometry.legBoxes!) for (const shape of pair) {
+      expect(shape.halfExtents[0]).toBeLessThan(.06);
+      expect(shape.halfExtents[2]).toBeLessThan(.06);
+      const center = new Vector3(...shape.center);
+      expect(Math.hypot(center.x, center.z)).toBeCloseTo(.08, 5);
+    }
+    expect(geometry.legRadii![0][0]).toBeGreaterThan(.11);
+    expect(() => validateBodyGeometry(geometry)).not.toThrow();
+    const invalidFrame = structuredClone(geometry); invalidFrame.legRestFrames![0][1] = [0, 0, 0, .5];
+    expect(() => validateBodyGeometry(invalidFrame)).toThrow();
+    invalidFrame.legRestFrames![0][1] = [0, NaN, 0, 1];
+    expect(() => validateBodyGeometry(invalidFrame)).toThrow();
+    rig.dispose();
+  });
+  it('transports measured off-axis leg frames with the actual skin bone swing', () => {
+    const rig = new NativeHumanoidRigAdapter(), source = new Group();
+    rig.humanoid.resetNormalizedPose(); rig.humanoid.update(); rig.root.updateMatrixWorld(true);
+    const names = (['left', 'right'] as const).flatMap(side => [[`${side}UpperLeg`, `${side}LowerLeg`], [`${side}LowerLeg`, `${side}Foot`]] as const);
+    for (const [name, next] of names) source.add(authoredLegSkin(rig, .035, name, next, .08));
+    const profile = rig.getProfile(), geometry = measureBodyGeometry(source, rig.humanoid, profile, reflect);
+    expect(geometry.legRestFrames).toBeDefined();
+    const samples = names.map(([name], index) => {
+      const mesh = (source.children[index] as Group).children[0] as SkinnedMesh;
+      mesh.skeleton.update();
+      const origin = reflect(rig.humanoid.getRawBoneNode(name)!.getWorldPosition(new Vector3()));
+      const frame = new Quaternion(...geometry.legRestFrames![Math.floor(index / 2)][index % 2]);
+      const locals = [0, 33, 99, 177].map(i => {
+        const point = new Vector3(); mesh.getVertexPosition(i, point); reflect(point.applyMatrix4(mesh.matrixWorld));
+        return { i, local: point.sub(origin).applyQuaternion(frame.clone().invert()) };
+      });
+      return { mesh, frame, locals };
+    });
+    const pose = createRestRigPose(profile); rig.applyPose(pose);
+    const bodyRight = new Vector3(...profile.roots[3]).sub(new Vector3(...profile.roots[2])).normalize();
+    let oldFrameError = 0;
+    names.forEach(([name, next], index) => {
+      const { mesh, frame, locals } = samples[index]; mesh.skeleton.update();
+      const origin = reflect(rig.humanoid.getRawBoneNode(name)!.getWorldPosition(new Vector3()));
+      const direction = reflect(rig.humanoid.getRawBoneNode(next)!.getWorldPosition(new Vector3())).sub(origin).normalize();
+      const swing = new Quaternion().setFromUnitVectors(new Vector3(0, 1, 0).applyQuaternion(frame), direction);
+      const posedFrame = swing.multiply(frame);
+      const oldX = bodyRight.clone().addScaledVector(direction, -bodyRight.dot(direction)).normalize();
+      const oldZ = oldX.clone().cross(direction);
+      for (const { i, local } of locals) {
+        const actual = new Vector3(); mesh.getVertexPosition(i, actual); reflect(actual.applyMatrix4(mesh.matrixWorld));
+        const predicted = local.clone().applyQuaternion(posedFrame).add(origin);
+        expect(predicted.distanceTo(actual)).toBeLessThan(1e-6);
+        const old = origin.clone().addScaledVector(oldX, local.x).addScaledVector(direction, local.y).addScaledVector(oldZ, local.z);
+        oldFrameError = Math.max(oldFrameError, old.distanceTo(actual));
+      }
+    });
+    expect(oldFrameError).toBeGreaterThan(.002);
+    expect(() => validateBodyGeometry(geometry)).not.toThrow(); rig.dispose();
+  });
+  it('ignores unreferenced shared-buffer vertices and honors the visible draw range', () => {
+    const rig = new NativeHumanoidRigAdapter(), data = authoredSkin(rig, .08);
+    const narrow = measureBodyGeometry(data.source, rig.humanoid, rig.getProfile(), reflect);
+    // A second outfit can share an attribute buffer without being drawn by this
+    // primitive. Its indices exist, but are outside the active draw range.
+    const positions = data.mesh.geometry.getAttribute('position');
+    for (let i = 320; i < positions.count; i++) {
+      positions.setXYZ(i, .4, narrow.torso.center[1], .4);
+      data.mesh.geometry.getAttribute('skinIndex').setX(i, 0);
+    }
+    data.mesh.geometry.setIndex(Array.from({ length: positions.count }, (_, i) => i));
+    data.mesh.geometry.setDrawRange(0, 320);
+    expect(measureBodyGeometry(data.source, rig.humanoid, rig.getProfile(), reflect)).toEqual(narrow);
+    data.mesh.geometry.setIndex(Array.from({ length: 320 }, (_, i) => i));
+    data.mesh.geometry.setDrawRange(0, Infinity);
+    expect(measureBodyGeometry(data.source, rig.humanoid, rig.getProfile(), reflect)).toEqual(narrow);
+    rig.dispose();
+  });
   it('measures torso depth from skin geometry and ignores head-weighted decoration without avatar names', () => {
     const rig = new NativeHumanoidRigAdapter(), thin = authoredSkin(rig, .08), thick = authoredSkin(rig, .16);
     const a = measureBodyGeometry(thin.source, rig.humanoid, rig.getProfile(), reflect);
@@ -130,6 +244,11 @@ describe('semantic sampled body geometry', () => {
     reject(p => { p.torso.center[2] = Infinity; });
     reject(p => { p.armRadii[1][0] = -.1; });
     reject(p => { p.handRadii[0] = 1; });
+    reject(p => { p.legRadii = [[NaN, .03], [.04, .03]]; });
+    reject(p => { p.footRadii = [.04, .26]; });
+    reject(p => { p.footBoxes = [{ center: [0, Infinity, 0], halfExtents: [.03, .02, .1] }, { center: [0, 0, 0], halfExtents: [.03, .02, .1] }]; });
+    reject(p => { p.legBoxes = [[{ center: [0, .1, 0], halfExtents: [.03, .1, -.03] }, { center: [0, .1, 0], halfExtents: [.03, .1, .03] }], [{ center: [0, .1, 0], halfExtents: [.03, .1, .03] }, { center: [0, .1, 0], halfExtents: [.03, .1, .03] }]]; });
+    reject(p => { p.legRestFrames = [[[0, 0, 0, 1], [0, 0, 0, 1]], [[0, 0, 0, 1], [0, 0, 0, 1]]]; });
     reject(p => { p.handCenters = [[.5, .5, .5], [0, 0, 0]]; });
     reject(p => { p.handCapsules = [{ start: [0, 0, 0], end: [0, 0, .1], radius: NaN }, { start: [0, 0, 0], end: [0, 0, .1], radius: .02 }]; });
     reject(p => { p.sampleCount = 1.5; });

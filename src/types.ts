@@ -5,6 +5,7 @@ export type Quat = [number, number, number, number];
 /** Numeric Rust contract. Geometry is reflected only at the native VRM adapter boundary. */
 export interface HandControlFrame { forearm: Vec3; palm: Vec3; desiredPalm: Vec3; }
 /** Bounded sampled envelopes, never a skin/clothing collision certificate. */
+export interface BodyBox { center: Vec3; halfExtents: Vec3; }
 export interface BodyGeometry {
   version: 1;
   source: 'mesh-estimate' | 'skeleton-fallback';
@@ -12,6 +13,15 @@ export interface BodyGeometry {
   /** LH/RH, each upper arm and forearm radius, in metres. */
   armRadii: [[number, number], [number, number]];
   handRadii: [number, number];
+  /** Optional LF/RF, thigh and shin radii; older profiles use segment proportions. */
+  legRadii?: [[number, number], [number, number]];
+  footRadii?: [number, number];
+  /** Offset mesh envelopes in segment frames, paired LF/RF and thigh/shin. */
+  legBoxes?: [[BodyBox, BodyBox], [BodyBox, BodyBox]];
+  /** Measured local-box → rest-world frames; transport with the leg's minimum swing. */
+  legRestFrames?: [[Quat, Quat], [Quat, Quat]];
+  /** Offset footwear from ankle in the neutral tool frame. */
+  footBoxes?: [BodyBox, BodyBox];
   /** Optional offsets from wrist to the sampled hand sphere, in tool frame. */
   handCenters?: [Vec3, Vec3];
   handCapsules?: [{ start: Vec3; end: Vec3; radius: number }, { start: Vec3; end: Vec3; radius: number }];
@@ -36,7 +46,14 @@ export interface KitCapabilities {
   requiredPairsAvailable: boolean; unresolvedRequiredPairs: string[];
   pairs: { leftPieceId: string; rightPieceId: string; status: 'available' | 'not-found' | 'unmeasured' }[];
 }
-export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; capabilities?: KitCapabilities; searchCandidates?: number; searchLimitReached?: boolean; seatOffset?: Vec3; searchFailures?: {stage: string; pieceId: string; branches: number}[]; }
+export interface KitFitProposal {
+  kit: KitPiece[]; scale: number; translation: Vec3;
+  pieceAdjustments: {pieceId: string; translation: Vec3}[];
+  unreachablePieceIds: string[]; clearancePieceIds?: string[]; layoutViolations?: string[];
+  complete: boolean; capabilities?: KitCapabilities;
+  searchCandidates?: number; searchLimitReached?: boolean;
+  seatOffset?: Vec3; searchFailures?: {stage: string; pieceId: string; branches: number}[];
+}
 /** Measured body bounds and playing surface, relative to the piece's contact.
  * Radius edits scale every offset/extent by radius / referenceRadius. */
 export interface PieceGeometry {
@@ -54,10 +71,10 @@ export interface KitGeometry {
   mechanisms?: EquipmentMechanism[];
   bodies: { pieceId: string; center: Vec3; halfExtents: Vec3 }[];
   supports: { pieceId: string; start: Vec3; end: Vec3; radius: number; role?: string }[];
-  pedals: { pieceId: string; kind: 'board' | 'base'; center: Vec3; halfExtents: Vec3 }[];
+  pedals: { pieceId: string; kind: 'board' | 'base'; center: Vec3; halfExtents: Vec3; rotation?: Quat }[];
   unresolvedPieceIds: string[];
 }
-export interface KitPiece { id: PieceId; instrument?: Instrument; label: string; position: Vec3; radius: number; geometry?: PieceGeometry; }
+export interface KitPiece { id: PieceId; instrument?: Instrument; label: string; position: Vec3; radius: number; geometry?: PieceGeometry; pedalForward?: Vec3; standRotation?: number; mount?: { kind: 'standClamp'; supportPieceId: PieceId }; }
 export const pieceInstrument = (piece: KitPiece): Instrument => piece.instrument ?? (piece.id === 'crashRight' ? 'crash' : piece.id);
 export const hitPieceId = (hit: Hit): PieceId => hit.pieceId ?? hit.instrument;
 export interface Hit { pieceId?: PieceId; articulation?: string; sourceEventId?: string; eventIndex?: number; timeUs?: number; id: number; time: number; tick: number; track: number; channel: number; note: number; velocity: number; instrument: Instrument; limb: number | null; target: Vec3; }

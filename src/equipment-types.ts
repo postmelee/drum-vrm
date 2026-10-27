@@ -1,4 +1,4 @@
-import type { Vec3 } from './types';
+import type { Quat, Vec3 } from './types';
 
 /** Numeric mechanical frame from the same Rust geometry used for collision. */
 export interface EquipmentMechanism {
@@ -11,4 +11,5 @@ export interface EquipmentMechanism {
   restAngle: number;
   maxOpening: number;
   motionAxis: Vec3;
+  boardRotation?: Quat;
 }

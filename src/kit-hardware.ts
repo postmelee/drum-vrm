@@ -72,6 +72,7 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], g
   for (const [index, pedal] of geometry.pedals.entries()) {
     if (canonical(pedal.pieceId) !== piece.id) continue;
     const mesh = add(new THREE.BoxGeometry(...pedal.halfExtents.map(value => value * 2) as Vec3), dark, pedal.center);
+    if (pedal.rotation) mesh.quaternion.fromArray(pedal.rotation);
     mesh.name = pedal.kind === 'board' ? pedal.pieceId === 'kick' ? 'contactSurface' : 'pedalContactSurface' : `pedalBase/${index}`;
     mesh.userData.pieceId = pedal.pieceId; mesh.userData.hitResponseRole = pedal.kind === 'board' ? 'pedal' : 'hardware';
     mesh.userData.fixedContact = true; mesh.userData.box = structuredClone(pedal);
@@ -81,7 +82,8 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], g
     const board = root.children.find(node => node.userData.box?.kind === 'board');
     if (board) {
       const pivot = new THREE.Group(); pivot.name = `${piece.id}/FootboardPivot`; pivot.userData.mechanismRole = 'footboardPivot'; pivot.userData.hitResponseRole = 'hardware';
-      pivot.position.set(...mechanism.pivot); root.add(pivot); root.updateMatrixWorld(true); pivot.attach(board);
+      pivot.position.set(...mechanism.pivot); if (mechanism.boardRotation) pivot.quaternion.fromArray(mechanism.boardRotation);
+      root.add(pivot); root.updateMatrixWorld(true); pivot.attach(board);
     }
     if (mechanism.kind === 'kick') {
       const center = new THREE.Vector3(...mechanism.contact).addScaledVector(new THREE.Vector3(...mechanism.normal), .028);
@@ -96,7 +98,7 @@ export function createPieceHardware(piece: KitPiece, kit: readonly KitPiece[], g
     }
   }
   root.userData.supportAssembly = pieceInstrument(piece) === 'tomHigh' || pieceInstrument(piece) === 'tomMid' ? 'bass-mounted-tom'
-    : pieceInstrument(piece) === 'tomLow' ? 'floor-tom-legs' : pieceInstrument(piece) === 'hihat' ? 'direct-hihat'
+    : pieceInstrument(piece) === 'tomLow' ? piece.mount ? 'stand-mounted-tom' : 'floor-tom-legs' : pieceInstrument(piece) === 'hihat' ? 'direct-hihat'
       : pieceInstrument(piece) === 'snare' ? 'snare-basket' : pieceInstrument(piece) === 'kick' ? 'bass-pedal' : 'boom-cymbal';
   batchFixedSupports(root);
   const usedMaterials = new Set<THREE.Material>();

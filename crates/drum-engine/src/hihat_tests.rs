@@ -190,14 +190,16 @@ fn literal_closure_bounds_the_next_release_and_keeps_its_foot_contact() {
 fn paired_close_bounds_later_literal_preparation_without_a_pose_jump() {
     let plan = plan(&[&[0, 0x90, 46, 80], &[30, 0x90, 44, 60], &[66, 0x90, 44, 80]]);
     let profile = crate::rig::RigProfile::primitive();
+    let neutral_foot = profile.contact_rotations[2];
     let motion = crate::motion::Motion::with_profile(plan, profile).unwrap();
-    let pedal = motion
+    let pedal_piece = motion
         .plan
         .kit
         .iter()
         .find(|piece| piece.id == "pedalHat")
-        .unwrap()
-        .position;
+        .unwrap();
+    let pedal = pedal_piece.position;
+    let closed_rotation = crate::equipment::pedal_rotation(pedal_piece, neutral_foot, 0.);
     let times = [0.03125 - 1e-9, 0.03125, 0.03125 + 1e-9, 0.065625, 0.1];
     let poses: Vec<_> = times
         .iter()
@@ -209,8 +211,11 @@ fn paired_close_bounds_later_literal_preparation_without_a_pose_jump() {
         for axis in 0..3 {
             assert!((pose[33 + axis] as f64 - pedal[axis]).abs() < 1e-6);
         }
-        assert!(pose[65].abs() < 1e-6);
-        assert!((pose[68] - 1.0).abs() < 1e-6);
+        // Flat pedal pitch retains the accepted board's yaw; it does not reset
+        // the foot to world identity at a paired-control boundary.
+        for component in 0..4 {
+            assert!((pose[65 + component] as f64 - closed_rotation[component]).abs() < 1e-6);
+        }
     }
     assert!(poses[3][34] > pedal[1] as f32);
     for axis in 0..3 {
