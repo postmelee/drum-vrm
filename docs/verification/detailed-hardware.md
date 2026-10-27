@@ -47,6 +47,14 @@ The local final WASM SHA256 is
 Clippy with warnings denied, TypeScript and production web build pass. Generated
 notices retain the existing dependencies/assets; no manufacturer asset is bundled.
 
+The first PR CI run timed out in three browser-demo tests (60 s each). Those
+fixtures repeatedly fitted absent geometry instead of the measured Studio bodies
+used by the app. They now measure the actual models and reuse a cloned fit keyed
+by the complete profile and kit. Contact/source/assignment assertions remain, the
+positive hand-override case uses a reachable solo-roll event, and the 60 s limit
+is unchanged. The six demo tests pass locally in 20.65 s after this correction;
+the native absent-geometry fallback retains its separate Rust regression coverage.
+
 The fresh measured Studio kit has no unresolved hardware. Independent geometry
 checks on all three fitted public samples found no unrelated support crossings
 or support/body/pedal clearance violations. All 15 tom suspension brackets reach
