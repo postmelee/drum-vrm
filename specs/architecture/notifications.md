@@ -7,6 +7,11 @@ owns implementation scope and acceptance. The [interactive prototype](../../docs
 demonstrates placement, copy and motion with synthetic states; it does not import
 files or run the engine. This extends the focused-inspector intent of #44.
 
+The prototype's English / 한국어 button translates menus, current notifications,
+history and accessible labels in place. `?lang=en` / `?lang=ko` links select the
+initial language. Switching preserves active cards, remaining time, theme and
+layout without replaying announcements; the specification link follows the language.
+
 ## Information belongs in one place
 
 | Information | Destination | Example |

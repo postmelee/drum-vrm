@@ -47,3 +47,16 @@ visually checked. DOM-computed light values were background `rgb(245,245,245)`,
 action `rgb(50,116,200)`, lower padding `8px`, and radius `8px`. Documentation,
 diff and prototype JavaScript syntax checks passed. The updated local screenshot
 is `/private/tmp/drum-vrm-toast-design-refined.png`. No production source changed.
+
+## Bilingual prototype
+
+Owner follow-up on 2026-10-27 adds an English / 한국어 switch and `lang=en|ko`
+URL selection to the prototype. Visible copy, history and accessible labels update
+in place, preserving card DOM, timers, theme and layout. Existing announcements
+are not replayed; each retains its original language attribute.
+
+Browser checks covered both switch directions, English three-card text, a dark
+390 px simulated preview, history translation, and switching during progress then
+receiving completion in the newly selected language. Reloading the English URL
+retained English. Syntax, documentation and diff checks passed. The English review
+screenshot is local at `/private/tmp/drum-vrm-toast-design-en.png`.

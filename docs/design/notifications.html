@@ -9,7 +9,7 @@
 @keyframes enter{from{opacity:0;transform:translateY(-8px);box-shadow:none}to{opacity:1;transform:translateY(0);box-shadow:var(--shadow)}}@keyframes exit{to{opacity:0;transform:translateY(-4px)}}@keyframes spin{to{transform:rotate(360deg)}}
 body.dark{--bg:#000;--surface:#141414;--control:#242424;--border:#363636;--text:#eee;--muted:#a2a2a2;--active:#26394f;--action:color-mix(in srgb,var(--focus) 65%,var(--text));--shadow:0 8px 24px #0006,0 2px 6px #0004;color-scheme:dark;background:var(--bg);color:var(--text)}body.dark .toast.warning .severity{color:#edbd71}body.dark .toast.error .severity{color:color-mix(in srgb,#cf4335 65%,var(--text))}.preview.narrow{width:min(390px,100%)}.narrow .toolbar{height:96px;flex-wrap:wrap;padding:10px 12px;gap:8px}.narrow .menu{width:100%;margin:0;justify-content:space-between}.narrow .menu button{padding:4px 7px}.narrow .clock{font-size:10px}.narrow .inspector{position:absolute;right:0;top:40px;bottom:0;width:260px;z-index:1;overflow:auto}.narrow .canvas{min-height:390px}.narrow .tray{right:12px;top:12px;width:calc(100% - 24px);z-index:3}.narrow .toast~.toast{display:none}.narrow .toast .close{width:44px;height:44px}.narrow .toast{grid-template-columns:18px minmax(0,1fr) 38px}.narrow .toast .action{min-height:44px}.narrow .brand{margin-right:auto}.narrow .views{gap:0}.narrow .history{z-index:6}.reduce .toast,.reduce .toast.leaving{animation-duration:80ms;transform:none}.reduce .spinner{animation:none}.reduce .toast{animation-name:fade-in}.reduce .toast.leaving{animation-name:fade-out}@keyframes fade-in{from{opacity:0}to{opacity:1}}@keyframes fade-out{to{opacity:0}}@media(prefers-reduced-motion:reduce){.toast{animation:fade-in 80ms}.toast.leaving{animation:fade-out 80ms}.spinner{animation:none}}@media(max-width:600px){body{padding:16px 10px}.header{align-items:start}.header p{font-size:12px}.header h1{font-size:19px}.design-controls{gap:6px}.footnote{font-size:10px}}
 </style>
-<div class="header"><div><div class="eyebrow">DRUM VRM / INTERACTION STUDY 01</div><h1>조작은 메뉴에, 결과는 알림으로.</h1><p>토스트 설계 시안 · 실제 파일을 처리하지 않습니다.</p></div><button id="theme">어두운 테마</button></div>
+<div class="header"><div><div class="eyebrow">DRUM VRM / INTERACTION STUDY 01</div><h1>조작은 메뉴에, 결과는 알림으로.</h1><p>토스트 설계 시안 · 실제 파일을 처리하지 않습니다.</p></div><div class="row"><button id="language" aria-label="Switch to English">English</button><button id="theme">어두운 테마</button></div></div>
 <main class="preview" id="preview">
   <div class="toolbar"><span class="brand">Drum VRM</span><div class="transport"><button disabled aria-label="처음으로">↤</button><button disabled aria-label="재생">▷</button><span class="clock">00:00 / 00:12</span></div><nav class="menu"><button disabled>캐릭터</button><button disabled>드럼</button><button class="active" id="menu-toggle">파일 · 오디오</button><button id="analysis">분석</button><button id="history-toggle" aria-label="최근 알림" title="최근 알림"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></button></nav></div>
   <div class="work">
@@ -27,6 +27,98 @@ body.dark{--bg:#000;--surface:#141414;--control:#242424;--border:#363636;--text:
 <script>
 const $=id=>document.getElementById(id), entries=[], timers=new Map();let generation=0;
 const examples={success:{kind:'success',icon:'✓',title:'MIDI를 불러왔습니다',detail:'Songsterr 매핑 · 1,513개 타격',action:'MIDI 설정',duration:4000},warning:{kind:'warning',icon:'!',title:'드럼 매핑을 확인해 주세요',detail:'General MIDI로 임시 설정했습니다',action:'매핑 선택',duration:0},error:{kind:'error',icon:'!',title:'MIDI를 읽지 못했습니다',detail:'다른 .mid 파일을 선택해 주세요',action:'파일 선택',duration:0},progress:{kind:'progress',icon:'',title:'연주 준비 중…',detail:'드럼 음표와 동작을 준비하고 있습니다',duration:0},info:{kind:'info',icon:'i',title:'WAV를 적용했습니다',duration:5000}};
+const translations={
+  "조작은 메뉴에, 결과는 알림으로.": "Controls in menus. Results in notifications.",
+  "토스트 설계 시안 · 실제 파일을 처리하지 않습니다.": "Notification design study · No files are processed.",
+  "어두운 테마": "Dark theme",
+  "밝은 테마": "Light theme",
+  "처음으로": "Reset",
+  "재생": "Play",
+  "캐릭터": "Character",
+  "드럼": "Drums",
+  "파일 · 오디오": "Files / Audio",
+  "분석": "Analysis",
+  "최근 알림": "Recent notifications",
+  "준비 완료": "Ready",
+  "연주": "Stage",
+  "정면": "Front",
+  "위": "Top",
+  "연주자": "Player",
+  "알림": "Notifications",
+  "프로젝트": "Project",
+  "저장": "Save",
+  "열기…": "Open…",
+  "12초 · 1개 트랙": "12 seconds · 1 track",
+  "MIDI 불러오기…": "Import MIDI…",
+  "MIDI 설정": "MIDI settings",
+  "드럼 음원 매핑": "Drum sound mapping",
+  "MIDI 채널": "MIDI channel",
+  "10 · 드럼": "10 · Drums",
+  "연주 오디오": "Performance audio",
+  "합성 드럼": "Synthesized drums",
+  "사용 중": "Active",
+  "WAV 불러오기…": "Load WAV…",
+  "사용 도움말": "Help",
+  "설정의 의미와 형식 제한은 필요할 때 여기에서 확인합니다.": "Find setting definitions and format limits here when needed.",
+  "최근 알림 닫기": "Close recent notifications",
+  "시안의 세션 기록 · 작업 동작은 재실행하지 않습니다.": "Study session history · Actions are not replayed.",
+  "확대 ━━━○━━": "Zoom ━━━○━━",
+  "하이햇": "Hi-hat",
+  "스네어": "Snare",
+  "킥": "Kick",
+  "탐": "Tom",
+  "알림 미리보기": "Preview notifications",
+  "성공": "Success",
+  "확인 필요": "Needs review",
+  "실패": "Error",
+  "진행 → 완료": "Progress → Done",
+  "3개 알림": "Three notifications",
+  "고정 보기": "Keep visible",
+  "좁은 화면": "Narrow layout",
+  "동작 줄이기": "Reduced motion",
+  "고정 보기를 해제하면 성공은 4초 후 닫힙니다. 마우스·포커스가 카드 안에 있으면 멈춥니다.": "Turn off Keep visible to dismiss success after 4 seconds. Hover or focus pauses the timer.",
+  "범위: 배치·테마·문구·기본 수명과 모션 시안. 전체 대기열·실제 작업 취소·접근성 인증은 구현 검증 대상입니다.": "Scope: placement, themes, copy, basic lifecycle and motion. Full queue behavior, real cancellation and accessibility require implementation validation.",
+  "설계 명세": "Design specification",
+  "MIDI를 불러왔습니다": "MIDI loaded",
+  "Songsterr 매핑 · 1,513개 타격": "Songsterr mapping · 1,513 hits",
+  "드럼 매핑을 확인해 주세요": "Review drum mapping",
+  "General MIDI로 임시 설정했습니다": "General MIDI selected provisionally",
+  "매핑 선택": "Choose mapping",
+  "MIDI를 읽지 못했습니다": "Could not read MIDI",
+  "다른 .mid 파일을 선택해 주세요": "Choose another .mid file",
+  "파일 선택": "Choose file",
+  "연주 준비 중…": "Preparing performance…",
+  "드럼 음표와 동작을 준비하고 있습니다": "Preparing drum notes and motion",
+  "WAV를 적용했습니다": "WAV applied",
+  "알림 닫기": "Dismiss notification",
+  "연주 준비 완료 · 동작 2개 확인": "Performance ready · Review 2 motions",
+  "Songsterr 매핑 적용": "Songsterr mapping applied"
+};
+let language=new URLSearchParams(location.search).get('lang')==='en'?'en':'ko';
+const textSources=new WeakMap(),attributeSources=new WeakMap();
+const translated=value=>language==='en'?(translations[value]??value):value;
+function localize(root=document.body){
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  while(walker.nextNode()){
+    const node=walker.currentNode;
+    if(node.parentElement?.closest('script,style,#announcer,#error-announcer'))continue;
+    const source=textSources.get(node)??node.textContent;
+    if(translations[source.trim()]){textSources.set(node,source);node.textContent=source.replace(source.trim(),translated(source.trim()))}
+  }
+  for(const node of [root,...root.querySelectorAll('[aria-label],[title]')]){
+    let sources=attributeSources.get(node);if(!sources){sources={};attributeSources.set(node,sources)}
+    for(const key of ['aria-label','title']){const source=sources[key]??node.getAttribute(key);if(translations[source]){sources[key]=source;node.setAttribute(key,translated(source))}}
+  }
+}
+function setLanguage(next){
+  language=next;document.documentElement.lang=language;
+  document.title=language==='en'?'Drum VRM · Notification design study':'Drum VRM · 알림 설계 시안';
+  localize();$('language').textContent=language==='en'?'한국어':'English';
+  $('language').setAttribute('aria-label',language==='en'?'한국어로 전환':'Switch to English');
+  document.querySelector('.footnote a').setAttribute('href','../../specs/architecture/notifications'+(language==='ko'?'.ko':'')+'.md');
+  const url=new URL(location.href);url.searchParams.set('lang',language);history.replaceState(null,'',url);
+}
+$('language').onclick=()=>setLanguage(language==='en'?'ko':'en');
 function statusIcon(kind){
   const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
   for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.75','stroke-linecap':'round','stroke-linejoin':'round'}))svg.setAttribute(key,value);
@@ -38,12 +130,12 @@ function tick(state){clearTimeout(state.timer);state.timer=null;if(!state.remain
 function pause(state){if(state.timer){clearTimeout(state.timer);state.timer=null;state.remaining=Math.max(1,state.remaining-(performance.now()-state.started))}}
 function dismiss(node){const state=timers.get(node);if(!state)return;clearTimeout(state.timer);timers.delete(node);if(node.contains(document.activeElement))$('history-toggle').focus();node.classList.add('leaving');node.addEventListener('animationend',()=>node.remove(),{once:true})}
 function record(data){if(data.kind==='progress')return;entries.unshift(data);entries.splice(20);renderHistory()}
-function renderHistory(){$('history-list').replaceChildren(...entries.map(data=>{const li=document.createElement('li');li.textContent=data.title;if(data.detail){const small=document.createElement('small');small.textContent=data.detail;li.append(small)}return li}))}
+function renderHistory(){$('history-list').replaceChildren(...entries.map(data=>{const li=document.createElement('li');li.textContent=data.title;if(data.detail){const small=document.createElement('small');small.textContent=data.detail;li.append(small)}return li}));localize($('history-list'))}
 function reset(){generation++;for(const state of timers.values())clearTimeout(state.timer);timers.clear();$('tray').replaceChildren();return generation}
-function show(data,existing){const node=existing||document.createElement('article');if(existing){const old=timers.get(node);if(old)clearTimeout(old.timer)}node.className='toast '+data.kind;node.replaceChildren();node.setAttribute('aria-label',data.title);const icon=document.createElement('span');icon.className='severity';icon.setAttribute('aria-hidden','true');if(data.kind==='progress'){const spinner=document.createElement('span');spinner.className='spinner';icon.append(spinner)}else icon.append(statusIcon(data.kind));const content=document.createElement('div'),title=document.createElement('h3');title.textContent=data.title;content.append(title);if(data.detail){const p=document.createElement('p');p.textContent=data.detail;content.append(p)}if(data.action){const action=document.createElement('button');action.className='action';action.textContent=data.action;action.onclick=()=>{$('inspector').hidden=false;if(data.kind==='error'){$('import-demo').focus()}else{$('settings').open=true;$('mapping').value=data.kind==='warning'?'General MIDI':'Songsterr Downloader';$('mapping').focus()}dismiss(node)};content.append(action)}const close=document.createElement('button');close.className='close';close.textContent='×';close.setAttribute('aria-label','알림 닫기');close.onclick=()=>dismiss(node);node.append(icon,content,close);if(!existing)$('tray').append(node);else node.style.animation='none';const state={node,remaining:data.duration,timer:null,started:0};timers.set(node,state);node.onpointerenter=()=>pause(state);node.onpointerleave=()=>tick(state);node.onfocusin=()=>pause(state);node.onfocusout=()=>queueMicrotask(()=>tick(state));node.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();dismiss(node)}};tick(state);record(data);$(data.kind==='error'?'error-announcer':'announcer').textContent=data.title+(data.detail?'. '+data.detail:'');return node}
+function show(data,existing){const node=existing||document.createElement('article');if(existing){const old=timers.get(node);if(old)clearTimeout(old.timer)}node.className='toast '+data.kind;node.replaceChildren();attributeSources.delete(node);node.setAttribute('aria-label',data.title);const icon=document.createElement('span');icon.className='severity';icon.setAttribute('aria-hidden','true');if(data.kind==='progress'){const spinner=document.createElement('span');spinner.className='spinner';icon.append(spinner)}else icon.append(statusIcon(data.kind));const content=document.createElement('div'),title=document.createElement('h3');title.textContent=data.title;content.append(title);if(data.detail){const p=document.createElement('p');p.textContent=data.detail;content.append(p)}if(data.action){const action=document.createElement('button');action.className='action';action.textContent=data.action;action.onclick=()=>{$('inspector').hidden=false;if(data.kind==='error'){$('import-demo').focus()}else{$('settings').open=true;$('mapping').value=data.kind==='warning'?'General MIDI':'Songsterr Downloader';$('mapping').focus()}dismiss(node)};content.append(action)}const close=document.createElement('button');close.className='close';close.textContent='×';close.setAttribute('aria-label','알림 닫기');close.onclick=()=>dismiss(node);node.append(icon,content,close);if(!existing)$('tray').append(node);else node.style.animation='none';const state={node,remaining:data.duration,timer:null,started:0};timers.set(node,state);node.onpointerenter=()=>pause(state);node.onpointerleave=()=>tick(state);node.onfocusin=()=>pause(state);node.onfocusout=()=>queueMicrotask(()=>tick(state));node.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();dismiss(node)}};tick(state);record(data);localize(node);const announcer=$(data.kind==='error'?'error-announcer':'announcer');announcer.lang=language;announcer.textContent=translated(data.title)+(data.detail?'. '+translated(data.detail):'');return node}
 function sample(kind){const current=reset(),node=show(examples[kind]);if(kind==='warning')$('mapping').value='General MIDI';if(kind==='progress')setTimeout(()=>{if(generation!==current)return;if(node.isConnected)show(examples.success,node);else show(examples.success)},2200)}
 document.querySelectorAll('[data-example]').forEach(button=>button.onclick=()=>sample(button.dataset.example));$('import-demo').onclick=()=>sample('progress');$('stack').onclick=()=>{reset();show(examples.warning);show(examples.error);show(examples.success)};
-$('hold').onchange=()=>timers.forEach(s=>{$('hold').checked?pause(s):tick(s)});document.addEventListener('visibilitychange',()=>timers.forEach(s=>{document.hidden?pause(s):tick(s)}));$('theme').onclick=()=>{document.body.classList.toggle('dark');$('theme').textContent=document.body.classList.contains('dark')?'밝은 테마':'어두운 테마'};$('narrow').onchange=()=>{$('preview').classList.toggle('narrow',$('narrow').checked);reset();sample('success')};$('reduce').onchange=()=>document.body.classList.toggle('reduce',$('reduce').checked);$('menu-toggle').onclick=()=>{$('inspector').hidden=!$('inspector').hidden};$('history-toggle').onclick=()=>{$('history').hidden=!$('history').hidden;if(!$('history').hidden)$('history-close').focus()};$('history-close').onclick=()=>{$('history').hidden=true;$('history-toggle').focus()};$('analysis').onclick=()=>{reset();show({kind:'warning',icon:'!',title:'연주 준비 완료 · 동작 2개 확인',detail:'Songsterr 매핑 적용',duration:8000})};
-for(let row=0;row<4;row++)for(let column=0;column<20;column++){if((column+row)%3===0)continue;const note=document.createElement('i');note.style.cssText=`top:${row*27+10}px;left:${column*4.7+1}%;width:${row===0?1.2:2.1}%`; $('notes').append(note)}if(innerWidth<600){$('narrow').checked=true;$('preview').classList.add('narrow')}sample('success');
+$('hold').onchange=()=>timers.forEach(s=>{$('hold').checked?pause(s):tick(s)});document.addEventListener('visibilitychange',()=>timers.forEach(s=>{document.hidden?pause(s):tick(s)}));$('theme').onclick=()=>{document.body.classList.toggle('dark');$('theme').textContent=document.body.classList.contains('dark')?'밝은 테마':'어두운 테마';localize($('theme'))};$('narrow').onchange=()=>{$('preview').classList.toggle('narrow',$('narrow').checked);reset();sample('success')};$('reduce').onchange=()=>document.body.classList.toggle('reduce',$('reduce').checked);$('menu-toggle').onclick=()=>{$('inspector').hidden=!$('inspector').hidden};$('history-toggle').onclick=()=>{$('history').hidden=!$('history').hidden;if(!$('history').hidden)$('history-close').focus()};$('history-close').onclick=()=>{$('history').hidden=true;$('history-toggle').focus()};$('analysis').onclick=()=>{reset();show({kind:'warning',icon:'!',title:'연주 준비 완료 · 동작 2개 확인',detail:'Songsterr 매핑 적용',duration:8000})};
+for(let row=0;row<4;row++)for(let column=0;column<20;column++){if((column+row)%3===0)continue;const note=document.createElement('i');note.style.cssText=`top:${row*27+10}px;left:${column*4.7+1}%;width:${row===0?1.2:2.1}%`; $('notes').append(note)}if(innerWidth<600){$('narrow').checked=true;$('preview').classList.add('narrow')}sample('success');setLanguage(language);
 </script>
 </html>
