@@ -5,13 +5,20 @@ own measured results and publication evidence.
 
 ## Current batch and next work
 
+- [#62](https://github.com/postmelee/drum-vrm/issues/62): review the proposed
+  [notification design](../specs/architecture/notifications.md) and
+  [interactive prototype](design/notifications.html). Implement the shared
+  notification center and migrate repeated inspector prose as a later increment.
+  AGENTS now requires concise controls, centralized feedback and preserved
+  accessibility/attribution. The prototype is not production behavior.
+
 - [#60](https://github.com/postmelee/drum-vrm/issues/60): Songsterr Downloader MIDI
   compatibility and automatic mapping comparison on new uploads are a separate
   import increment. Conflicting ties stay visibly provisional; manual edits and
   saved-project profiles are retained.
   See the [mapping contract](../specs/architecture/midi-interpretation.md#songsterr-downloader-compatibility)
   and [verification](verification/songsterr-downloader-mapping.md).
-  Review/integrate this increment separately from kit-layout work; it does not
+  Merged in [PR #61](https://github.com/postmelee/drum-vrm/pull/61); it does not
   add URL fetching or establish a public deployment.
 
 The detailed-hardware [PR #59](https://github.com/postmelee/drum-vrm/pull/59)

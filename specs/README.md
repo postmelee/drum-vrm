@@ -11,6 +11,7 @@ for the public app and quick start.
 | --- | --- |
 | Purpose and invariants | [Product requirements](requirements.md) |
 | Components and data flow | [Architecture overview](architecture/overview.md) |
+| Concise menus and unified feedback (proposed) | [Notification design](architecture/notifications.md) |
 | Source events, mapping and performer intent | [MIDI interpretation](architecture/midi-interpretation.md) |
 | Local save/reopen and source relinking | [Project format](architecture/project-format.md) |
 | Timing, assignment and pose interface | [Engine contract](architecture/engine-contract.md) |

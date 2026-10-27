@@ -12,6 +12,7 @@
 | [장비와 접촉](equipment-contact.ko.md) | 측정 본체·생성 하드웨어·연주 영역·스틱 전체 경로·카운트인 제스처 |
 | [오디오·출력](audio-export-contract.ko.md) | 곡·출력 시각, PCM, 재생 시계와 인코딩 |
 | [로컬 프로젝트 형식](project-format.ko.md) | 버전별 설정, 원본 근거, 동일 파일 연결과 복원 검증 |
+| [알림 (제안)](notifications.ko.md) | 간결한 메뉴 문구, 공통 토스트 배치·수명·모션·접근성 |
 
 상세 문서는 [체형·도구·키트 보정](calibration.ko.md),
 [휴머노이드 호환성](rig-compatibility.ko.md), [주법과 표현](performance-expression.ko.md),

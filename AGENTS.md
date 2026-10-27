@@ -21,6 +21,9 @@
 
 ## Engineering and provenance
 
+- Keep ordinary inspectors focused on controls and current values. Do not add paragraphs of mapping rationale, implementation disclaimers, candidate counts or repeated success/status messages beneath controls. Use the shared notification system for operation feedback, Analysis for evidence, and collapsed contextual help for reference material; follow the [notification design](specs/architecture/notifications.md). Until that system is implemented, do not introduce another local toast/status mechanism.
+- Retain visible field labels, units, concise actionable validation, unresolved-state badges and required attribution. Do not remove screen-reader descriptions to reduce visible copy. Every UI change must review notification duplication and both language layouts.
+
 - Rust owns MIDI interpretation and planning; WASM is the browser boundary; Three.js renders through `RigAdapter`. Keep `PerformancePlan` independent of scene object names.
 - Do not shift original MIDI hit times to conceal motion problems. Diagnose impossible hits. `evaluate_at(t)` must return the same primary pose regardless of playback/seek order.
 - Fit through semantic humanoid measurements and common numeric constraints, without avatar-name branches or stretching bones. Actual stick/sole-marker contact is not proof of natural posture or skin collision clearance.
