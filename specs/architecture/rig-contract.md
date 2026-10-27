@@ -6,7 +6,7 @@ For detailed reasoning, see [calibration](calibration.md) and [rig compatibility
 
 ## Semantic body boundary
 
-The built-in skeleton and VRM 0.0/1.0 imports share
+The built-in skeleton, VRM 0.0/1.0 and mapped FBX imports share
 [NormalizedHumanoidRigAdapter](../../src/rig-humanoid.ts). Measure semantic rest joints
 and actual segment lengths; do not branch animation on an avatar's name, model
 filename or creator. Source-specific drum extraction belongs in appearance adapters.
@@ -72,8 +72,7 @@ separate from proxy clearance; see [calibration](calibration.md).
 | Drum component | Self-contained static `.glb`, at most 25 MiB; body-only geometry expected |
 
 Only explicit `VRM.specVersion = "0.0"` or `VRMC_vrm.specVersion = "1.0"` is accepted; unknown versions and files containing both extensions are rejected. `.vroid` is an editing
-source, not an imported runtime model. Generic humanoid GLB/FBX mapping is not
-implemented. External resource references are rejected; metadata links are displayed
+source, not an imported runtime model. Generic humanoid GLB mapping is not implemented. FBX uses the separate boundary below. External resource references are rejected; metadata links are displayed
 without automatically fetching them. File metadata and source terms govern asset
 use, independent of the application's MIT license.
 
@@ -89,6 +88,48 @@ The inspection retains original metadata. VRM 0.0 uses `title`, `author`, `refer
 `otherPermissionUrl`, `licenseName` and `otherLicenseUrl`; no VRM 1.0 license defaults
 are applied. Missing/invalid metadata is reported without inventing permissions.
 Original strings and URLs are displayed as text and never executed or fetched.
+
+### FBX import
+
+[fbx-import.ts](../../src/fbx-import.ts), [fbx-config.ts](../../src/fbx-config.ts) and
+[fbx-rig.ts](../../src/fbx-rig.ts) own the binary FBX boundary. The pinned Three.js
+0.186.1 loader handles binary 7.4/7.5 here; ASCII and other versions are rejected.
+No new dependency or third-party model is bundled.
+
+| Resource | Limit / validation |
+| --- | --- |
+| FBX source | 50 MiB; bounded binary record offsets and safe integer IDs |
+| Binary structure | 100,000 records, depth 128, 100,000 properties per record, 256 texture objects and 128 material objects; model-parent cycles and multiple parents rejected |
+| Arrays | 4M entries per array, 16M aggregate entries, 128 MiB aggregate declared expansion; actual deflate output must match each declared size before loader allocation |
+| Loaded scene | 10,000 nodes, 1M mesh position vertices, 128 materials; imported cameras/lights removed |
+| Images | At most 64 selected PNG/JPEG companions totaling 50 MiB; selected and used embedded images share a 64-image / 64M-pixel budget, at most 4096 pixels per side |
+| Unit mapping | Finite metres per source unit in [0.000001, 10], suggested as `UnitScaleFactor / 100` (fallback 0.01); common measured-limb limits still apply |
+| Mapping identity | Known humanoid semantic names to child-index paths (at most 512 characters); no missing required, duplicate or invalid-ancestry assignments |
+
+All selected companion basenames must be distinct after NFC normalization and case
+folding. Referenced images resolve only to explicit local companions or embedded
+PNG/JPEG data; no external fetch is allowed. Repeated image references share a decoded source. Decoded textures and embedded blob
+URLs are disposed on failure/cancel/replacement. Manual base-color assignment is
+by stable material traversal index, uses sRGB and a white diffuse tint, and is
+saved with the original image identity. Other Phong/Lambert properties remain.
+This does not reconstruct authoring-tool toon/node graphs or layered materials.
+
+Conventional humanoid, Mixamo, suffix and Japanese bone names are suggestions,
+never model-specific rules. Ambiguous names remain unassigned. Validate the 15
+required bones and optional hierarchy before adopting. The rest head-to-hips and
+right-to-left upper-arm directions establish an orthonormal +Y/+X body basis;
+reject degenerate axes. A positive unit-scale/rotation wrapper is applied before
+`VRMHumanoid` captures rest transforms. Its normalized root remains under an
+identity scene. The shared solver receives only measured semantic geometry,
+retains segment lengths and drives the actual hand/foot sockets.
+
+Unmapped bones keep their local rest transforms and follow ancestors. FBX animation
+clips, MMD/Blender constraints, expressions and secondary-motion physics are not
+played. Head-descendant masking uses the same first-person helper; non-indexed
+triangles receive identity indices without changing UVs, skin weights or order.
+Complex auxiliary rigs can still deform differently from their source tool.
+The existing fit/adoption transaction preserves the active character on cancellation
+or failure. The [project contract](project-format.md) owns saved mappings/relinking.
 
 ### Bundled character selection
 

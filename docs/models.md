@@ -25,6 +25,8 @@ automatically insert credit into exported video. The app does not export avatar 
 
 ## Supported files
 
+The table below describes VRM. [Rigged FBX](#import-a-rigged-fbx) has a separate setup and resource boundary.
+
 | Property | Application limit |
 | --- | --- |
 | Character format | Self-contained VRM 0.0 or 1.0 `.vrm`, at most 50 MiB |
@@ -35,11 +37,11 @@ automatically insert credit into exported video. The app does not export avatar 
 
 Bone references must be valid and non-duplicated; the hierarchy cannot contain cycles or multiple parents. These are acceptance limits, not a promise that every device can comfortably render the largest accepted model. See the [rig input contract](../specs/architecture/rig-contract.md) for technical details.
 
-VRM 0.0 imports directly, with facing and legacy thumb names normalized before body fitting. Unknown versions and files declaring both VRM extensions are rejected. `.vroid` is an editing source, not the runtime import format. Generic character GLB, FBX, OBJ, BLEND and GLTF mapping is not supported. Static drum GLB replacement is a [separate workflow](calibration.md#replace-drum-bodies-while-keeping-hardware) with a 25 MiB limit.
+VRM 0.0 imports directly, with facing and legacy thumb names normalized before body fitting. Unknown versions and files declaring both VRM extensions are rejected. `.vroid` is an editing source, not the runtime import format. Generic character GLB, OBJ, BLEND and GLTF mapping is not supported; binary FBX uses the explicit workflow below. Static drum GLB replacement is a [separate workflow](calibration.md#replace-drum-bodies-while-keeping-hardware) with a 25 MiB limit.
 
 ## Import and inspect
 
-1. Choose a **Character** preset, or use **Character → Import VRM…** to select your own `.vrm`. Local files are processed in the browser without uploading them.
+1. Choose a **Character** preset, or use **Character → Import VRM / FBX…** to select your own `.vrm`. Local files are processed in the browser without uploading them.
 2. Open **Model details / terms** for the name, author, version, required-bone and finger-bone counts and terms. VRM 1.0 optional rights fields show their specification defaults when omitted. VRM 0.0 shows its original usage and redistribution/modification fields; missing values stay unspecified and are never replaced with VRM 1.0 defaults. Metadata links are not opened or fetched automatically.
 3. Load a demo or MIDI and choose **Model**, **Skeleton**, **Model + skeleton** or **Hidden** in the display selector. The adapter measures limb lengths and uses the same semantic-bone solver as the built-in skeleton. Available finger bones receive a grip pose; missing optional fingers do not prevent import.
 4. The app automatically attempts a body-fit layout. Inspect its result and, if needed, [adjust the seat and targets](calibration.md), then compare playback and arbitrary forward/backward seeks. Check the visible grip, attached stick tips, feet and pedals. Contact measurements use tool/foot sockets, not all skin, glove or shoe vertices.
@@ -57,6 +59,19 @@ If the intended shade uses the base artwork, assign the same texture to the lit
 and shade slots in the source editor and export a separate copy, as described in
 the [official MToon guide](https://vrm.dev/en/univrm/shaders/shader_mtoon/).
 This appearance correction does not resolve body-fitting or contact warnings.
+
+## Import a rigged FBX
+
+1. Choose **Character → Import VRM / FBX…** and one binary FBX 7.4 or 7.5 file (up to 50 MiB). ASCII FBX and other binary versions are rejected.
+2. In the setup dialog, select the companion PNG/JPEG images before **Inspect file**. A package can contain images that the FBX never references; a source page saying “Textures 0” does not mean those files will be connected automatically.
+3. Review the 15 required humanoid bones and optional fingers. Conventional humanoid, Mixamo, left/right suffix and Japanese names are suggestions. Duplicate or ambiguous names stay blank; choose the actual deforming bone from the list. Missing bones, duplicate assignments and incompatible ancestry block adoption.
+4. Confirm metres per file unit: normally `0.01` for centimetres or `1` for metres. Use a standing rest pose. The importer aligns body axes before rest capture; it does not stretch bones to fit the kit.
+5. Assign each missing material base-color image explicitly. A manual assignment uses a white diffuse tint; original Phong/Lambert properties otherwise remain. Click **Use character** to run the same automatic-fit transaction as VRM. Cancel/failure preserves the active character.
+6. Save a project to retain mappings, units and material choices. Keep the original FBX and every selected image for hash-verified relinking; images are not embedded in the project.
+
+Images are local: up to 64 selected PNG/JPEG files totaling 50 MiB, each at most 4096 pixels per side, with a combined 64M pixel budget including used embedded images. External resources are never fetched. The [FBX import contract](../specs/architecture/rig-contract.md#fbx-import) owns further parser and scene limits.
+
+FBX clips, Blender/MMD constraints, spring physics and toon node shaders are not playback inputs. Unmapped auxiliary bones retain their local rest transforms and follow their ancestors; complex twist/control rigs may therefore deform differently. First-person masking follows mapped head descendants. A successful import does not certify clothing clearance or natural motion. FBX has no VRM rights panel: consult the original source and model terms. No downloaded FBX is bundled by this feature.
 
 ## Find a model
 
