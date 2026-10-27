@@ -13,6 +13,7 @@ pub enum MappingProfile {
     #[default]
     Gm,
     LogicDkdGm,
+    SongsterrDownloader,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +122,9 @@ pub struct MappedNote {
 /// Known but unimplemented splash/choke/control articulations remain unmapped.
 pub fn mapped_note(profile: MappingProfile, note: u8) -> Option<MappedNote> {
     use Instrument::*;
+    if profile == MappingProfile::SongsterrDownloader {
+        return songsterr_downloader_note(note);
+    }
     let logic = profile == MappingProfile::LogicDkdGm;
     let (instrument, piece_id, articulation) = match note {
         35 | 36 => (Kick, "kick", "center"),
@@ -145,6 +149,40 @@ pub fn mapped_note(profile: MappingProfile, note: u8) -> Option<MappedNote> {
         51 => (Ride, "ride", "outer"),
         53 => (Ride, "ride", "bell"),
         59 => (Ride, "ride", "inner"),
+        _ => return None,
+    };
+    Some(MappedNote {
+        instrument,
+        piece_id,
+        articulation,
+    })
+}
+
+/// Compatibility with the alphaTab 1.8.1 GP7-index MIDI export bug, not a
+/// general Songsterr/GM map. Keep source keys intact; never fall back to GM.
+/// Factual correspondence and pinned upstream evidence: MIDI interpretation spec.
+fn songsterr_downloader_note(note: u8) -> Option<MappedNote> {
+    use Instrument::*;
+    let (instrument, piece_id, articulation) = match note {
+        0 => (Snare, "snare", "center"),
+        1 => (Snare, "snare", "sideStick"),
+        2 => (Snare, "snare", "rimshot"),
+        3 => (Hihat, "hihat", "closed"),
+        5 => (OpenHat, "openHat", "open"),
+        6 => (PedalHat, "pedalHat", "footClose"),
+        7 | 8 => (Kick, "kick", "center"),
+        9 | 10 => (TomHigh, "tomHigh", "center"),
+        11 | 12 => (TomMid, "tomMid", "center"),
+        13 | 87 => (TomLow, "tomLow", "center"),
+        14 => (Ride, "ride", "edge"),
+        15 => (Ride, "ride", "outer"),
+        16 => (Ride, "ride", "bell"),
+        18 => (Crash, "crash", "splash"),
+        20 => (Crash, "crash", "china"),
+        22 => (Crash, "crash", "crash"),
+        24 => (Crash, "crashRight", "crash"),
+        // Half-open (4), chokes (17/19/21/23/25), other percussion and
+        // potentially lossy/colliding exporter outputs remain diagnostic.
         _ => return None,
     };
     Some(MappedNote {

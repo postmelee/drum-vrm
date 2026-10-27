@@ -64,7 +64,7 @@ export interface Hit { pieceId?: PieceId; articulation?: string; sourceEventId?:
 export interface Diagnostic { code: string; message: string; hitId?: number; time?: number; }
 export interface TrackInfo { index: number; name: string; noteCount: number; drumNotes: number; channels: number[]; }
 export interface MidiInfo { tracks: TrackInfo[]; suggestedTracks: number[]; format: number; ppq: number; }
-export type MappingProfile = 'gm' | 'logicDkdGm';
+export type MappingProfile = 'gm' | 'logicDkdGm' | 'songsterrDownloader';
 export type HihatPolicy = 'literal'|'shortOpenClose';
 export interface Selection { tracks: number[]; channel: number | null; mappingProfile?: MappingProfile; countInNote75?: boolean; hihatPolicy?: HihatPolicy; hihatOpenness?: number; omittedSourceEventIds?: string[]; handOverrides?: Record<string,0|1>; }
 export type SourceMessage = { kind: 'noteOn'|'noteOff'; key: number; velocity: number }

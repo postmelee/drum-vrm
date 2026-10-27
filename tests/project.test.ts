@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { makeInterpretationDemo } from '../src/demo';
+import { makeSongsterrStudy } from './songsterr-fixture';
 import { NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { cameraPresetState } from '../src/scene';
 import { createPieceModel, disposeModel, resolvePieceVisual } from '../src/model-procedural';
@@ -40,6 +41,22 @@ beforeAll(async()=>{
 });
 
 describe('versioned local project',()=>{
+  it('reopens the Songsterr Downloader profile with the same source keys and poses',async()=>{
+    const project=structuredClone(fixture),bytes=makeSongsterrStudy();
+    project.selection={tracks:[1],channel:9,mappingProfile:'songsterrDownloader',countInNote75:false,hihatPolicy:'literal',hihatOpenness:.2,omittedSourceEventIds:[],handOverrides:{}};
+    const raw=new Performance(bytes,JSON.stringify(project.selection));
+    const candidate=Performance.from_json_with_profile(raw.plan_json(),JSON.stringify(project.profile));
+    try {
+      project.plan=JSON.parse(candidate.plan_json());project.kit=structuredClone(project.plan.kit);
+      project.assets=[await fileReference('midi',new File([Uint8Array.from(bytes)],'Authored compatibility study.mid'))];
+      const reopened=parseProject(JSON.stringify(project));
+      expect(reopened.selection).toEqual(project.selection);
+      expect(reopened.plan.sourceEvents).toEqual(project.plan.sourceEvents);
+      const after=Performance.from_json_with_profile(JSON.stringify(reopened.plan),JSON.stringify(project.profile));
+      try { for(const time of [2.4,0,1.5,.8])expect(after.evaluate_rig_at(time)).toEqual(candidate.evaluate_rig_at(time)); }
+      finally { after.free(); }
+    } finally { raw.free();candidate.free(); }
+  });
   it('reconstructs the saved native measured profile from calibration and layout',()=>{
     const rig=new NativeHumanoidRigAdapter();
     try{expect(JSON.stringify(rig.setCalibration(fixture.calibration,fixture.kit))).toBe(JSON.stringify(fixture.profile));}

@@ -6,6 +6,15 @@ const event = (key: number, velocity = 80): SourceEvent => ({ id: `1:${key}`, tr
 const plan = (sourceEvents: SourceEvent[]): PerformancePlan => ({ schemaVersion: 2, sourceEvents, duration: 1, hits: [], kit: [], tempoCount: 1, diagnostics: [] });
 
 describe('import evidence', () => {
+  it('describes the selected compatibility profile without applying GM hints to exporter indices', () => {
+    const input = plan([event(0), event(32), event(52)]);
+    input.mappingProfile = 'songsterrDownloader';
+    const evidence = importGuidance(input).evidence.join(' ');
+    expect(evidence).toContain('Songsterr Downloader');
+    expect(evidence).toContain('unmapped');
+    expect(evidence).not.toContain('china');
+    expect(evidence).not.toContain('Drum Kit Designer');
+  });
   it('exposes count-in candidates without claiming their meaning or selecting a profile', () => {
     const input = plan([event(75), event(75, 0), event(36)]), before = JSON.stringify(input);
     const guidance = importGuidance(input);

@@ -65,7 +65,7 @@ export function parseProject(json:string):DrumProject {
   const calibration=record(input.calibration),selection=record(input.selection),appearance=record(input.appearance),audio=record(input.audio),view=record(input.view);
   if(!Array.isArray(selection.tracks)||!selection.tracks.length||selection.tracks.length>512)throw new Error(msg("Invalid project track selection.", "프로젝트 트랙 선택이 잘못되었습니다."));
   const tracks=selection.tracks.map(track=>{const n=number(track,0,511);if(!Number.isInteger(n))throw new Error(msg("Track numbers must be integers.", "트랙 번호가 정수가 아닙니다."));return n;});
-  const mappingProfile=choice(selection.mappingProfile,['gm','logicDkdGm']),hihatPolicy=choice(selection.hihatPolicy,['literal','shortOpenClose']);
+  const mappingProfile=choice(selection.mappingProfile,['gm','logicDkdGm','songsterrDownloader']),hihatPolicy=choice(selection.hihatPolicy,['literal','shortOpenClose']);
   const countInNote75=bool(selection.countInNote75),hihatOpenness=number(selection.hihatOpenness,.05,1);
   const omittedInput=selection.omittedSourceEventIds??[],handInput=record(selection.handOverrides??{});
   if(!Array.isArray(omittedInput)||omittedInput.length>50000||Object.keys(handInput).length>50000)throw new Error(msg("The project contains too many note edits.", "프로젝트 음표 편집이 너무 큽니다."));

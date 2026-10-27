@@ -513,7 +513,7 @@ async function prepare(generation: number,restoreTime=0) {
   if (!tracks.length) throw new Error(msg("Select at least one track to perform.", "연주할 트랙을 하나 이상 선택해 주세요."));
   const selected = get<HTMLSelectElement>('channel').value;
   if(!get<HTMLInputElement>('hihat-openness').reportValidity())throw new Error(msg("Hi-hat openness must be between 5 and 100%.", "하이햇 열림은 5–100% 범위여야 합니다."));
-  const selection:DrumProject['selection']={tracks,channel:selected==='all'?null:Number(selected),mappingProfile:get<HTMLSelectElement>('mapping-profile').value as 'gm'|'logicDkdGm',countInNote75:get<HTMLInputElement>('count-in-75').checked,hihatPolicy:get<HTMLInputElement>('hihat-policy').checked?'shortOpenClose':'literal',hihatOpenness:get<HTMLInputElement>('hihat-openness').valueAsNumber/100,...structuredClone(arrangement)};
+  const selection:DrumProject['selection']={tracks,channel:selected==='all'?null:Number(selected),mappingProfile:get<HTMLSelectElement>('mapping-profile').value as NonNullable<DrumProject['selection']['mappingProfile']>,countInNote75:get<HTMLInputElement>('count-in-75').checked,hihatPolicy:get<HTMLInputElement>('hihat-policy').checked?'shortOpenClose':'literal',hihatOpenness:get<HTMLInputElement>('hihat-openness').valueAsNumber/100,...structuredClone(arrangement)};
   return prepareSelection(bytes!,selection,generation,restoreTime);
 }
 async function prepareSelection(data: Uint8Array, selection: DrumProject['selection'], generation: number, restoreTime=0) {
@@ -559,7 +559,7 @@ function renderDiagnostics() {
   const warnings=unmapped+unresolved+pathWarnings;bindText(get('analysis-badge'), warnings?` ${warnings}`:'');get('analysis-badge').hidden=!warnings;
   bindText(get('analysis-summary'), warnings?msg("{0} unmapped · {1} unassigned motions · {2} motion diagnostics", "미매핑 {0}개 · 동작 미배정 {1}개 · 동작 진단 {2}개", unmapped, unresolved, pathWarnings):msg("All strikes have assigned motion. Run a separate path review.", "모든 타격에 동작이 배정되었습니다. 경로 검수는 별도로 실행하세요."));
   bindText(get('source-summary'), warnings?msg("{0} items need attention · see Analysis.", "확인할 항목 {0}개 · 분석에서 확인하세요.", warnings):'');get('source-analysis').hidden=!warnings;
-  bindText(get('interpretation-summary'), msg("{0} · {1} count-in · {2} controls · {3} unmapped · {4} omitted · {5} hand overrides · {6} unassigned motions", "{0} · 카운트인 {1}개 · 제어 {2}개 · 미매핑 {3}개 · 제외 {4}개 · 손 지정 {5}개 · 동작 미배정 {6}개", plan.mappingProfile==='logicDkdGm'?'Logic DKD · GM':'General MIDI', countIn, interpretations.filter(event=>event.kind==='control').length, unmapped, omitted, Object.keys(plan.handOverrides??{}).length, unresolved));
+  bindText(get('interpretation-summary'), msg("{0} · {1} count-in · {2} controls · {3} unmapped · {4} omitted · {5} hand overrides · {6} unassigned motions", "{0} · 카운트인 {1}개 · 제어 {2}개 · 미매핑 {3}개 · 제외 {4}개 · 손 지정 {5}개 · 동작 미배정 {6}개", plan.mappingProfile==='songsterrDownloader'?'Songsterr Downloader':plan.mappingProfile==='logicDkdGm'?'Logic DKD · GM':'General MIDI', countIn, interpretations.filter(event=>event.kind==='control').length, unmapped, omitted, Object.keys(plan.handOverrides??{}).length, unresolved));
   get('diagnostics').hidden = !plan.diagnostics.length;
   bindText(get('diagnostic-summary'), msg("{0} diagnostics{1}", "분석 알림 {0}개{1}", plan.diagnostics.length, unresolved?msg(" · {0} unassigned hits", " · 표현하지 못한 타격 {0}개", unresolved):''));
   for (const item of plan.diagnostics.slice(0,100)) { const li=document.createElement('li'); const text=msg('{0}{1}', '{0}{1}', raw(item.time !== undefined ? preciseClockText(item.time)+' · ':''), engineMessage(item.message));
@@ -598,6 +598,7 @@ async function loadFile(data: Uint8Array, name: string) {
     fillSelection(info); controls(); await prepare(generation);
   } catch(error) {
     if(generation!==loadGeneration)return;
+    if(!get('selection').hidden){openPanel('source');get<HTMLDetailsElement>('midi-settings').open=true;}
     message(uiError(error),true); status(msg("Needs attention", "확인 필요"),'error');
   } finally { if(generation===loadGeneration){busy=false;controls();} }
 }
