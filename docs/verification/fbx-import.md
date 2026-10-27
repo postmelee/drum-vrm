@@ -205,3 +205,41 @@ private probes remain outside tracked/public files. No new model distribution
 rights are inferred from the source-page license label. There is no new bundled
 asset or dependency. The work is for review; merge, release and Pages publication
 remain unauthorized.
+
+
+## Automatic file settings and menu hierarchy — 2026-10-27
+
+Implementation: `223ce0f`. The UI now calls persisted `original` material mode
+**File settings (automatic)**; the schema and exact-file preference keys are
+unchanged, and saved matte/unlit overrides still win. This is supported file
+properties plus version compatibility, not inference of missing website shaders.
+The VRM 0 material follow-up is recorded in
+[its verification](vrm-0-support.md#default-material-compatibility-follow-up--2026-10-27).
+
+Shared `ui-help.ts` disclosures separate controls, concise live state and optional
+explanation across static menus and dynamic FBX setup. Active-mode text is one
+line with an accessible description. Technical/storage guidance stays available
+in help. Model metadata and terms remain accessible. Fit summaries stay in
+Character and complete results in Analysis; manual action errors stay visible.
+Diagnostics use localized code summaries and preserve full messages/source context
+and time-jump actions inside expandable details, including unknown codes.
+Project completion uses the existing dismissible notification.
+
+Validation on the production build at localhost:5180:
+
+- Gold Ship folder import restored its explicitly saved Unlit setting. Selecting
+  automatic updated both its short description and preview; cancellation retained
+  the active skeleton and did not save that staged selection.
+- Import help opened with the complete bone, texture, storage and compatibility
+  guidance. Project help retained its open state/content through Korean/English
+  switching. Character/file menus no longer showed the removed static paragraphs.
+- Studio Groove preparation produced 193 hits. A collapsed diagnostic exposed its
+  complete message and time-jump button; jumping to source time zero selected the
+  output timeline's 0.5-second position (existing preparation offset).
+- Original legacy VRM rendered with automatic shade compatibility and remained
+  compatible with preparation of the same 193-hit demo. Fitting limitations remain.
+- Full suite: 33 files / 244 tests passed; typecheck, web build, docs check and
+  whitespace checks passed. No new dependency or Rust/WASM change. Existing Vite
+  chunk advisory remains. Private visual evidence stays under ignored `.local/`.
+
+No merge, release or public deployment is part of this follow-up.

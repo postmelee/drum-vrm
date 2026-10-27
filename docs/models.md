@@ -51,21 +51,16 @@ Spring motion is reset for each evaluated pose so seeking and output are repeata
 
 ## A legacy model looks washed out
 
-MToon uses separate lit and shade colors/textures. A VRM 0.0 material with a
-`_MainTex`, white `_ShadeColor` and no `_ShadeTexture` can turn white in shaded
-regions even when its main texture loads correctly. The importer preserves that
-material setting. Inspect the original material before changing global lighting.
-If the intended shade uses the base artwork, assign the same texture to the lit
-and shade slots in the source editor and export a separate copy, as described in
-the [official MToon guide](https://vrm.dev/en/univrm/shaders/shader_mtoon/).
-This appearance correction does not resolve body-fitting or contact warnings.
+VRM 0.0 MToon imports apply the [official shade-texture migration](https://vrm.dev/en/univrm1/migrate_vrm0/feature/): when a valid lit texture exists and the shade texture is absent, the runtime reuses the lit texture for shade. Existing shade textures, colors, other shaders and VRM 1.0 materials are preserved. This addresses the washed-out appearance caused by legacy/new MToon lighting differences; it is not an avatar-name heuristic or a change to the source file.
+
+**Model details / terms** reports how many materials used the compatibility path. It runs for local files, presets and project restoration. It does not repair missing artwork, reconstruct arbitrary shaders or resolve fitting/contact warnings.
 
 ## Import a rigged FBX
 
 1. Use **Character → Import folder…** to select one extracted character package. The app finds VRM/FBX files and PNG/JPEG images in subfolders; choose the model if several are present. Other files are ignored. ZIP archives are not imported. Alternatively, select one binary FBX 7.4/7.5 with **Import VRM / FBX…**, then choose companion images before **Inspect file**. Existing file/image limits still apply to the selected package.
 2. Only unresolved required bones appear first. Use the dropdowns; already assigned bones and candidates incompatible with mapped ancestry are excluded. Matching names appear first; **Show candidates with other names** reveals other eligible bones. A current assignment remains visible so it can be cleared. **Review assigned bones** and **Optional bones / fingers** allow corrections. There is no arbitrary selection between ambiguous aliases.
 3. Selecting a bone marks its position in pink in the 3D preview. Drag to rotate or scroll to zoom. This shows the source rest pose, not a deformation or performance guarantee. If no suitable candidate remains, check the assigned/optional ancestors and descendants and clear incorrect assignments.
-4. Review **Colors and textures**. Unique filename matches suggest base-color images; ties and common shadow/normal/roughness maps are not guessed. Original texture bindings take precedence. Choose another image if necessary, or restore the original material by clearing the selection. **Material appearance** defaults to **Original material**, including explicit FBX specular intensity. **Matte lighting** removes highlights and environment reflections; **Texture only (Unlit)** displays base colors without lighting or tone mapping. Choose Unlit to match a flat, texture-only reference. Lit preview modes use different lighting from the performance scene. No mode recreates authoring-tool toon shaders.
+4. Review **Colors and textures**. Unique filename matches suggest base-color images; ties and common shadow/normal/roughness maps are not guessed. Original texture bindings take precedence. Choose another image if necessary, or restore the original material by clearing the selection. **Material appearance** defaults to **File settings (automatic)**, including explicit FBX specular intensity. **Matte lighting** removes highlights and environment reflections; **Texture only (Unlit)** displays base colors without lighting or tone mapping. Choose Unlit to match a flat, texture-only reference. Lit preview modes use different lighting from the performance scene. No mode recreates authoring-tool toon shaders.
 5. **Scale and file details** contains the metre conversion (`0.01` for centimetres, `1` for metres). Use a standing rest pose. **Use character** validates the full mapping and runs automatic fitting without stretching bones. Cancel/failure preserves the active character.
 6. Successful imports remember settings for the same FBX bytes in this browser, for up to 10 files. This stores mappings, units, image names and material appearance, not model/image contents; images must be selected again. Storage availability is optional. Save a project and keep original FBX/images for portable, hash-verified reopening.
 

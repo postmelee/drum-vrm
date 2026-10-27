@@ -53,7 +53,7 @@ Schema 1 also accepts `rig: "fbx"` with a required `fbx` object containing
 `bones` (semantic names to stable child-index paths), `metersPerUnit` and
 `textures` (material traversal indices to normalized companion basenames). Optional
 `materialMode` accepts only `original`, `matte` or `unlit`; omission in older
-projects restores original mode. The choice is applied with materials/textures
+projects restores automatic file settings (`original`). The choice is applied with materials/textures
 without changing bones, body measurements or the performance plan. Original mode
 also receives the [FBX contract](rig-contract.md#fbx-import) specular-factor correction.
 Native/VRM projects omit this object. The original FBX has one `fbx` asset reference;

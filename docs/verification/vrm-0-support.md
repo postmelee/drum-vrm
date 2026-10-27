@@ -62,6 +62,36 @@ case, not evidence for changing every imported model's materials or global light
 No private avatar bytes, textures, metadata or screenshots are included in this PR.
 The [model guide](../models.md#a-legacy-model-looks-washed-out) documents the general diagnosis.
 
+## Default material compatibility follow-up — 2026-10-27
+
+Implementation: `223ce0f`, in PR #58 on the FBX worktree. The historical local
+comparison above correctly identified the missing shade slot, but its source-only
+interpretation was incomplete. UniVRM documents this exact case as a migration
+needed because of different legacy/new MToon global illumination behavior:
+[official upgrade compatibility](https://vrm.dev/en/univrm1/migrate_vrm0/feature/).
+
+The importer now applies that migration before pinned three-vrm 3.5.5 converts
+VRM 0.0 MToon: only absent shade maps with valid main texture indices inherit the
+main map. Explicit maps, including index zero, other shader types and VRM 1.0
+remain unchanged. It keeps current MToon shading rather than additionally enabling
+`v0CompatShade`; this is one migration policy, not two stacked approximations.
+Original bytes/hashes and source metadata are preserved. No model-name branch or
+new material-choice requirement is introduced. Model details report the count.
+
+- Seven new authored tests cover migration scope, invalid indices, repeatability,
+  real GLTFLoader/VRMLoaderPlugin material conversion, explicit sampler retention,
+  unchanged source bytes and a textured VRM 1 MToon regression. Node image decode
+  is mocked; actual texture decode and rendering were checked in the browser.
+- Full suite: 33 files / 244 tests passed. Final typecheck/production build and
+  documentation/whitespace checks passed; the existing chunk advisory remains.
+- Production preview on localhost:5180 loaded the owner's unchanged original
+  legacy model. Hair/clothing colors returned without editing or selecting a
+  material mode; model details showed five migrated materials. The existing
+  automatic-fit/ready-pose warnings remain. This does not certify motion/clearance.
+
+No private model, screenshot or source image is committed. Current behavior is
+specified in the import contract; the earlier measurements above remain historical.
+
 ## Limits
 
 Authored integration fixtures are bone-only; they do not certify arbitrary legacy

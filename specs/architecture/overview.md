@@ -68,6 +68,21 @@ orientation-capable path. The older `from_json()`/`evaluate_at()` primitive path
 retained for compatibility and comparisons. Their buffer lengths differ; see the
 [engine contract](engine-contract.md).
 
+## Interface information hierarchy
+
+Panels and import dialogs separate editable controls, concise live state, and
+on-demand explanation. `ui-help.ts` supplies the same keyboard-accessible native
+`details/summary` help component to static templates and dynamic dialogs. Help
+must not contain required controls or blocking errors. One short description may
+sit beside a control; technical limits and common operating guidance belong in
+help. Model metadata/terms remain accessible in their own disclosure.
+
+Completion messages use the existing dismissible notification; pending/error
+states remain beside their action. Diagnostics show a localized code-based
+summary, with the full original diagnostic, source context and seek action in
+expandable details. Unknown codes keep their full explanation. This hierarchy
+applies to every model and source, without model-specific visibility rules.
+
 ## Runtime environment
 
 The web build uses single-threaded WASM and workers without requiring cross-origin

@@ -89,6 +89,16 @@ The inspection retains original metadata. VRM 0.0 uses `title`, `author`, `refer
 are applied. Missing/invalid metadata is reported without inventing permissions.
 Original strings and URLs are displayed as text and never executed or fetched.
 
+Before three-vrm converts legacy materials, `vrm-materials.ts` applies UniVRM's
+[documented migration](https://vrm.dev/en/univrm1/migrate_vrm0/feature/) to VRM 0.0
+`VRM/MToon` only: a valid `_MainTex` index becomes `_ShadeTexture` when that
+property is absent. Explicit shade maps (including index 0), colors, UV transforms,
+non-MToon materials and VRM 1.0 are untouched. The parser JSON changes in memory;
+source bytes/hashes remain identical. Invalid main indices are never repaired.
+The migration is idempotent, reported in model details, and shared by local,
+preset and project imports. MToon 1 shading remains in use; `v0CompatShade` is not
+also enabled, avoiding two overlapping compatibility policies.
+
 ### FBX import
 
 [fbx-import.ts](../../src/fbx-import.ts), [fbx-config.ts](../../src/fbx-config.ts) and
@@ -168,6 +178,12 @@ triangles receive identity indices without changing UVs, skin weights or order.
 Complex auxiliary rigs can still deform differently from their source tool.
 The existing fit/adoption transaction preserves the active character on cancellation
 or failure. The [project contract](project-format.md) owns saved mappings/relinking.
+
+The UI calls `original` **File settings (automatic)**. The persisted key stays
+unchanged for existing projects/preferences. Automatic honors supported explicit
+file properties and version compatibility; it does not infer a missing website
+shader from avatar names, image filenames or a neighboring GLB. Explicit saved
+matte/unlit choices remain overrides.
 
 ### Bundled character selection
 
