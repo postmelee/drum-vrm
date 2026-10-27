@@ -36,9 +36,20 @@ into long toasts. Colors never substitute for labels.
 - At 700 px and below: one card below the toolbar/camera strip, 12 px side margins,
   including safe-area insets. Do not place cards over transport or the piano roll.
   A narrow inspector may be temporarily overlaid; dismissal must remain reachable.
-- Cards: 12 px radius, 14 px padding, 1 px border, restrained shadow, 10 px internal
+- Cards: 8 px radius, 14 px top/side padding and 8 px bottom padding, 1 px border,
+  restrained shadow, 10 px internal
   gap; use existing light/dark tokens. Opaque surface, readable 14 px title and
   12–13 px optional description. No blurred or translucent text background.
+- Reuse the system font and `--bg`, `--surface`, `--control`, `--border`, `--text`,
+  `--muted`, `--active`, `--focus` from `src/style.css`; do not introduce a separate
+  green-tinted palette. Actions use the selection blue (`--focus: #3274c8`), with
+  `--active` for hover/focus backgrounds. In dark mode derive readable action text
+  by mixing 65% focus blue with 35% text, retaining the same hue family.
+- Use consistent 18 px outlined SVG icons: check in a circle for success,
+  exclamation in a triangle for review required, X in a circle for failure, and
+  information in a circle. Warning stays amber; failure uses the app's error red
+  (`#cf4335`), lightened against the dark surface. Icons distinguish shape as well
+  as color. Clickable text stays blue regardless of severity.
 - Structure: 18 px severity icon, short title, optional short supporting sentence,
   at most one labeled action, always a close control. Color only the icon/accent.
   Action/close hit targets are at least 32 px on desktop and 44 px on touch layouts.

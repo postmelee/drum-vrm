@@ -33,3 +33,17 @@ Queue priority/overflow, all stale-action paths, hover/focus/visibility timing,
 keyboard/screen-reader coverage, real 390 px device layout and 200% zoom still
 require the implementation checks listed in the contract. Rust/WASM and full
 production tests were not rerun because no production source changed.
+
+## Visual refinement
+
+Owner follow-up on 2026-10-27: reduce lower padding, align with the app's design
+tokens, distinguish warning/failure icons, and use selection blue for actions.
+The prototype now uses the system font and neutral/blue token values from
+`src/style.css`, 8 px lower padding, and outlined triangle-exclamation/circle-X
+icons. Dark action text derives from focus blue and the existing text token.
+
+At the actual 745 × 833 browser viewport, light and dark three-card previews were
+visually checked. DOM-computed light values were background `rgb(245,245,245)`,
+action `rgb(50,116,200)`, lower padding `8px`, and radius `8px`. Documentation,
+diff and prototype JavaScript syntax checks passed. The updated local screenshot
+is `/private/tmp/drum-vrm-toast-design-refined.png`. No production source changed.
