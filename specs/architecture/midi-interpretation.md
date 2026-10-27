@@ -157,12 +157,12 @@ unless explicitly omitted or selected as source-note-75 count-in. There is no GM
 fallback: other percussion indices can collide with alphaTab IDs and cannot be
 recovered reliably by blindly reversing the entire list.
 
-After an import has no supported hits, open **MIDI settings**, choose
+New uploads compare this profile with the other supported mappings as described
+below. To override the candidate, open **MIDI settings**, choose
 **Songsterr Downloader (alphaTab 1.8.1)** and press **Apply settings**. A planning
 failure after successful file inspection opens these settings for recovery.
 Use channel 10 and only the intended drum tracks; combined format 0 and separate
-named format 1 files use the same mapping. Neither filenames nor note patterns
-select it automatically. Fixed/new exporter versions that output normal GM notes
+named format 1 files use the same mapping. Filenames never select it; automatic selection is based on supported-note coverage. Fixed/new exporter versions that output normal GM notes
 must use `gm`. Project save/reopen retains this choice. Link fetching and a
 server integration are not part of this profile.
 
@@ -279,7 +279,7 @@ The controls separate instrument mapping from performance intent, following the
 [research](../../docs/research/ergonomics-and-sticking.md).
 Standard MIDI Files do not guarantee a producer identifier, and one DAW can export
 different instrument maps. The browser shows note-based mapping evidence, without
-asserting that a file came from Logic or automatically selecting a profile.
+asserting that a file came from Logic. New uploads use the candidate comparison below.
 
 Under **Drum sound mapping / Interpretation**, count-in candidates and applicable
 hi-hat control choices are shown from the prepared selection. Short-open-close
@@ -288,6 +288,37 @@ automatically a partial opening, nor is note 75 always count-in. Controller
 interpretation still requires a defining profile. Confirmed policy and source-event
 edits persist with the [project format](project-format.md). These controls do not
 imply support for additional instrument maps or controllers.
+
+## Automatic mapping for new uploads
+
+Rust inspection returns `MidiInfo.suggestedChannel` and `mappingAnalysis` alongside
+`suggestedTracks`. Positive channel-10 note-ons take priority for track/channel
+suggestion. Without those, suggest tracks with notes supported by any profile and
+use all channels. This fallback is a heuristic, not proof that a track is drums.
+The existing `TrackInfo.drumNotes` remains the GM count.
+
+`mappingAnalysis` contains `totalNotes`, all three `candidates` with `profile`,
+`mapped` and `unmapped` counts, a nullable `selected` profile and `ambiguous`.
+Count only positive note-ons in the suggested tracks/channel, with literal intent:
+no automatic count-in, hi-hat pairing, omission or hand overrides. Compare all
+profiles using the shared Rust mapping rules before any body-dependent planning.
+Choose the largest mapped count; ties prefer GM, then Logic, then Songsterr.
+If tied candidates disagree about any observed note's instrument, piece,
+articulation or supported/unmapped status, mark the choice provisional. Equivalent
+ties need no warning. Zero supported notes means no candidate.
+
+The browser applies this candidate only on a new MIDI upload/drop, resets the
+previous file's intent controls, and displays candidate counts. Conflicting ties
+open MIDI settings for review while preparing the provisional choice. Unsupported
+notes remain diagnostic; choosing a candidate is not a complete-import guarantee.
+Malformed files and duration/event limits, audio errors and motion failures do not
+trigger blind fallback to another mapping. Parsing/scoring runs in the existing
+cancellable worker; it does not launch three parallel motion plans.
+
+Manual mapping/track/channel changes dismiss the upload comparison without running
+it again. Explicit demos and restored projects retain their saved selections.
+Save/reopen persists the resulting profile, not an `auto` pseudo-profile.
+The direct planning API still defaults to `gm` when no profile is supplied.
 
 ## Bundled demo selections
 

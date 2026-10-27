@@ -70,6 +70,82 @@ fn songsterr_downloader_maps_only_verified_drum_articulations() {
 }
 
 #[test]
+fn automatic_mapping_compares_all_profiles_and_distinguishes_semantic_ties() {
+    let analyze = |keys: &[u8]| {
+        let mut counts = [0usize; 128];
+        for &key in keys {
+            counts[key as usize] += 1;
+        }
+        interpretation::analyze_mapping(&counts)
+    };
+    let plain = analyze(&[36, 38, 42, 36]);
+    assert_eq!(plain.selected, Some(MappingProfile::Gm));
+    assert!(!plain.ambiguous); // GM and Logic give the same meanings here.
+    assert_eq!(plain.total_notes, 4);
+    assert_eq!(
+        plain
+            .candidates
+            .iter()
+            .map(|c| c.mapped)
+            .collect::<Vec<_>>(),
+        vec![4, 4, 0]
+    );
+    for key in [40, 52] {
+        let tied = analyze(&[36, key]);
+        assert_eq!(tied.selected, Some(MappingProfile::Gm));
+        assert!(tied.ambiguous); // Same hit count, different articulation/role.
+    }
+    let logic = analyze(&[32, 34, 36, 38]);
+    assert_eq!(logic.selected, Some(MappingProfile::LogicDkdGm));
+    assert!(!logic.ambiguous);
+    let compatibility = analyze(&[0, 3, 5, 8, 12, 22, 87, 4]);
+    assert_eq!(
+        compatibility.selected,
+        Some(MappingProfile::SongsterrDownloader)
+    );
+    assert_eq!(compatibility.candidates[2].unmapped, 1);
+    assert!(!compatibility.ambiguous);
+    assert!(analyze(&[0, 38]).ambiguous); // Disjoint supported subsets also disagree.
+    for keys in [&[][..], &[127, 127][..]] {
+        let empty = analyze(keys);
+        assert_eq!(empty.selected, None);
+        assert!(!empty.ambiguous);
+        assert!(empty.candidates.iter().all(|c| c.mapped == 0));
+    }
+}
+
+#[test]
+fn automatic_mapping_uses_only_suggested_tracks_and_channel_positive_notes() {
+    // Melodic notes outnumber drums, but must not bias channel-10 interpretation.
+    let bytes = file(&[
+        &[0, 0x90, 38, 80],
+        &[0, 0x90, 38, 80],
+        &[0, 0x90, 52, 80],
+        &[0, 0x99, 0, 90],
+        &[120, 0x99, 8, 0],
+        &[0, 0x89, 8, 80],
+    ]);
+    let info = crate::inspect(&bytes).unwrap();
+    assert_eq!(info.suggested_channel, Some(9));
+    assert_eq!(info.mapping_analysis.total_notes, 1);
+    assert_eq!(
+        info.mapping_analysis.selected,
+        Some(MappingProfile::SongsterrDownloader)
+    );
+    let nonstandard_channel = file(&[&[0, 0x92, 0, 90], &[120, 0x92, 8, 100]]);
+    let info = crate::inspect(&nonstandard_channel).unwrap();
+    assert_eq!(info.suggested_tracks, vec![0]);
+    assert_eq!(info.suggested_channel, None);
+    assert_eq!(info.mapping_analysis.total_notes, 2);
+    assert_eq!(
+        info.mapping_analysis.selected,
+        Some(MappingProfile::SongsterrDownloader)
+    );
+    // Inspection/recommendation does not change the default explicit planning API.
+    assert!(build_plan(&nonstandard_channel, &selection(MappingProfile::Gm, false)).is_err());
+}
+
+#[test]
 fn songsterr_downloader_preserves_evidence_and_reports_unsupported_notes() {
     let bytes = file(&[
         &[0, 0x99, 0, 93],

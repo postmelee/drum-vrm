@@ -5,8 +5,10 @@ own measured results and publication evidence.
 
 ## Current batch and next work
 
-- [#60](https://github.com/postmelee/drum-vrm/issues/60): explicit Songsterr
-  Downloader MIDI compatibility mapping is a separate import increment.
+- [#60](https://github.com/postmelee/drum-vrm/issues/60): Songsterr Downloader MIDI
+  compatibility and automatic mapping comparison on new uploads are a separate
+  import increment. Conflicting ties stay visibly provisional; manual edits and
+  saved-project profiles are retained.
   See the [mapping contract](../specs/architecture/midi-interpretation.md#songsterr-downloader-compatibility)
   and [verification](verification/songsterr-downloader-mapping.md).
   Review/integrate this increment separately from kit-layout work; it does not

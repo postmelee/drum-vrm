@@ -16,6 +16,74 @@ pub enum MappingProfile {
     SongsterrDownloader,
 }
 
+pub const MAPPING_PROFILES: [MappingProfile; 3] = [
+    MappingProfile::Gm,
+    MappingProfile::LogicDkdGm,
+    MappingProfile::SongsterrDownloader,
+];
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingCandidate {
+    pub profile: MappingProfile,
+    pub mapped: usize,
+    pub unmapped: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MappingAnalysis {
+    pub selected: Option<MappingProfile>,
+    pub ambiguous: bool,
+    pub total_notes: usize,
+    pub candidates: Vec<MappingCandidate>,
+}
+
+/// Compare literal strike coverage only, before body-dependent planning. A
+/// successful mapping does not identify the exporter or prove musical intent.
+/// Ties prefer GM, then Logic, then compatibility; semantic disagreements are
+/// returned explicitly so the UI can mark the choice provisional.
+pub fn analyze_mapping(note_counts: &[usize; 128]) -> MappingAnalysis {
+    let total_notes = note_counts.iter().sum();
+    let candidates: Vec<_> = MAPPING_PROFILES
+        .into_iter()
+        .map(|profile| {
+            let mapped = note_counts
+                .iter()
+                .enumerate()
+                .filter(|(note, _)| mapped_note(profile, *note as u8).is_some())
+                .map(|(_, count)| count)
+                .sum();
+            MappingCandidate {
+                profile,
+                mapped,
+                unmapped: total_notes - mapped,
+            }
+        })
+        .collect();
+    let best = candidates.iter().map(|c| c.mapped).max().unwrap_or(0);
+    let selected = candidates
+        .iter()
+        .find(|c| best > 0 && c.mapped == best)
+        .map(|c| c.profile);
+    let ambiguous = selected.is_some_and(|chosen| {
+        candidates.iter().any(|candidate| {
+            candidate.mapped == best
+                && note_counts.iter().enumerate().any(|(note, count)| {
+                    *count > 0
+                        && mapped_note(chosen, note as u8)
+                            != mapped_note(candidate.profile, note as u8)
+                })
+        })
+    });
+    MappingAnalysis {
+        selected,
+        ambiguous,
+        total_notes,
+        candidates,
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum SourceMessage {
@@ -112,6 +180,7 @@ pub struct Interpretation {
     pub related_source_event_id: Option<String>,
 }
 
+#[derive(PartialEq, Eq)]
 pub struct MappedNote {
     pub instrument: Instrument,
     pub piece_id: &'static str,
