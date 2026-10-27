@@ -1,3 +1,5 @@
+import { characterFiles, chooseCharacterFile } from './character-files';
+import { rememberFBXSetup } from './fbx-preferences';
 import { setupFBX } from './fbx-setup';
 import { FBXHumanoidRigAdapter } from './fbx-rig';
 import { loadLocalFBX } from './fbx-import';
@@ -377,6 +379,7 @@ async function importFBXCharacter(file:File,images:File[]) {
     await candidate.loaded.applyTextures(candidate.config);
     adapter=new FBXHumanoidRigAdapter(candidate.loaded.scene,candidate.config,`fbx:${reference.sha256}`,candidate.loaded.release);
     await adoptRig(adapter);
+    rememberFBXSetup(reference.sha256,candidate.config);
     currentFBX=structuredClone(candidate.config);sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));commitProjectFile(reference,file);
     textureReferences.forEach((ref,index)=>commitProjectFile(ref,candidate!.loaded.images[index]));
     candidate=null;adapter=null;committedCharacter='local';showFBXInfo(file.name);bindText(get('character-message'),raw(file.name));setCharacterDisplay('model');
@@ -384,12 +387,17 @@ async function importFBXCharacter(file:File,images:File[]) {
   finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg('Paused','일시정지'):msg('Idle','대기'));}
 }
 get('character-import').onclick=()=>get<HTMLInputElement>('character-file').click();
-get<HTMLInputElement>('character-file').onchange=e=>{
-  const input=e.target as HTMLInputElement,files=[...input.files??[]];input.value='';
-  const models=files.filter(file=>/\.(vrm|fbx)$/i.test(file.name));
-  if(models.length!==1){if(files.length)bindText(get('character-message'),msg('Select one VRM or FBX character and optional PNG/JPEG images.', 'VRM 또는 FBX 캐릭터 하나와 선택적으로 PNG/JPEG 이미지를 선택하세요.'));return;}
-  const file=models[0];if(/\.fbx$/i.test(file.name))void importFBXCharacter(file,files.filter(f=>f!==file));else void importCharacter(file);
+get('character-import-folder').onclick=()=>get<HTMLInputElement>('character-folder').click();
+const selectCharacterFiles = async (event: Event) => {
+  const input=event.target as HTMLInputElement,files=[...input.files??[]];input.value='';
+  if(!files.length||busy||exporting||modelBusy)return;
+  const {models,images}=characterFiles(files);
+  if(!models.length){bindText(get('character-message'),msg('No VRM or FBX found. Select an extracted character folder.', 'VRM 또는 FBX가 없습니다. 압축을 푼 캐릭터 폴더를 선택하세요.'));return;}
+  const file=await chooseCharacterFile(models);if(!file)return;
+  if(/\.fbx$/i.test(file.name))void importFBXCharacter(file,images);else void importCharacter(file);
 };
+get<HTMLInputElement>('character-file').onchange=selectCharacterFiles;
+get<HTMLInputElement>('character-folder').onchange=selectCharacterFiles;
 get('character-cancel').onclick=()=>characterDownload?.abort();
 async function resetCharacter(){
   if(busy||exporting||modelBusy)return;audio?.pause();modelBusy=true;controls();

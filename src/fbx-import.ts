@@ -196,9 +196,11 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
     const animationCount = scene.animations.length; scene.animations = [];
     const assignedTextures = new Map<string, THREE.Texture>();
     const factor = Number(scene.userData.unitScaleFactor), materialList = [...materials];
+    const originalMaterials = materialList.map(material => ({ map: material.map, color: material.color.clone() }));
     const result: LoadedFBX = { scene, materials: materialList, images: companions, animationCount,
       metersPerUnit: Number.isFinite(factor) && factor > 0 ? factor / 100 : .01,
       async applyTextures(config) {
+        materialList.forEach((material, index) => { material.map = originalMaterials[index].map; material.color.copy(originalMaterials[index].color); material.needsUpdate = true; });
         for (const [index, key] of Object.entries(config.textures)) {
           const material = materialList[Number(index)];
           if (!material || !files.has(key)) throw new Error(msg('An FBX material or companion texture is missing.', 'FBX 재질 또는 연결할 이미지가 없습니다.'));

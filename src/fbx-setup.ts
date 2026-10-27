@@ -1,8 +1,10 @@
-import { bindText, msg } from './i18n';
+import { bindAttribute, bindText, joinMessages, msg, raw } from './i18n';
 import { engineMessage } from './engine-messages';
 import { FBX_BONES, FBX_REQUIRED, imageKey, validateFBXConfig, type FBXConfig } from './fbx-config';
-import { fbxBones, resolveFBXBones, suggestFBXBones } from './fbx-rig';
+import { availableFBXBones, matchingFBXBones, fbxBones, resolveFBXBones, suggestFBXBones } from './fbx-rig';
 import { loadLocalFBX, type LoadedFBX } from './fbx-import';
+import { createFBXPreview } from './fbx-preview';
+import { savedFBXSetup, suggestFBXTexture } from './fbx-preferences';
 
 function boneLabel(name: string): string {
   const central: Record<string, [string, string]> = { hips:['Hips','골반'], spine:['Spine','척추'], chest:['Chest','가슴'], upperChest:['Upper chest','위 가슴'], neck:['Neck','목'], head:['Head','머리'], jaw:['Jaw','턱'] };
@@ -17,80 +19,154 @@ function boneLabel(name: string): string {
   return finger ? msg('{0} {1} {2}', '{0} {1} {2}', side, msg(...fingers[finger[1]]), msg(...joints[finger[2]])) : name;
 }
 
+const text = <K extends keyof HTMLElementTagNameMap>(tag: K, en: string, ko: string) => {
+  const element = document.createElement(tag);
+  const target = tag === 'label' ? document.createElement('span') : element;
+  bindText(target, msg(en, ko)); if (target !== element) element.append(target); return element;
+};
+const option = (label: string | ReturnType<typeof raw>, value: string) => { const element = document.createElement('option'); bindText(element, label); element.value = value; return element; };
+
 /** A staged import; nothing touches the active character until confirmation. */
 export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded: LoadedFBX; config: FBXConfig } | null> {
   return new Promise(resolve => {
     const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const dialog = document.createElement('dialog'); dialog.className = 'fbx-setup'; dialog.setAttribute('aria-labelledby', 'fbx-title');
-    const title = document.createElement('h2'); title.id = 'fbx-title'; bindText(title, msg('Import FBX character', 'FBX 캐릭터 불러오기'));
-    const intro = document.createElement('p'); bindText(intro, msg('Select companion PNG/JPEG images, then check the bones, units and materials. The current character stays active until import succeeds.', '함께 사용할 PNG/JPEG 이미지를 선택한 뒤 본·단위·재질을 확인하세요. 가져오기가 완료될 때까지 현재 캐릭터를 유지합니다.'));
+    const title = text('h2', 'Import FBX character', 'FBX 캐릭터 불러오기'); title.id = 'fbx-title';
+    const intro = text('p', 'Check the remaining bones and colors in the preview, then use the character.', '남은 본과 색상을 미리보기에서 확인한 뒤 캐릭터를 적용하세요.');
     const filename = document.createElement('p'); filename.textContent = file.name;
     const picker = document.createElement('input'); picker.type = 'file'; picker.multiple = true; picker.accept = '.png,.jpg,.jpeg'; picker.id = 'fbx-images';
-    const label = document.createElement('label'); label.htmlFor = picker.id; bindText(label, msg('Companion images (optional)', '함께 사용할 이미지 (선택)'));
+    const label = text('label', 'Companion images (optional)', '함께 사용할 이미지 (선택)'); label.htmlFor = picker.id;
     const selected = document.createElement('p'); selected.className = 'hint';
     const showFiles = () => { selected.textContent = companions.map(f => f.name).join(', '); }; showFiles();
     picker.onchange = () => { companions = [...picker.files ?? []]; showFiles(); };
+    const files = document.createElement('div'); files.append(filename, label, picker, selected);
     const fields = document.createElement('div'), error = document.createElement('p'); error.setAttribute('role', 'status');
-    const actions = document.createElement('div'); actions.className = 'button-row';
-    const cancel = document.createElement('button'); bindText(cancel, msg('Cancel', '취소'));
-    const next = document.createElement('button'); bindText(next, msg('Inspect file', '파일 검사'));
-    actions.append(cancel, next); dialog.append(title, intro, filename, label, picker, selected, fields, error, actions); document.body.append(dialog);
+    const actions = document.createElement('div'); actions.className = 'button-row fbx-actions';
+    const cancel = text('button', 'Cancel', '취소'), next = text('button', 'Inspect file', '파일 검사');
+    actions.append(cancel, next); dialog.append(title, intro, files, fields, error, actions); document.body.append(dialog);
     let loaded: LoadedFBX | null = null, finished = false, busy = false;
-    let boneInputs: { name: typeof FBX_BONES[number]; input: HTMLInputElement }[] = [], unit: HTMLInputElement;
+    let preview: ReturnType<typeof createFBXPreview> | undefined;
+    let textureWork: Promise<void> = Promise.resolve();
+    let boneInputs: { name: typeof FBX_BONES[number]; input: HTMLSelectElement }[] = [], unit: HTMLInputElement;
     const textureInputs: HTMLSelectElement[] = [];
-    const finish = (value: { loaded: LoadedFBX; config: FBXConfig } | null) => {
-      if (finished) return; finished = true;
+    const mapping = (): FBXConfig['bones'] => Object.fromEntries(boneInputs.flatMap(({ name, input }) => input.value ? [[name, input.value]] : []));
+    const config = (): FBXConfig => ({ bones: mapping(), metersPerUnit: Number(unit.value), textures: Object.fromEntries(textureInputs.flatMap((select, index) => select.value ? [[String(index), select.value]] : [])) });
+    const finish = async (value: { loaded: LoadedFBX; config: FBXConfig } | null) => {
+      if (finished) return; finished = true; next.disabled = true; cancel.disabled = true;
+      await textureWork; preview?.dispose();
       if (!value) loaded?.dispose(); dialog.close(); dialog.remove(); previousFocus?.focus(); resolve(value);
     };
-    cancel.onclick = () => finish(null); dialog.oncancel = event => { event.preventDefault(); finish(null); };
-    const render = () => {
+    cancel.onclick = () => { void finish(null); }; dialog.oncancel = event => { event.preventDefault(); void finish(null); };
+    const render = async () => {
       const source = loaded!, candidates = fbxBones(source.scene), suggested = suggestFBXBones(candidates);
-      const info = document.createElement('p'); bindText(info, msg('{0} bones · {1} materials · {2} embedded clips (not played). Missing textures must be assigned below.', '본 {0}개 · 재질 {1}개 · 내장 클립 {2}개 (재생하지 않음). 연결되지 않은 텍스처는 아래에서 지정하세요.', candidates.length, source.materials.length, source.animationCount)); fields.append(info);
-      const units = document.createElement('label'); bindText(units, msg('Metres per file unit', '파일 단위당 미터'));
-      unit = document.createElement('input'); unit.id = 'fbx-unit'; unit.type = 'number'; unit.min = '.000001'; unit.max = '10'; unit.step = 'any'; unit.value = String(source.metersPerUnit); units.append(unit); fields.append(units);
-      const hint = document.createElement('p'); hint.className = 'hint'; bindText(hint, msg('Centimetres: 0.01 · metres: 1. Use a standing rest pose. * marks required bones. Clear optional fields when uncertain.', '센티미터: 0.01 · 미터: 1. 서 있는 기본 자세를 사용하세요. *는 필수 본입니다. 확실하지 않은 선택 본은 비워 두세요.')); fields.append(hint);
-      const list = document.createElement('datalist'); list.id = 'fbx-bone-options';
-      const optionLabel = (bone: typeof candidates[number]) => `${bone.name} [${bone.path}]`;
-      for (const bone of candidates) { const option = document.createElement('option'); option.value = optionLabel(bone); list.append(option); } fields.append(list);
-      const optional = document.createElement('details'), summary = document.createElement('summary'); bindText(summary, msg('Optional bones / fingers', '선택 본 · 손가락')); optional.append(summary);
+      const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+      const hash = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
+      if (finished) return;
+      let saved = savedFBXSetup(hash);
+      try { if (saved) resolveFBXBones(source.scene, saved); } catch { saved = undefined; }
+      const initial = saved?.bones ?? suggested;
+      files.hidden = true;
+      const info = document.createElement('p'); info.textContent = file.name; fields.append(info);
+      if (saved) fields.append(text('p', 'Restored the last successful setup for this file. Review it before applying.', '이 파일의 마지막 성공 설정을 복원했습니다. 확인한 뒤 적용하세요.'));
+      const layout = document.createElement('div'); layout.className = 'fbx-layout';
+      const visual = document.createElement('div'); visual.className = 'fbx-visual';
+      const viewport = document.createElement('div'); viewport.className = 'fbx-preview';
+      const highlighted = text('p', 'Select a bone to mark its position in pink.', '본을 선택하면 해당 위치를 분홍색으로 표시합니다.'); highlighted.setAttribute('role', 'status');
+      const resetView = text('button', 'Reset view', '시점 초기화');
+      visual.append(viewport, highlighted, text('p', 'Drag to rotate · scroll to zoom. Preview lighting differs from the performance scene.', '드래그로 회전 · 스크롤로 확대. 미리보기 조명은 연주 장면과 다릅니다.'), resetView);
+      const settings = document.createElement('div'); layout.append(visual, settings); fields.append(layout);
+      const progress = document.createElement('p'); progress.setAttribute('role', 'status'); settings.append(progress);
+      const pending = document.createElement('div'); settings.append(pending);
+      const moreLabel = text('label', 'Show candidates with other names', '이름이 다른 후보도 표시'); moreLabel.className = 'fbx-more';
+      const more = document.createElement('input'); more.type = 'checkbox'; moreLabel.append(more); settings.append(moreLabel);
+      settings.append(text('p', 'Used bones and incompatible ancestry are excluded. If a candidate is missing, review or clear an incorrect assigned/optional bone.', '사용 중인 본과 상하 관계가 맞지 않는 본은 제외합니다. 후보가 없으면 연결된 본·선택 본에서 잘못된 연결을 해제하세요.'));
+      const assigned = document.createElement('details'); assigned.append(text('summary', 'Review assigned bones', '연결된 본 수정')); settings.append(assigned);
+      const optional = document.createElement('details'); optional.append(text('summary', 'Optional bones / fingers', '선택 본 · 손가락')); settings.append(optional);
+      const refresh = () => {
+        const current = mapping();
+        for (const { name, input } of boneInputs) {
+          const value = input.value, available = availableFBXBones(candidates, current, name);
+          const matches = new Set(matchingFBXBones(available, name).map(b => b.path));
+          const shown = !more.checked && matches.size ? available.filter(b => matches.has(b.path) || b.path === value) : available;
+          input.replaceChildren(option(msg('Choose a bone…', '본 선택…'), ''));
+          for (const recommended of [true, false]) {
+            const group = document.createElement('optgroup'); bindAttribute(group, 'label', recommended ? msg('Matching names', '이름이 일치하는 후보') : msg('Other available bones', '그 외 연결 가능한 본'));
+            for (const bone of shown.filter(b => matches.has(b.path) === recommended)) {
+              let label = `${bone.name || msg('Unnamed', '이름 없음')} · ${bone.node.parent?.name || msg('Root', '루트')}`;
+              if (available.some(b => b !== bone && b.name === bone.name && b.node.parent?.name === bone.node.parent?.name)) label += ` [${bone.path}]`;
+              group.append(option(raw(label), bone.path));
+            }
+            if (group.children.length) input.append(group);
+          }
+          input.value = value;
+        }
+        const missing = FBX_REQUIRED.filter(name => !current[name as keyof typeof current]);
+        bindText(progress, missing.length ? msg('{0} required bones left: {1}', '필수 본 {0}개를 선택하세요: {1}', missing.length, joinMessages(missing.map(boneLabel), ', ')) : msg('All 15 required bones are connected. Check the colors below.', '필수 본 15개가 모두 연결되었습니다. 아래에서 색상을 확인하세요.'));
+        next.disabled = busy || missing.length > 0;
+      };
+      more.onchange = refresh;
       boneInputs = FBX_BONES.map(name => {
-        const row = document.createElement('label'), caption = document.createElement('span');
-        bindText(caption, msg('{0}{1}', '{0}{1}', boneLabel(name), FBX_REQUIRED.includes(name) ? ' *' : '')); row.append(caption);
-        const input = document.createElement('input'); input.setAttribute('list', list.id); input.id = `fbx-bone-${name}`; input.autocomplete = 'off'; input.dataset.bone = name;
-        const match = candidates.find(bone => bone.path === suggested[name]); input.value = match ? optionLabel(match) : '';
-        row.append(input); (FBX_REQUIRED.includes(name) ? fields : optional).append(row); return { name, input };
-      }); fields.append(optional);
-      const heading = document.createElement('h3'); bindText(heading, msg('Material base-color images', '재질 기본색 이미지')); fields.append(heading);
+        const row = document.createElement('label'), caption = document.createElement('span'); bindText(caption, boneLabel(name)); row.append(caption);
+        const input = document.createElement('select'); input.id = `fbx-bone-${name}`; input.dataset.bone = name;
+        if (initial[name]) input.append(option('', initial[name]!));
+        row.append(input); (FBX_REQUIRED.includes(name) ? initial[name] ? assigned : pending : optional).append(row);
+        const highlight = () => {
+          const bone = candidates.find(b => b.path === input.value); preview?.highlight(bone?.node);
+          bindText(highlighted, bone ? msg('{0}: {1}', '{0}: {1}', boneLabel(name), raw(bone.name)) : msg('Choose a candidate to see its position.', '후보를 선택하면 위치를 확인할 수 있습니다.'));
+        };
+        input.onchange = () => { error.textContent = ''; refresh(); highlight(); }; input.onfocus = highlight;
+        return { name, input };
+      });
+      const advanced = document.createElement('details'); advanced.append(text('summary', 'Scale and file details', '크기 · 파일 정보'));
+      const units = text('label', 'Metres per file unit', '파일 단위당 미터');
+      unit = document.createElement('input'); unit.id = 'fbx-unit'; unit.type = 'number'; unit.min = '.000001'; unit.max = '10'; unit.step = 'any'; unit.value = String(saved?.metersPerUnit ?? source.metersPerUnit); units.append(unit); advanced.append(units);
+      advanced.append(text('p', 'Centimetres: 0.01 · metres: 1. Use a standing rest pose.', '센티미터: 0.01 · 미터: 1. 서 있는 기본 자세를 사용하세요.'));
+      const details = document.createElement('p'); bindText(details, msg('{0} bones · {1} materials · {2} embedded clips (not played).', '본 {0}개 · 재질 {1}개 · 내장 클립 {2}개 (재생하지 않음).', candidates.length, source.materials.length, source.animationCount)); advanced.append(details); settings.append(advanced);
+      settings.append(text('h3', 'Colors and textures', '색상 · 텍스처'), text('p', 'Image names suggest connections. Check the preview and change any incorrect choices.', '이미지 이름으로 연결을 제안합니다. 미리보기를 확인하고 맞지 않는 항목은 변경하세요.'));
+      const applyTextures = async () => {
+        busy = true; next.disabled = true; textureInputs.forEach(input => { input.disabled = true; });
+        try { await source.applyTextures(config()); if (!finished) preview?.draw(); }
+        catch (cause) { if (!finished) bindText(error, engineMessage(cause instanceof Error ? cause.message : String(cause))); }
+        finally { busy = false; textureInputs.forEach(input => { input.disabled = false; }); if (!finished) refresh(); }
+      };
       source.materials.forEach((material, index) => {
         const row = document.createElement('label'); row.textContent = material.name || `Material ${index + 1}`;
         const select = document.createElement('select'); select.id = `fbx-material-${index}`;
-        const keep = document.createElement('option'); keep.value = ''; bindText(keep, material.map ? msg('Keep original texture', '원래 텍스처 유지') : msg('No texture assigned', '연결된 텍스처 없음')); select.append(keep);
-        for (const image of source.images) { const option = document.createElement('option'); option.value = imageKey(image.name); option.textContent = image.name; select.append(option); }
-        row.append(select); fields.append(row); textureInputs.push(select);
+        select.append(option(material.map ? msg('Keep original texture', '원래 텍스처 유지') : msg('No texture assigned', '연결된 텍스처 없음'), ''));
+        for (const image of source.images) select.append(option(raw(image.name), imageKey(image.name)));
+        const remembered = saved?.textures[String(index)];
+        select.value = (saved ? remembered : material.map ? undefined : suggestFBXTexture(material.name, source.images.map(image => image.name))) ?? '';
+        if (!select.value) select.value = '';
+        select.onchange = () => { error.textContent = ''; textureWork = applyTextures(); };
+        row.append(select); settings.append(row); textureInputs.push(select);
       });
-      const limitations = document.createElement('p'); limitations.className = 'hint'; bindText(limitations, msg('Phong/Lambert materials are preserved; this does not recreate Blender/MMD toon shaders, physics or constraints. Check the original model terms.', 'Phong/Lambert 재질을 유지합니다. Blender/MMD 툰 셰이더·물리·제약 설정을 재현하지는 않습니다. 모델의 원본 이용 조건을 확인하세요.')); fields.append(limitations);
-      bindText(next, msg('Use character', '캐릭터 적용')); picker.disabled = true; next.focus();
+      settings.append(text('p', 'Successful settings are remembered for this file in this browser (up to 10 files). Model and image contents are not stored. Keep a project and the source files for later use.', '성공한 설정은 이 브라우저에서 같은 파일에 재사용합니다(최근 10개). 모델·이미지 내용은 저장하지 않습니다. 나중에 사용하려면 프로젝트와 원본 파일을 보관하세요.'));
+      settings.append(text('p', 'Original model terms apply. Toon shaders, physics and constraints are not reproduced.', '모델의 원본 이용 조건을 확인하세요. 툰 셰이더·물리·제약 설정은 재현하지 않습니다.'));
+      try { preview = createFBXPreview(viewport, source.scene); resetView.onclick = () => preview?.reset(); }
+      catch { bindText(viewport, msg('3D preview unavailable. Bone and texture selection is still available.', '3D 미리보기를 사용할 수 없습니다. 본과 텍스처는 계속 선택할 수 있습니다.')); }
+      bindText(next, msg('Use character', '캐릭터 적용')); refresh();
+      textureWork = applyTextures(); await textureWork;
+      boneInputs.find(({ input }) => !input.value && FBX_REQUIRED.includes(input.dataset.bone!))?.input.focus();
     };
     next.onclick = async () => {
-      if (busy) return;
+      if (busy || finished) return;
       try {
         if (!loaded) {
           busy = true; next.disabled = true; picker.disabled = true; bindText(error, msg('Inspecting FBX…', 'FBX를 검사하고 있습니다…'));
           const candidate = await loadLocalFBX(file, companions);
           if (finished) { candidate.dispose(); return; }
-          loaded = candidate; error.textContent = ''; render();
+          loaded = candidate; error.textContent = ''; await render();
         } else {
-          const candidates = fbxBones(loaded.scene), bones: FBXConfig['bones'] = {};
-          for (const { name, input } of boneInputs) if (input.value.trim()) {
-            const bone = candidates.find(b => `${b.name} [${b.path}]` === input.value);
-            if (!bone) throw new Error(msg('Select a listed bone for {0}.', '{0}에 연결할 본을 목록에서 선택하세요.', name)); bones[name] = bone.path;
-          }
-          const config = validateFBXConfig({ bones, metersPerUnit: Number(unit.value), textures: Object.fromEntries(textureInputs.flatMap((select, index) => select.value ? [[String(index), select.value]] : [])) });
-          resolveFBXBones(loaded.scene, config); finish({ loaded, config });
+          const chosen = validateFBXConfig(config()); resolveFBXBones(loaded.scene, chosen); void finish({ loaded, config: chosen });
         }
-      } catch (cause) { bindText(error, engineMessage(cause instanceof Error ? cause.message : String(cause))); }
-      finally { busy = false; next.disabled = false; if (!loaded) picker.disabled = false; }
+      } catch (cause) { if (!finished) bindText(error, engineMessage(cause instanceof Error ? cause.message : String(cause))); }
+      finally {
+        busy = false;
+        if (!finished) { next.disabled = loaded ? FBX_REQUIRED.some(name => !mapping()[name as keyof FBXConfig['bones']]) : false; if (!loaded) picker.disabled = false; }
+      }
     };
     dialog.showModal(); next.focus();
+    // Folder/multi-file selection already supplies the images: proceed directly.
+    if (companions.length) next.click();
   });
 }

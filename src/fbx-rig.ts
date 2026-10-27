@@ -17,7 +17,7 @@ export function fbxBones(root: THREE.Object3D): FBXBone[] {
 }
 const canonical = (name: string) => name.normalize('NFKC').replace(/^.*:/, '').replace(/^mixamorig/i, '').replace(/[\s_.-]/g, '').toLowerCase();
 /** Conventional semantic names only. No character/model-specific branches. */
-export function suggestFBXBones(candidates: FBXBone[]): FBXConfig['bones'] {
+export function matchingFBXBones(candidates: FBXBone[], name: VRMHumanBoneName): FBXBone[] {
   const aliases: Partial<Record<VRMHumanBoneName, string[]>> = {
     hips: ['hips', 'hip', 'pelvis', '腰'], spine: ['spine', '上半身'], chest: ['chest', 'spine1', '上半身1'],
     upperChest: ['upperchest', 'spine2', '上半身2'], neck: ['neck', '首'], head: ['head', '頭'],
@@ -35,14 +35,34 @@ export function suggestFBXBones(candidates: FBXBone[]): FBXConfig['bones'] {
       });
     }
   }
+  const names = new Set((aliases[name] ?? [name]).map(canonical));
+  return candidates.filter(bone => names.has(canonical(bone.name)));
+}
+export function suggestFBXBones(candidates: FBXBone[]): FBXConfig['bones'] {
   const result: FBXConfig['bones'] = {};
   for (const name of FBX_BONES) {
-    const names = new Set((aliases[name] ?? [name]).map(canonical));
-    const matches = candidates.filter(bone => names.has(canonical(bone.name)));
-    // Do not choose arbitrarily between duplicate skeletons or aliases.
+    const matches = matchingFBXBones(candidates, name);
     if (matches.length === 1) result[name] = matches[0].path;
   }
   return result;
+}
+/** Keep current selection editable; other choices must be unused and fit mapped ancestry. */
+export function availableFBXBones(candidates: FBXBone[], mapping: FBXConfig['bones'], name: VRMHumanBoneName): FBXBone[] {
+  const ancestor = (child: VRMHumanBoneName, parent: VRMHumanBoneName) => {
+    let cursor = VRMHumanBoneParentMap[child];
+    while (cursor) { if (cursor === parent) return true; cursor = VRMHumanBoneParentMap[cursor]; }
+    return false;
+  };
+  const descends = (child: THREE.Object3D, parent: THREE.Object3D) => {
+    let cursor = child.parent;
+    while (cursor) { if (cursor === parent) return true; cursor = cursor.parent; }
+    return false;
+  };
+  const mapped = Object.entries(mapping).filter(([other]) => other !== name)
+    .map(([other, path]) => ({ name: other as VRMHumanBoneName, bone: candidates.find(b => b.path === path) }));
+  return candidates.filter(candidate => candidate.path === mapping[name] || mapped.every(({ name: other, bone }) =>
+    !bone || (bone.path !== candidate.path && (!ancestor(name, other) || descends(candidate.node, bone.node)) &&
+      (!ancestor(other, name) || descends(bone.node, candidate.node)))));
 }
 export function resolveFBXBones(root: THREE.Object3D, input: FBXConfig): VRMHumanBones {
   const config = validateFBXConfig(input), candidates = new Map(fbxBones(root).map(b => [b.path, b.node]));
