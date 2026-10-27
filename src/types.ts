@@ -36,7 +36,7 @@ export interface KitCapabilities {
   requiredPairsAvailable: boolean; unresolvedRequiredPairs: string[];
   pairs: { leftPieceId: string; rightPieceId: string; status: 'available' | 'not-found' | 'unmeasured' }[];
 }
-export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; capabilities?: KitCapabilities; searchCandidates?: number; searchLimitReached?: boolean; }
+export interface KitFitProposal { kit: KitPiece[]; scale: number; translation: Vec3; pieceAdjustments: {pieceId: string; translation: Vec3}[]; unreachablePieceIds: string[]; clearancePieceIds?: string[]; complete: boolean; capabilities?: KitCapabilities; searchCandidates?: number; searchLimitReached?: boolean; seatOffset?: Vec3; searchFailures?: {stage: string; pieceId: string; branches: number}[]; }
 /** Measured body bounds and playing surface, relative to the piece's contact.
  * Radius edits scale every offset/extent by radius / referenceRadius. */
 export interface PieceGeometry {

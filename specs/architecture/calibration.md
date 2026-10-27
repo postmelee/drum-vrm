@@ -77,6 +77,31 @@ in height. Before locking a snare candidate, the search requires a feasible
 hi-hat height and a clear snare/hi-hat pair, including both complete-tool approaches.
 This avoids using the hi-hat mast corridor for a locally convenient snare.
 
+If this fast pass fails for a measured humanoid, the shared
+[recovery search](../../crates/drum-engine/src/fit_joint.rs) revisits coupled anchors:
+
+- Translate the seated body by Y `0, ±0.06, ±0.12` m and Z `0, +0.08, −0.08,
+  +0.16, +0.24` m within the existing seat limits. Roots, torso proxy and rest
+  references move together; limb lengths, tool offsets and body dimensions do not.
+  Both feet must pass the same three pitch/knee probes; the kick stays fixed.
+- At scales `1, 0.84, 0.68, 0.60`, test hi-hat pedal offsets from the derived anchor
+  of X `0, +0.06, −0.06, +0.12, +0.18` m and Z `0, −0.06, +0.06, −0.12` m,
+  still within 250 mm of the input pedal. Test height in 25 mm steps up to ±250 mm.
+  Keep the least-displaced valid anchor for each seat/scale, then revisit up to
+  three valid snare choices and both placement orders if later pieces fail.
+- Recovery requires the snare between hip roots (minimum half-width 120 mm),
+  hi-hat at least 80 mm left and 20 mm above the snare, rack toms at least 100 mm
+  forward with high tom left of mid tom and at most 150 mm row separation, floor
+  tom at least 100 mm right within 250 mm of the snare row, and ride at least
+  100 mm right. These are common layout priors, not avatar exceptions. Existing
+  fast-pass successes retain their previous placement; broader role repair is
+  still tracked in #18.
+
+Anchor generation spends at most 20,000 additional candidates and stops by total
+60,000, reserving work for placement. Each placement branch spends at most 8,000.
+Seat/scale ranking favors smaller seat displacement, then compactness and anchor
+movement. These finite choices are not an exhaustive optimizer.
+
 All branches share a maximum of 80,000 layout candidates; exact hand and pair
 memoization each retain at most 100,000 entries. Each direct-hat assembly's height
 witnesses are filtered once per branch before snare lookahead, avoiding repeated
@@ -95,7 +120,10 @@ For profiles with `handFrames`, `complete` requires designated hands to pass rea
 and skeletal posture checks at contact and two preparation samples. The samples are
 `(vertical lift in metres, tool pitch in radians)`: `(0, 0)`, `(0.055, −0.20)` and
 `(0.11, −0.42)`. Common wrist-pitch offsets are `0, ±0.15, ±0.30, ±0.45, ±0.60`
-rad, with five elbow candidates. Fitting requires these probes at neutral torso yaw;
+rad. The fast fit keeps the five original elbow candidates. Recovery and shared
+contact queries can refine the same −0.8–+0.8 rad interval in 0.05 rad steps when
+the coarse witnesses fail; anatomical limits and the 2 mm margin stay unchanged.
+Fitting requires these probes at neutral torso yaw;
 optional runtime facing must preserve the actual pitched contacts rather than rescue
 an otherwise unreachable layout. Snare center/rim-side regions, hat bow/edge, ride
 bell/inner/outer/edge and crash-edge contacts use one canonical articulation catalog.
@@ -118,7 +146,8 @@ radian excesses have weights 0.22, 0.12 (folded), 0.06 (extended) and 0.06
 (downward), capped at 0.39 per arm. These are adjustable animation priors;
 Yamaha's relaxed-arm examples inform the objective, not its numeric limits.
 Ready-pair selection minimizes this objective plus `0.015 × wristOffset²` among safe
-candidates, using the same nine bounded wrist offsets and five elbow swivels.
+candidates, using the same nine bounded wrist offsets and coarse-first elbow
+search, with the same bounded refinement only when no coarse pair exists.
 Each hand is filtered and sorted before checking pairs; no Cartesian allocation
 or avatar-specific exception is needed. Kit probes,
 equipment routing, torso planning and temporal elbow planning use the same
@@ -153,9 +182,14 @@ proxy search, not certification of every frame, transfer speed, anatomical comfo
 skin, exact meshes or support-to-support clearance.
 
 The proposal records the uniform `scale` and `translation`, plus `pieceAdjustments`
-entries containing `pieceId` and local `translation`. If no complete candidate exists,
+entries containing `pieceId` and local `translation`. `seatOffset` is the winning
+body translation, applied atomically with that kit before replanning. Up to 32
+`searchFailures` entries aggregate `{stage, pieceId, branches}` for rejected
+hi-hat witnesses, placement, feet or coupled anchors. These describe searched
+branches, whereas the failed-piece lists describe the returned layout.
+If no complete candidate exists,
 return the **original layout unchanged**, `scale: 1`, zero translation,
-`pieceAdjustments: []` and `complete: false`. `unreachablePieceIds` identifies reach
+`pieceAdjustments: []`, zero `seatOffset` and `complete: false`. `unreachablePieceIds` identifies reach
 or posture failures; `clearancePieceIds` identifies unresolved common equipment geometry.
 The browser automatically applies a complete fit when importing a character or
 restoring the built-in rig, and offers persistent undo. Incomplete fitting retains

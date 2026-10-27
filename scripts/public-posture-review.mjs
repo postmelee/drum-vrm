@@ -63,7 +63,12 @@ try {
       const seat = rig.getAutomaticCalibration(kit), initialProfile = rig.setCalibration(seat, kit);
       let start = performance.now();
       const fit = JSON.parse(wasm.fit_kit(JSON.stringify(initialProfile), JSON.stringify(kit))), fitMs = performance.now() - start;
-      const layout = fit.complete ? fit.kit : kit, profile = rig.setCalibration(seat, layout);
+      const layout = fit.complete ? fit.kit : kit;
+      const fittedSeat = fit.complete ? { ...seat,
+        seatHeight: seat.seatHeight + (fit.seatOffset?.[1] ?? 0),
+        seatForward: seat.seatForward + (fit.seatOffset?.[2] ?? 0),
+      } : seat;
+      const profile = rig.setCalibration(fittedSeat, layout);
       const equipment = JSON.parse(wasm.kit_geometry(JSON.stringify(layout)));
       start = performance.now();
       run = wasm.Performance.from_json_with_profile(JSON.stringify(calibration.applyKitLayout(source, layout)), JSON.stringify(profile));

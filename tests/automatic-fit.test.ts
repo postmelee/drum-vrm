@@ -33,3 +33,16 @@ describe('automatic import fitting',()=>{
     expect({profile,baseline,current}).toEqual(before);
   });
 });
+
+it('applies a successful seat and kit together and leaves failed seating untouched',async()=>{
+  const {fittedCalibration}=await import('../src/automatic-fit');
+  const base={seatHeight:.7,seatForward:.06,palmOrientation:'natural' as const};
+  const success=await prepareAutomaticFit(profile,layout(),layout(),async()=>({...proposal(layout()),seatOffset:[0,.06,.16]}));
+  expect(fittedCalibration(base,success)).toEqual({...base,seatHeight:.76,seatForward:.22});
+  const failure=await prepareAutomaticFit(profile,layout(),layout(),async()=>({...proposal(layout(),false),seatOffset:[0,.06,.16],searchFailures:[{stage:'coupled-anchor',pieceId:'hihat',branches:4}]}));
+  expect(fittedCalibration(base,failure)).toEqual(base);
+  expect(failure.message).toContain('Coupled seat/pedal/hi-hat candidates');
+  expect(failure.message).not.toContain('Reach/posture: ride');
+  await expect(prepareAutomaticFit(profile,layout(),layout(),async()=>({...proposal(layout()),seatOffset:[0,NaN,0]}))).rejects.toThrow();
+  expect(()=>fittedCalibration({...base,seatHeight:1.19},success)).toThrow();
+});

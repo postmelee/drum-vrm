@@ -357,3 +357,73 @@ Acceptance must cover native/public VRMs and the private VRM/FBX cohort, unchang
 source timing/bone lengths, deterministic seek, whole-tool and pedal constraints,
 rendered layout/skin inspection and fitting latency. A complete static fit alone
 is insufficient to declare the musical performance or arbitrary models supported.
+
+
+## Shared fit recovery candidate — 2026-10-27
+
+Standalone follow-up to the investigation above on `codex/fbx-character-import`,
+based on `cc479ac`. This is not the concurrent `codex/reference-kit-layout` work
+and is not a Pages deployment. Final WASM SHA-256:
+`77d553b8cf31f6e887776d87022be5bcf2eb6afa2f86de1033d4f73b1f565f5d`.
+
+The existing coarse layout pass is preserved. Failed measured humanoids enter a
+common bounded recovery over translated seat/foot/hi-hat anchors, ranked snare
+alternatives and both placement orders. Refinement fills the existing elbow-swivel
+interval on the runtime grid; it does not change the 2 mm proxy margin, anatomical
+limits, bone lengths, source times or designated hands. Recovery enforces common
+snare/hat/rack/floor/ride regions. A valid unchanged refined layout is checked
+before reseeding, making successful recovery idempotent. Failed recovery returns
+the unchanged input and aggregated search-stage evidence.
+
+Seat offsets and complete kits are adopted in one existing preparation transaction
+for import, manual automatic-fit and changed instrument geometry. Incomplete or
+cancelled operations retain the usable setup. Source model formats and names are
+not inputs to the Rust search. Contracts specify the finite grids and unchanged
+80,000-candidate total budget. This is bounded recovery, not a complete optimizer.
+
+Validation of the final engine:
+
+- 158 Rust tests passed in release mode, including an independently authored
+  short-arm body that previously failed: recovery moves the seat forward 80 mm,
+  preserves the kick, passes both-foot/common-role/static geometry checks and
+  repeats without changing the resulting layout. Explicit failure, candidate
+  budget and translated measured-body/tool invariants are also covered.
+- 42 web test files / 288 tests passed. Successful seating composition, failed
+  transaction preservation and malformed offsets are covered. Clippy with warnings
+  denied, formatting, typecheck, production web build and documentation checks pass.
+- Fresh public-avatar Node/WASM geometry/pose audit: B 68% at 6.36 s, Seed-san 78%
+  at 14.09 s, Twist 66% at 7.93 s. All assign the 53-hit study, preserve source
+  events, have no unresolved static equipment geometry and reproduce poses and
+  actual adapter markers under reordered evaluation. Existing dynamic proxy
+  diagnostics remain; this is not an all-frame skin/garment clearance claim.
+- Private geometry audits retain the real loaders/semantic adapters and stub only
+  image decoding. Gold Ship FBX still fails hi-hat anchors (20,089 candidates).
+  Jungle Pocket VRM 0.0 and Almond Eye FBX reach later placement branches but
+  exhaust 80,000 candidates. All retain the original kit and zero seat offset.
+  A discarded experimental Almond Eye result passed static clearance but moved
+  the mid tom into the snare row; it is deliberately not a successful final result.
+  Private sources, profiles, outputs and screenshots remain ignored under `.local/`.
+
+Production preview verification on localhost:5180 used the matching served WASM
+hash above. Native automatic fitting completed at 90%; Gold Ship folder import
+restored its existing bones/textures/Unlit choice and adopted successfully while
+preserving the prior usable layout after incomplete fitting. Analysis displayed
+26 hi-hat witness failures, six kick/seat rejections and the coupled-anchor miss.
+The final browser warning/error log was empty. The private screenshot is
+`.local/fbx/joint-fit-analysis.png`. No MIDI playback or new skin/leg collision
+acceptance is inferred from this idle-pose browser check.
+
+Observed limits and integration order:
+
+- The public fast-pass placements retain known rack-row limitations from #18;
+  the new recovery does not retroactively certify them as conventional layouts.
+- Search is slower on difficult bodies and can exhaust its budget. Failure means
+  no accepted candidate was found, not physical impossibility or a damaged model.
+- The concurrent reference-layout task is changing leg/shoe/garment measurements,
+  support envelopes, component sizing and fit policy. Complete that geometry/layout
+  contract first, reconcile overlapping solver and adapter changes, rebuild WASM,
+  then rerun public VRM, private VRM 0.0 and FBX tests plus rendered multi-view and
+  motion inspection. A clean Git merge alone is insufficient acceptance.
+- This candidate's foot gate checks sole contact, reach and knee range. It does not
+  add the concurrent task's leg-to-equipment or detached-garment collision model.
+  New world-space body fields must join seat translation when integrated.

@@ -32,6 +32,13 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
         let before = serde_json::to_string(&original).unwrap();
         let fitted = fit_kit(&profile, &original).unwrap();
         assert!(fitted.search_candidates <= MAX_FIT_LAYOUT_CANDIDATES);
+        if scale == 0.65 {
+            assert!(
+                fitted.complete,
+                "coupled recovery must fit this independently authored short-arm body"
+            );
+            assert_ne!(fitted.seat_offset, [0.; 3]);
+        }
         if !fitted.complete {
             // Adding physical equipment can make a formerly reachable skeleton
             // fixture infeasible within the bounded compact-layout search.
@@ -45,6 +52,13 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
             }
             assert!(fitted.piece_adjustments.is_empty());
             continue;
+        }
+        let profile = joint::translated_profile(&profile, fitted.seat_offset, &fitted.kit);
+        let refined = FitCache::default();
+        refined.refine.set(true);
+        if fitted.seat_offset != [0.; 3] {
+            assert!(joint::roles_complete(&profile, &fitted.kit));
+            assert!(joint::feet_fit(&profile, &fitted.kit));
         }
         assert!((0.6..=1.0).contains(&fitted.scale));
         assert!(fitted.clearance_piece_ids.is_empty());
@@ -100,10 +114,10 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
             ) < 1e-9
         );
         let snare = fitted.kit.iter().find(|piece| piece.id == "snare").unwrap();
-        assert!(snare_ready_fits(&profile, snare));
+        assert!(snare_ready_fits_cached(&profile, snare, &refined));
         for piece in &fitted.kit {
             assert!(
-                piece_posture_fits(&profile, piece, &FitCache::default()),
+                piece_posture_fits(&profile, piece, &refined),
                 "{}",
                 piece.id
             );
@@ -131,6 +145,8 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
             }
         }
         let repeated = fit_kit(&profile, &fitted.kit).unwrap();
+        assert!(repeated.complete);
+        assert_eq!(repeated.seat_offset, [0.; 3]);
         assert_eq!(repeated.scale, 1.0);
         assert_eq!(repeated.translation, [0.0; 3]);
         assert!(repeated.piece_adjustments.is_empty());
@@ -180,7 +196,9 @@ fn annulus_reach_is_not_accepted_as_a_safe_near_snare_posture() {
     let profile = profile(1.0);
     let target = [-0.18, 1.05, 0.35];
     assert!(profile.reachable(0, target));
-    assert!(!hand_posture_fits(&profile, 0, target));
+    assert!(!crate::contact_feasibility::hand_probe_fits(
+        &profile, 0, target, None, None
+    ));
     let mut kit = default_kit();
     kit.iter_mut()
         .find(|piece| piece.id == "snare")
@@ -428,5 +446,92 @@ fn required_pair_checks_reuse_geometry_without_changing_results() {
             crate::posture::required_pairs(&profile, &kit),
             crate::posture::required_pairs_with_equipment(&profile, &kit, Some(&ctx))
         );
+    }
+}
+
+#[test]
+fn coupled_seat_translation_preserves_measured_body_and_tool_geometry() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/native-equipment.json")).unwrap();
+    let p: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+    let kit: Vec<KitPiece> = serde_json::from_value(fixture["kit"].clone()).unwrap();
+    let offset = [0., 0.06, 0.08];
+    let moved = joint::translated_profile(&p, offset, &kit);
+    assert_eq!(moved.lengths, p.lengths);
+    assert_eq!(moved.grip_offsets, p.grip_offsets);
+    assert_eq!(moved.tip_offsets, p.tip_offsets);
+    for i in 0..4 {
+        for (axis, delta) in offset.iter().enumerate() {
+            assert_eq!(moved.roots[i][axis], p.roots[i][axis] + delta);
+        }
+    }
+    let before = p.body_geometry.as_ref().unwrap();
+    let after = moved.body_geometry.as_ref().unwrap();
+    assert_eq!(before.arm_radii, after.arm_radii);
+    assert_eq!(before.torso.half_extents, after.torso.half_extents);
+    assert_eq!(
+        serde_json::to_string(&before.hand_capsules).unwrap(),
+        serde_json::to_string(&after.hand_capsules).unwrap()
+    );
+    for (axis, delta) in offset.iter().enumerate() {
+        assert_eq!(after.torso.center[axis], before.torso.center[axis] + delta);
+    }
+    assert_eq!(
+        moved.rest_tips[2],
+        kit.iter()
+            .find(|p| p.instrument == Instrument::PedalHat)
+            .unwrap()
+            .position
+    );
+    assert_eq!(
+        moved.rest_tips[3],
+        kit.iter()
+            .find(|p| p.instrument == Instrument::Kick)
+            .unwrap()
+            .position
+    );
+}
+
+#[test]
+fn coupled_regions_reject_rack_toms_in_the_snare_row_and_a_central_hat() {
+    let p = profile(1.);
+    let mut kit = default_kit();
+    let all: Vec<_> = (0..kit.len()).collect();
+    let high = kit
+        .iter()
+        .position(|p| p.instrument == Instrument::TomHigh)
+        .unwrap();
+    let hat = kit
+        .iter()
+        .position(|p| p.instrument == Instrument::Hihat)
+        .unwrap();
+    assert!(joint::roles_valid(&p, &kit, &all, high));
+    let snare = kit
+        .iter()
+        .find(|p| p.instrument == Instrument::Snare)
+        .unwrap()
+        .position;
+    kit[high].position[2] = snare[2];
+    assert!(!joint::roles_valid(&p, &kit, &all, high));
+    kit = default_kit();
+    kit[hat].position[0] = snare[0];
+    assert!(!joint::roles_valid(&p, &kit, &all, hat));
+}
+
+#[test]
+fn search_failure_trace_survives_returning_the_unchanged_layout() {
+    let p = profile(0.8);
+    let kit = default_kit();
+    let result = fit_kit(&p, &kit).unwrap();
+    assert!(result.search_candidates <= MAX_FIT_LAYOUT_CANDIDATES);
+    assert!(!result.complete);
+    {
+        assert!(!result.search_failures.is_empty());
+        assert!(result.search_failures.iter().all(|f| f.branches > 0));
+        assert_eq!(result.seat_offset, [0.; 3]);
+        for (a, b) in kit.iter().zip(&result.kit) {
+            assert_eq!(a.position, b.position);
+            assert_eq!(a.radius, b.radius);
+        }
     }
 }

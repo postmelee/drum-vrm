@@ -14,6 +14,13 @@ pub struct PieceAdjustment {
 }
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FitFailure {
+    pub stage: String,
+    pub piece_id: String,
+    pub branches: usize,
+}
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct KitFitProposal {
     pub kit: Vec<KitPiece>,
     pub scale: f64,
@@ -24,6 +31,8 @@ pub struct KitFitProposal {
     pub piece_adjustments: Vec<PieceAdjustment>,
     pub search_candidates: usize,
     pub search_limit_reached: bool,
+    pub seat_offset: Vec3,
+    pub search_failures: Vec<FitFailure>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<crate::posture::Capabilities>,
 }
@@ -37,11 +46,20 @@ struct FitCache {
     exhausted: Cell<bool>,
     hands: RefCell<HashMap<(usize, [u64; 3]), bool>>,
     pairs: RefCell<HashMap<[u64; 6], bool>>,
+    failures: RefCell<Vec<FitFailure>>,
+    limit: Cell<usize>,
+    refine: Cell<bool>,
 }
 impl FitCache {
     const LIMIT: usize = 100_000;
     fn candidate(&self) -> bool {
-        if self.candidates.get() >= MAX_FIT_LAYOUT_CANDIDATES {
+        if self.candidates.get()
+            >= if self.limit.get() == 0 {
+                MAX_FIT_LAYOUT_CANDIDATES
+            } else {
+                self.limit.get()
+            }
+        {
             self.exhausted.set(true);
             return false;
         }
@@ -50,15 +68,38 @@ impl FitCache {
     }
     fn finish(&self, mut result: KitFitProposal) -> KitFitProposal {
         result.search_candidates = self.candidates.get();
-        result.search_limit_reached = self.exhausted.get();
+        result.search_limit_reached = self.candidates.get() >= MAX_FIT_LAYOUT_CANDIDATES;
+        result.search_failures = self.failures.borrow().clone();
         result
+    }
+    fn fail(&self, stage: &str, piece: &str) {
+        let mut failures = self.failures.borrow_mut();
+        if let Some(f) = failures
+            .iter_mut()
+            .find(|f| f.stage == stage && f.piece_id == piece)
+        {
+            f.branches += 1;
+        } else if failures.len() < 32 {
+            failures.push(FitFailure {
+                stage: stage.into(),
+                piece_id: piece.into(),
+                branches: 1,
+            });
+        }
     }
     fn hand(&self, profile: &RigProfile, limb: usize, target: Vec3) -> bool {
         let key = (limb, target.map(f64::to_bits));
         if let Some(&result) = self.hands.borrow().get(&key) {
             return result;
         }
-        let result = hand_posture_fits(profile, limb, target);
+        let result = crate::contact_feasibility::hand_probe_mode(
+            profile,
+            limb,
+            target,
+            None,
+            None,
+            self.refine.get(),
+        );
         if self.hands.borrow().len() < Self::LIMIT {
             self.hands.borrow_mut().insert(key, result);
         }
@@ -69,7 +110,15 @@ impl FitCache {
         if let Some(&result) = self.pairs.borrow().get(&key) {
             return result;
         }
-        let result = crate::posture::pair_available(profile, tips, [0.0; 2]);
+        let result = crate::posture::pair_solution_mode(
+            profile,
+            tips,
+            [0.; 2],
+            None,
+            [None; 2],
+            self.refine.get(),
+        )
+        .is_some();
         if self.pairs.borrow().len() < Self::LIMIT {
             self.pairs.borrow_mut().insert(key, result);
         }
@@ -78,9 +127,6 @@ impl FitCache {
 }
 fn hand_piece(piece: &KitPiece) -> bool {
     !matches!(piece.instrument, Instrument::Kick | Instrument::PedalHat)
-}
-fn hand_posture_fits(profile: &RigProfile, limb: usize, target: Vec3) -> bool {
-    crate::contact_feasibility::hand_probe_fits(profile, limb, target, None, None)
 }
 fn preferred_hands(piece: &KitPiece) -> &'static [usize] {
     match piece.instrument {
@@ -116,14 +162,23 @@ fn equipment_posture_fits(
     piece: &KitPiece,
     ctx: &crate::equipment_motion::EquipmentContext,
 ) -> bool {
+    equipment_posture_mode(profile, piece, ctx, true)
+}
+fn equipment_posture_mode(
+    profile: &RigProfile,
+    piece: &KitPiece,
+    ctx: &crate::equipment_motion::EquipmentContext,
+    refine: bool,
+) -> bool {
     piece_targets(profile, piece).iter().all(|&target| {
         hands_satisfied(piece, |limb| {
-            crate::contact_feasibility::hand_probe_fits(
+            crate::contact_feasibility::hand_probe_mode(
                 profile,
                 limb,
                 target,
                 Some(ctx),
                 Some(piece.id.as_str()),
+                refine,
             )
         })
     })
@@ -192,14 +247,18 @@ fn piece_posture_fits(profile: &RigProfile, piece: &KitPiece, cache: &FitCache) 
             .all(|&target| hands_satisfied(piece, |limb| cache.hand(profile, limb, target)))
 }
 fn missed(profile: &RigProfile, kit: &[KitPiece], posture: bool) -> Vec<String> {
+    missed_mode(profile, kit, posture, false)
+}
+fn missed_mode(profile: &RigProfile, kit: &[KitPiece], posture: bool, refine: bool) -> Vec<String> {
     let cache = FitCache::default();
+    cache.refine.set(refine);
     kit.iter()
         .filter(|piece| {
             (posture && !snare_ready_fits_cached(profile, piece, &cache))
                 || piece_targets(profile, piece).iter().any(|&target| {
                     !hands_satisfied(piece, |limb| {
                         if posture {
-                            hand_posture_fits(profile, limb, target)
+                            cache.hand(profile, limb, target)
                         } else {
                             crate::equipment_motion::PITCH_OFFSETS
                                 .iter()
@@ -256,6 +315,8 @@ fn proposal(
         search_candidates: 0,
         search_limit_reached: false,
         capabilities: None,
+        seat_offset: [0.; 3],
+        search_failures: Vec::new(),
     }
 }
 fn transform(kit: &[KitPiece], scale: f64, translation: Vec3) -> Vec<KitPiece> {
@@ -284,7 +345,11 @@ fn shift_cost(translation: Vec3) -> f64 {
 /// measured/default rigid body proxies and every generated support remain clear,
 /// and drumhead approach regions are accessible. It does not certify whole
 /// motion paths or skinned meshes; those require separate temporal inspection.
-fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal, String> {
+fn uniform_fit(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    cache: &FitCache,
+) -> Result<KitFitProposal, String> {
     profile.validate()?;
     if !valid(kit) {
         return Err("키트 배치가 지원 범위를 벗어납니다.".into());
@@ -301,9 +366,8 @@ fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
         })
         .collect();
     let kit = measured.as_slice();
-    let cache = FitCache::default();
     let original = proposal(profile, kit.to_vec(), 1.0, [0.0; 3]);
-    let repaired = repair_posture(profile, original.clone(), &cache);
+    let repaired = repair_posture(profile, original.clone(), cache);
     if repaired.complete {
         return Ok(cache.finish(repaired));
     }
@@ -334,7 +398,7 @@ fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
             let candidate = repair_posture(
                 profile,
                 proposal(profile, adjusted, scale, translation),
-                &cache,
+                cache,
             );
             if candidate.complete {
                 return Some(candidate);
@@ -363,7 +427,7 @@ fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
         previous = scale;
     }
     let mut unchanged = original;
-    unchanged.unreachable_piece_ids = missed(profile, kit, true);
+    unchanged.unreachable_piece_ids = missed_mode(profile, kit, true, cache.refine.get());
     add_equipment_misses(profile, &mut unchanged);
     unchanged.clearance_piece_ids = kit_clearance_ids(kit);
     unchanged.complete = unchanged.unreachable_piece_ids.is_empty()
@@ -379,13 +443,13 @@ fn repair_posture(
     result: KitFitProposal,
     cache: &FitCache,
 ) -> KitFitProposal {
-    let first = repair_posture_order(profile, result.clone(), cache, false);
+    let first = repair_posture_order(profile, result.clone(), cache, false, None);
     if first.complete || cache.exhausted.get() {
         return first;
     }
     // A rack-first alternative avoids locking a floor tom into the rack's only
     // usable corridor. Both orders share exactly the same finite work budget.
-    repair_posture_order(profile, result, cache, true)
+    repair_posture_order(profile, result, cache, true, None)
 }
 /// Keep the direct hi-hat assembly near the seated left foot while leaving room
 /// for the snare. Candidates preserve real leg/foot dimensions and test the full
@@ -431,21 +495,7 @@ fn place_hihat_pedal(profile: &RigProfile, result: &mut KitFitProposal) {
         }
         let mut piece = result.kit[index].clone();
         piece.position = position;
-        let feasible = [0.0, -0.09, -0.18].iter().all(|&pitch| {
-            let rotation = crate::rig::pitch_rotation(profile.contact_rotations[2], pitch);
-            let ankle = crate::motion::sub(
-                crate::equipment::pedal_contact(&piece, pitch),
-                profile.offset(2, rotation),
-            );
-            let d = crate::motion::distance(profile.roots[2], ankle);
-            let [a, b] = profile.lengths[2];
-            let inner = ((a * a + b * b - d * d) / (2.0 * a * b))
-                .clamp(-1.0, 1.0)
-                .acos();
-            d >= (a - b).abs() + 1e-5
-                && d <= a + b - 1e-4
-                && (55_f64.to_radians()..=155_f64.to_radians()).contains(&inner)
-        });
+        let feasible = joint::foot_fits(profile, &piece, 2);
         if feasible {
             let shift = std::array::from_fn(|axis| position[axis] - original[axis]);
             if crate::motion::distance(shift, [0.0; 3]) > 1e-9 {
@@ -464,8 +514,11 @@ fn repair_posture_order(
     mut result: KitFitProposal,
     cache: &FitCache,
     rack_first: bool,
+    anchor_rank: Option<usize>,
 ) -> KitFitProposal {
-    place_hihat_pedal(profile, &mut result);
+    if anchor_rank.is_none() {
+        place_hihat_pedal(profile, &mut result);
+    }
     // A direct hi-hat is one mechanical assembly with its foot contact.
     // Its surface may change height, but fitting cannot detach the mast from
     // its pedal merely to make the right hand reachable.
@@ -524,12 +577,13 @@ fn repair_posture_order(
                         kit,
                     };
                     (ctx.geometry.unresolved_piece_ids.is_empty()
-                        && equipment_posture_fits(profile, &hat, &ctx))
+                        && equipment_posture_mode(profile, &hat, &ctx, cache.refine.get()))
                     .then_some(hat)
                 })
                 .collect()
         });
     if result.kit.iter().any(|p| p.instrument == Instrument::Hihat) && hat_candidates.is_empty() {
+        cache.fail("hihat-witness", "hihat");
         result.complete = false;
         return result;
     }
@@ -603,13 +657,18 @@ fn repair_posture_order(
                 geometry,
             };
             ctx.geometry.unresolved_piece_ids.is_empty()
-                && equipment_posture_fits(profile, &candidate[index], &ctx)
+                && equipment_posture_mode(profile, &candidate[index], &ctx, cache.refine.get())
                 && fixed
                     .iter()
                     .filter(|p| p.id != candidate[index].id)
-                    .all(|p| equipment_posture_fits(profile, p, &ctx))
-                && crate::posture::required_pairs_with_equipment(profile, &fixed, Some(&ctx))
-                    .is_empty()
+                    .all(|p| equipment_posture_mode(profile, p, &ctx, cache.refine.get()))
+                && crate::posture::required_pairs_mode(
+                    profile,
+                    &fixed,
+                    Some(&ctx),
+                    cache.refine.get(),
+                )
+                .is_empty()
                 && if candidate[index].instrument == Instrument::Snare {
                     // The snare reference and direct hi-hat form one coupled
                     // ready posture. Do not greedily lock a snare that occupies
@@ -630,14 +689,25 @@ fn repair_posture_order(
                                 kit: pair_kit,
                             };
                             pair_ctx.geometry.unresolved_piece_ids.is_empty()
-                                && equipment_posture_fits(profile, &candidate[index], &pair_ctx)
-                                && equipment_posture_fits(profile, hat, &pair_ctx)
-                                && crate::posture::pair_solution_with_equipment(
+                                && equipment_posture_mode(
+                                    profile,
+                                    &candidate[index],
+                                    &pair_ctx,
+                                    cache.refine.get(),
+                                )
+                                && equipment_posture_mode(
+                                    profile,
+                                    hat,
+                                    &pair_ctx,
+                                    cache.refine.get(),
+                                )
+                                && crate::posture::pair_solution_mode(
                                     profile,
                                     tips,
                                     [0.0; 2],
                                     Some(&pair_ctx),
                                     [Some(candidate[index].id.as_str()), Some(hat.id.as_str())],
+                                    cache.refine.get(),
                                 )
                                 .is_some()
                         })
@@ -654,12 +724,13 @@ fn repair_posture_order(
                             cache.pair(
                                 profile,
                                 crate::posture::ready_pair(profile, snare, &candidate[index]),
-                            ) && crate::posture::pair_solution_with_equipment(
+                            ) && crate::posture::pair_solution_mode(
                                 profile,
                                 crate::posture::ready_pair(profile, snare, &candidate[index]),
                                 [0.0; 2],
                                 Some(&ctx),
                                 [Some(snare.id.as_str()), Some(candidate[index].id.as_str())],
+                                cache.refine.get(),
                             )
                             .is_some()
                         })
@@ -667,7 +738,11 @@ fn repair_posture_order(
                     true
                 }
         };
-        if piece_posture_fits(profile, &result.kit[index], cache) && against_locked(&result.kit) {
+        if anchor_rank.unwrap_or(0) == 0
+            && piece_posture_fits(profile, &result.kit[index], cache)
+            && against_locked(&result.kit)
+            && (anchor_rank.is_none() || joint::roles_valid(profile, &result.kit, &locked, index))
+        {
             locked.push(index);
             continue;
         }
@@ -748,6 +823,7 @@ fn repair_posture_order(
             score(*a).total_cmp(&score(*b))
         });
         let mut placed = false;
+        let mut accepted = 0;
         for shift in shifts {
             if !cache.candidate() {
                 break;
@@ -762,8 +838,16 @@ fn repair_posture_order(
                 || indices
                     .iter()
                     .any(|&i| !piece_posture_fits(profile, &candidate[i], cache))
+                || (anchor_rank.is_some()
+                    && !joint::roles_valid(profile, &candidate, &locked, index))
                 || !against_locked(&candidate)
             {
+                continue;
+            }
+            if result.kit[index].instrument == Instrument::Snare
+                && accepted < anchor_rank.unwrap_or(0)
+            {
+                accepted += 1;
                 continue;
             }
             result.kit = candidate;
@@ -789,16 +873,18 @@ fn repair_posture_order(
         // this piece's bounded candidates therefore ends this branch; spending
         // more work on later instruments cannot turn it into a complete fit.
         if !placed {
+            cache.fail("placement", &result.kit[index].id);
             break;
         }
         locked.push(index);
     }
-    result.unreachable_piece_ids = missed(profile, &result.kit, true);
+    result.unreachable_piece_ids = missed_mode(profile, &result.kit, true, cache.refine.get());
     add_equipment_misses(profile, &mut result);
     result.clearance_piece_ids = kit_clearance_ids(&result.kit);
     result.complete = result.unreachable_piece_ids.is_empty()
         && result.clearance_piece_ids.is_empty()
-        && crate::posture::required_pairs(profile, &result.kit).is_empty();
+        && crate::posture::required_pairs(profile, &result.kit).is_empty()
+        && (anchor_rank.is_none() || joint::roles_complete(profile, &result.kit));
     result
 }
 
@@ -817,8 +903,35 @@ fn add_equipment_misses(profile: &RigProfile, result: &mut KitFitProposal) {
 }
 
 pub fn fit_kit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal, String> {
-    let mut result = uniform_fit(profile, kit)?;
-    result.capabilities = Some(crate::posture::audit(profile, &result.kit));
+    let cache = FitCache::default();
+    profile.validate()?;
+    if !valid(kit) {
+        return Err("키트 배치가 지원 범위를 벗어납니다.".into());
+    }
+    // A previously accepted refined witness must remain stable on a repeat fit.
+    // Check the unchanged full layout before pedal seeding can overwrite it.
+    let mut existing = proposal(profile, kit.to_vec(), 1., [0.; 3]);
+    let keep_existing = profile.hand_frames.is_some()
+        && existing.clearance_piece_ids.is_empty()
+        && existing.unreachable_piece_ids.is_empty()
+        && joint::feet_fit(profile, kit)
+        && joint::roles_complete(profile, kit)
+        && missed_mode(profile, kit, true, true).is_empty()
+        && {
+            add_equipment_misses(profile, &mut existing);
+            existing.unreachable_piece_ids.is_empty()
+                && crate::posture::required_pairs(profile, kit).is_empty()
+        };
+    let mut result = if keep_existing {
+        existing
+    } else {
+        uniform_fit(profile, kit, &cache)?
+    };
+    if !result.complete && profile.hand_frames.is_some() {
+        result = joint::fit(profile, result);
+    }
+    let fitted_profile = joint::translated_profile(profile, result.seat_offset, &result.kit);
+    result.capabilities = Some(crate::posture::audit(&fitted_profile, &result.kit));
     Ok(result)
 }
 
@@ -832,6 +945,9 @@ pub fn fit_kit_json(profile_json: &str, kit_json: &str) -> Result<String, String
         serde_json::from_str(kit_json).map_err(|e| format!("키트 배치 형식 오류: {e}"))?;
     serde_json::to_string(&fit_kit(&profile, &kit)?).map_err(|e| e.to_string())
 }
+
+#[path = "fit_joint.rs"]
+mod joint;
 
 #[cfg(test)]
 #[path = "fit_tests.rs"]

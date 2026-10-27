@@ -20,12 +20,30 @@ pub fn at_pitch(
     equipment: Option<&EquipmentContext>,
     piece: Option<&str>,
 ) -> Option<HandSolution> {
-    posture::hand_candidates(profile, limb, target, pitch).find(|hand| {
+    at_pitch_mode(profile, limb, target, pitch, equipment, piece, true)
+}
+pub(crate) fn at_pitch_mode(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+    refine: bool,
+) -> Option<HandSolution> {
+    let valid = |hand: &HandSolution| {
         equipment.is_none_or(|ctx| {
             crate::equipment_motion::hand_clearance(profile, limb, hand, ctx, piece)
                 >= posture::MARGIN
         })
-    })
+    };
+    posture::hand_candidates(profile, limb, target, pitch)
+        .find(valid)
+        .or_else(|| {
+            posture::refined_hand_candidates(profile, limb, target, pitch)
+                .take(if refine { 28 } else { 0 })
+                .find(valid)
+        })
 }
 
 pub fn candidate(
@@ -50,6 +68,16 @@ pub fn hand_probe_fits(
     equipment: Option<&EquipmentContext>,
     piece: Option<&str>,
 ) -> bool {
+    hand_probe_mode(profile, limb, target, equipment, piece, true)
+}
+pub(crate) fn hand_probe_mode(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+    refine: bool,
+) -> bool {
     if limb >= 2 {
         return false;
     }
@@ -57,15 +85,18 @@ pub fn hand_probe_fits(
         return profile.reachable(limb, target);
     }
     PROBES.into_iter().all(|(lift, pitch)| {
-        candidate(
-            profile,
-            limb,
-            [target[0], target[1] + lift, target[2]],
-            pitch,
-            equipment,
-            piece,
-        )
-        .is_some()
+        PITCH_OFFSETS.into_iter().any(|delta| {
+            at_pitch_mode(
+                profile,
+                limb,
+                [target[0], target[1] + lift, target[2]],
+                pitch + delta,
+                equipment,
+                piece,
+                refine,
+            )
+            .is_some()
+        })
     })
 }
 

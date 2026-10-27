@@ -90,12 +90,17 @@ pub fn hand_candidates(
         .iter()
         .filter_map(move |&angle| hand_candidate(profile, limb, target, pitch, angle))
 }
-pub fn pair_solution(
+/// Refine the existing swivel interval on the temporal solver's 0.05-radian
+/// grid only after coarse feasibility fails. No joint limit or margin changes.
+pub fn refined_hand_candidates(
     profile: &RigProfile,
-    tips: [Vec3; 2],
-    pitches: [f64; 2],
-) -> Option<[HandSolution; 2]> {
-    pair_solution_with_equipment(profile, tips, pitches, None, [None; 2])
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+) -> impl Iterator<Item = HandSolution> + '_ {
+    (-15_i32..=15)
+        .filter(|i| i % 8 != 0)
+        .filter_map(move |i| hand_candidate(profile, limb, target, pitch, i as f64 * 0.05))
 }
 pub fn pair_solution_with_equipment(
     profile: &RigProfile,
@@ -104,10 +109,39 @@ pub fn pair_solution_with_equipment(
     equipment: Option<&crate::equipment_motion::EquipmentContext>,
     intended_ids: [Option<&str>; 2],
 ) -> Option<[HandSolution; 2]> {
+    pair_solution_mode(profile, tips, pitches, equipment, intended_ids, true)
+}
+pub(crate) fn pair_solution_mode(
+    profile: &RigProfile,
+    tips: [Vec3; 2],
+    pitches: [f64; 2],
+    equipment: Option<&crate::equipment_motion::EquipmentContext>,
+    intended_ids: [Option<&str>; 2],
+    refine: bool,
+) -> Option<[HandSolution; 2]> {
+    pair_search(profile, tips, pitches, equipment, intended_ids, false).or_else(|| {
+        if refine {
+            pair_search(profile, tips, pitches, equipment, intended_ids, true)
+        } else {
+            None
+        }
+    })
+}
+fn pair_search(
+    profile: &RigProfile,
+    tips: [Vec3; 2],
+    pitches: [f64; 2],
+    equipment: Option<&crate::equipment_motion::EquipmentContext>,
+    intended_ids: [Option<&str>; 2],
+    refine: bool,
+) -> Option<[HandSolution; 2]> {
     let candidates = |limb: usize| {
         let mut choices = Vec::new();
         for delta in crate::equipment_motion::PITCH_OFFSETS {
-            for hand in hand_candidates(profile, limb, tips[limb], pitches[limb] + delta) {
+            for hand in hand_candidates(profile, limb, tips[limb], pitches[limb] + delta).chain(
+                refined_hand_candidates(profile, limb, tips[limb], pitches[limb] + delta)
+                    .take(if refine { 28 } else { 0 }),
+            ) {
                 if equipment.is_some_and(|ctx| {
                     crate::equipment_motion::hand_clearance(
                         profile,
@@ -144,9 +178,6 @@ pub fn pair_solution_with_equipment(
         }
     }
     best.map(|(_, hands)| hands)
-}
-pub fn pair_available(profile: &RigProfile, tips: [Vec3; 2], pitches: [f64; 2]) -> bool {
-    pair_solution(profile, tips, pitches).is_some()
 }
 /// Ready tips occupy distinct small regions of the same head. This is a fixed
 /// calibration probe, not random strike variation or a mutation of MIDI hits.
@@ -213,6 +244,14 @@ pub(crate) fn required_pairs_with_equipment(
     kit: &[KitPiece],
     ctx: Option<&crate::equipment_motion::EquipmentContext>,
 ) -> Vec<String> {
+    required_pairs_mode(profile, kit, ctx, true)
+}
+pub(crate) fn required_pairs_mode(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    ctx: Option<&crate::equipment_motion::EquipmentContext>,
+    refine: bool,
+) -> Vec<String> {
     if profile.hand_frames.is_none() {
         return Vec::new();
     }
@@ -223,12 +262,13 @@ pub(crate) fn required_pairs_with_equipment(
         return Vec::new();
     };
     let mut missing = Vec::new();
-    if pair_solution_with_equipment(
+    if pair_solution_mode(
         profile,
         ready_pair(profile, snare, snare),
         [0.0; 2],
         ctx,
         [Some(snare.id.as_str()); 2],
+        refine,
     )
     .is_none()
     {
@@ -238,12 +278,13 @@ pub(crate) fn required_pairs_with_equipment(
         .iter()
         .find(|p| p.instrument == crate::model::Instrument::Hihat)
     {
-        if pair_solution_with_equipment(
+        if pair_solution_mode(
             profile,
             ready_pair(profile, snare, hat),
             [0.0; 2],
             ctx,
             [Some(snare.id.as_str()), Some(hat.id.as_str())],
+            refine,
         )
         .is_none()
         {
@@ -266,12 +307,13 @@ pub(crate) fn required_pairs_with_equipment(
             // runtime check.
             [0.035, 0.0].into_iter().all(|lower| {
                 let tips = ready.map(|tip| [tip[0], tip[1] - lower, tip[2]]);
-                pair_solution_with_equipment(
+                pair_solution_mode(
                     profile,
                     tips,
                     [0.0; 2],
                     ctx,
                     [Some(a.id.as_str()), Some(b.id.as_str())],
+                    refine,
                 )
                 .is_some()
             })

@@ -129,6 +129,14 @@ A plan's `calibrationId` alone cannot
 reconstruct the profile. The [rig contract](rig-contract.md) defines coordinate and
 attachment semantics.
 
+`fit_kit` also returns `seatOffset` (metres in profile coordinates) and bounded
+`searchFailures` entries `{stage, pieceId, branches}`. Apply a nonzero seat offset
+only with a complete proposal, regenerate the profile through the same adapter,
+and prepare the plan before committing scene state. A failed proposal preserves
+the input layout and zero seat offset; search-stage evidence does not replace
+layout-specific reach/clearance diagnostics. The [calibration contract](calibration.md)
+owns search bounds and the distinction between static witnesses and motion safety.
+
 ## Preparation and Worker boundary
 
 Browser fitting, initial planning, calibration replanning and project reconstruction

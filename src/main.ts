@@ -12,7 +12,7 @@ import {msg, raw, bindText, boundText, bindAttribute, bindStaticTranslations, jo
 import {diagnosticTitle, engineMessage} from './engine-messages';
 import './style.css';
 import { studioTemplate } from './studio-template';
-import { prepareAutomaticFit } from './automatic-fit';
+import { prepareAutomaticFit, fittedCalibration } from './automatic-fit';
 import { DrumTimeline, createTimelineNotes } from './timeline';
 import { arrangementOf, nearestNoteGroup, noteSources, withArrangementEdit, type Arrangement } from './arrangement';
 import { DrumScene } from './scene';
@@ -259,7 +259,7 @@ async function autoFitCurrent() {
     const seat={...scene.getAutomaticCalibration(),palmOrientation:previous.seat.palmOrientation};
     const result=await prepareAutomaticFit(scene.measureCalibration(seat,fitBaseline),fitBaseline,previous.kit,fitInBackground);
     if(result.applied){
-      if(!await applyCalibration(seat,result.kit,'calibration-message',true))return;
+      if(!await applyCalibration(fittedCalibration(seat,result),result.kit,'calibration-message',true))return;
       preFitSetup=previous;
     }
     showFitResult(result);await refreshIdlePose();
@@ -339,7 +339,7 @@ async function adoptRig(adapter: HumanoidRigAdapter) {
   const seat={...adapter.getAutomaticCalibration(fitBaseline),palmOrientation};
   const profile=adapter.setCalibration(seat,fitBaseline);
   const result=await prepareAutomaticFit(profile,fitBaseline,oldKit,fitInBackground);
-  const finalSeat=result.applied?seat:{...adapter.getAutomaticCalibration(oldKit),palmOrientation};
+  const finalSeat=result.applied?fittedCalibration(seat,result):{...adapter.getAutomaticCalibration(oldKit),palmOrientation};
   const finalProfile=adapter.setCalibration(finalSeat,result.kit);
   const staged=await prepareSetupInBackground(finalProfile,result.kit);
   try {
@@ -438,7 +438,7 @@ async function synchronizeEquipmentAppearance() {
   const baseline=scene.measureKitLayout(fitBaseline);
   const seat={...scene.rig.getAutomaticCalibration(baseline),palmOrientation:scene.getCalibration().palmOrientation};
   const result=await prepareAutomaticFit(scene.measureCalibration(seat,baseline),baseline,measured,fitInBackground);
-  const chosenSeat=result.applied?seat:scene.getCalibration();
+  const chosenSeat=result.applied?fittedCalibration(seat,result):scene.getCalibration();
   if(!await applyCalibration(chosenSeat,result.kit,'model-message',true))throw new Error(msg("Could not prepare the performance with the new instrument dimensions.", "새 악기 치수로 연주를 다시 준비하지 못했습니다."));
   await scene.whenEquipmentReady();
   fitBaseline=structuredClone(baseline);preFitSetup=null;
