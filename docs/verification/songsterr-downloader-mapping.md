@@ -90,3 +90,56 @@ Both browser runs used the automatically fitted native rig (90% scale). They
 reported **0 unmapped and 2 unassigned motions**. Successful mapping does not fix
 these planning limitations or establish natural posture/collision clearance.
 This increment adds no URL fetcher, backend, merge or Pages publication.
+
+## Automatic upload selection follow-up
+
+Date: 2026-10-27 (Asia/Seoul). Implementation:
+`dbbe2ebed53e05bdb3c5636adac8757af0c5023c`. This extends the earlier explicit-profile
+behavior; the measurements above remain evidence for their original commit.
+
+Rust inspection now compares positive note-on coverage for all three profiles in
+the suggested tracks/channel. It chooses the highest count before body planning,
+flags semantic disagreements among tied candidates, and returns all counts.
+The browser applies this only to new uploads/drops, resets previous-file intent,
+and preserves manual overrides, explicit demos and saved-project profiles.
+This is compatibility scoring, not exporter identification or complete-motion
+validation. See the [automatic selection contract](../../specs/architecture/midi-interpretation.md#automatic-mapping-for-new-uploads).
+
+Executed checks:
+
+- Rust: 155 tests; formatting and Clippy with warnings denied passed.
+- WASM rebuilt with the pinned toolchain and locked dependencies.
+- Web: 257 tests across 38 files; typecheck and production build passed.
+- Documentation and regenerated license-notice checks passed; notices unchanged.
+- After the final Korean wording change, the four automatic-mapping web tests,
+  typecheck and production build were rerun successfully.
+
+WASM SHA-256:
+`ea317d39ad33f346ed54ce8027919d096b05a979f2741d4c9cb5f9fc9d943454`.
+The existing Vite large-chunk warning remains.
+
+Authored regression fixtures cover format 0/1 automatic first-attempt planning,
+GM/Logic equivalent and conflicting ties, unique Logic coverage, partial mapping,
+no candidates, nonstandard channels, positive-note filtering, melodic-channel
+exclusion, and preservation of the direct planning API's GM default.
+No private song bytes or new dependencies were added.
+
+Both private files returned `songsterrDownloader`, `ambiguous: false`, channel 10
+and their respective drum track (0 or 5). Each candidate report was GM 0/1,513,
+Logic 0/1,513 and Songsterr 1,513/1,513. Filename suffixes were not inspected.
+
+Actual local-browser checks with this build:
+
+1. Uploading each private file prepared 1,513 source notes / 1,513 hits on the
+   first attempt, with no manual mapping action and no failed GM planning pass.
+   The fitted native rig remained at 90%, with 0 unmapped and 2 unassigned motions.
+2. An independently authored one-note MIDI (40 on channel 10) automatically
+   opened settings, showed a provisional GM choice and GM/Logic coverage of 1/1,
+   and prepared successfully. Songsterr coverage was 0/1.
+3. Manually choosing Logic and applying retained Logic, dismissed the automatic
+   comparison notice, and changed the same source note's label to snare rimshot.
+4. Uploading the private file again after that manual override selected Songsterr
+   for the new file. The earlier file's manual choice did not leak into it.
+
+The success screenshot remains a local review artifact, not a repository asset.
+This follow-up has not been merged or publicly deployed.
