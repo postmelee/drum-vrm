@@ -550,6 +550,7 @@ mod tests {
                     piece_id: "other-tom".into(),
                     center: [0., 1., 0.25],
                     half_extents: [0.02, 0.02, 0.02],
+                    rotation: None,
                     kind: "body",
                 }],
                 supports: Vec::new(),
@@ -605,6 +606,7 @@ mod tests {
                     piece_id: hat.id.clone(),
                     center: [0.0, 0.97, 0.5],
                     half_extents: [0.10, 0.03, 0.10],
+                    rotation: None,
                     kind: "body",
                 }],
                 supports: vec![],
@@ -630,6 +632,7 @@ mod tests {
             piece_id: "snare".into(),
             center: [0., -0.1, 0.],
             half_extents: [0.2, 0.1, 0.2],
+            rotation: None,
             kind: "body",
         };
         let surface = equipment::Surface {

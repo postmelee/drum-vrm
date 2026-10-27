@@ -190,16 +190,32 @@ it('the automatically fitted browser demo keeps right-hand hats and left-hand ba
   } finally { session.close(); }
 },60_000); // Includes two complete WASM equipment/joint plans, not just pose evaluation.
 
-it('an unfitted kit preserves source events and reports contacts outside the native rig capability', () => {
-  const session = prepareNative(makeDemo(), { tracks: [1], channel: 9 }, false);
+it('an explicitly out-of-reach snare preserves source events and reports unavailable contacts', () => {
+  // The product default may become playable as fitting improves. Use a real
+  // impossible placement instead of depending on a defect in the default kit.
+  const source = new Performance(makeDemo(), JSON.stringify({ tracks: [1], channel: 9 }));
+  const input = JSON.parse(source.plan_json()) as PerformancePlan;
+  source.free();
+  const originalEvents = structuredClone(input.sourceEvents);
+  const originalHits = input.hits.map(hit => [hit.id, hit.tick, hit.timeUs, hit.note, hit.velocity]);
+  input.kit.find(piece => piece.id === 'snare')!.position[2] += 3;
+  input.hits.forEach(hit => { hit.target = [...input.kit.find(piece => piece.id === hit.pieceId)!.position]; });
+  const rig = new NativeHumanoidRigAdapter();
+  const performance = Performance.from_json_with_profile(JSON.stringify(input), JSON.stringify(rig.getProfile()));
   try {
-    const unavailable = session.plan.hits.filter(hit => hit.limb === null);
+    const plan = JSON.parse(performance.plan_json()) as PerformancePlan;
+    expect(plan.sourceEvents).toEqual(originalEvents);
+    expect(plan.hits.map(hit => [hit.id, hit.tick, hit.timeUs, hit.note, hit.velocity])).toEqual(originalHits);
+    const unavailable = plan.hits.filter(hit => hit.pieceId === 'snare');
     expect(unavailable.length).toBeGreaterThan(0);
-    expect(session.plan.diagnostics.some(item => item.code === 'RIG_UNREACHABLE_HIT')).toBe(true);
+    expect(unavailable.every(hit => hit.limb === null)).toBe(true);
+    expect(plan.diagnostics.some(item => item.code === 'RIG_UNREACHABLE_HIT')).toBe(true);
     for (const hit of unavailable) {
-      expect(session.plan.contactEvents!.filter(event => event.hitId === hit.id).every(event => event.status === 'unassigned')).toBe(true);
+      const contacts = plan.contactEvents!.filter(event => event.hitId === hit.id);
+      expect(contacts.length).toBeGreaterThan(0);
+      expect(contacts.every(event => event.status === 'unassigned')).toBe(true);
     }
-  } finally { session.close(); }
+  } finally { performance.free(); rig.dispose(); }
 }, 60_000);
 
 it('the browser interpretation study preserves groove roles without disabling two-hand solo rolls', () => {

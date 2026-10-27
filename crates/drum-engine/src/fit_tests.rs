@@ -46,14 +46,25 @@ fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
             assert!(fitted.piece_adjustments.is_empty());
             continue;
         }
-        assert!((0.6..=1.0).contains(&fitted.scale));
+        assert!((MIN_FIT_SCALE..=1.0).contains(&fitted.scale));
         assert!(fitted.clearance_piece_ids.is_empty());
         assert!(kit_clearance_ids(&fitted.kit).is_empty());
         assert!((-0.25..=0.10).contains(&fitted.translation[2]));
         assert_eq!(before, serde_json::to_string(&original).unwrap());
         for (old, new) in original.iter().zip(&fitted.kit) {
             if hand_piece(old) {
-                assert!((new.radius - old.radius * fitted.scale).abs() < 1e-12);
+                let expected_radius = if matches!(
+                    old.instrument,
+                    Instrument::Snare
+                        | Instrument::TomHigh
+                        | Instrument::TomMid
+                        | Instrument::TomLow
+                ) {
+                    old.radius * fitted.scale
+                } else {
+                    old.radius
+                };
+                assert!((new.radius - expected_radius).abs() < 1e-12);
                 let uniform =
                     transform(std::slice::from_ref(old), fitted.scale, fitted.translation);
                 let shift = fitted
@@ -252,6 +263,11 @@ fn measured_body_pair_capability_and_ready_pose_share_the_fit_contract() {
         },
         arm_radii: [[0.03, 0.024]; 2],
         hand_radii: [0.03; 2],
+        leg_radii: None,
+        foot_radii: None,
+        leg_boxes: None,
+        leg_rest_frames: None,
+        foot_boxes: None,
         hand_centers: None,
         hand_capsules: None,
         sample_count: 1000,
@@ -337,6 +353,11 @@ fn measured_body_is_validated_and_turns_without_changing_extents() {
         },
         arm_radii: [[0.03, 0.02]; 2],
         hand_radii: [0.025; 2],
+        leg_radii: None,
+        foot_radii: None,
+        leg_boxes: None,
+        leg_rest_frames: None,
+        foot_boxes: None,
         hand_centers: None,
         hand_capsules: None,
         sample_count: 100,
@@ -351,13 +372,34 @@ fn measured_body_is_validated_and_turns_without_changing_extents() {
         turned.body_geometry.as_ref().unwrap().torso.half_extents,
         p.body_geometry.as_ref().unwrap().torso.half_extents
     );
-    for field in ["version", "source", "sampleCount", "armRadii", "handRadii"] {
+    for field in [
+        "version",
+        "source",
+        "sampleCount",
+        "armRadii",
+        "handRadii",
+        "legRadii",
+        "footRadii",
+        "legBoxes",
+        "footBoxes",
+    ] {
         let mut value = serde_json::to_value(&p).unwrap();
         value["bodyGeometry"][field] = match field {
             "version" => serde_json::json!(2),
             "source" => serde_json::json!("unverified"),
             "sampleCount" => serde_json::json!(1000001),
-            "armRadii" => serde_json::json!([[0.0, 0.02], [0.03, 0.02]]),
+            "armRadii" | "legRadii" => serde_json::json!([[0.0, 0.02], [0.03, 0.02]]),
+            "legBoxes" => serde_json::json!(vec![
+                vec![
+                    serde_json::json!({"center":[0.,0.,0.],"halfExtents":[0.,0.1,0.1]});
+                    2
+                ];
+                2
+            ]),
+            "footBoxes" => serde_json::json!(vec![
+                serde_json::json!({"center":[4.,0.,0.],"halfExtents":[0.1,0.1,0.1]});
+                2
+            ]),
             _ => serde_json::json!([0.9, 0.025]),
         };
         assert!(
@@ -429,4 +471,59 @@ fn required_pair_checks_reuse_geometry_without_changing_results() {
             crate::posture::required_pairs_with_equipment(&profile, &kit, Some(&ctx))
         );
     }
+}
+
+#[test]
+fn reference_layout_rejects_reachable_but_reordered_parts() {
+    let profile = profile(1.0);
+    let kit = default_kit();
+    assert!(layout::violations(&profile, &kit).is_empty());
+    let snare_x = kit.iter().find(|p| p.id == "snare").unwrap().position[0];
+    let floor_x = kit.iter().find(|p| p.id == "tomLow").unwrap().position[0];
+    // Move the floor tom to the wrong side of the snare, independently of the seed depth.
+    let floor_wrong_sector = [snare_x - floor_x - 0.2, 0., 0.];
+    for (id, translation, expected) in [
+        ("tomMid", [0., -0.17, -0.32], "rack-row"),
+        ("tomHigh", [0., 0., -0.4], "tomHigh-ahead-of-snare"),
+        ("tomLow", floor_wrong_sector, "floor-flank"),
+        ("snare", [0.2, 0., 0.], "snare-body-center"),
+        ("hihat", [0.6, 0., 0.], "hihat-left-above-snare"),
+        ("ride", [-0.8, 0., 0.], "ride-right-sector"),
+        ("crashRight", [-0.8, 0., 0.], "crashRight-outer-sector"),
+    ] {
+        let mut altered = kit.clone();
+        let p = altered.iter_mut().find(|p| p.id == id).unwrap();
+        for (axis, offset) in translation.iter().enumerate() {
+            p.position[axis] += offset;
+        }
+        assert!(
+            layout::violations(&profile, &altered)
+                .iter()
+                .any(|v| v == expected),
+            "{id}"
+        );
+    }
+}
+
+#[test]
+fn compact_reference_layout_preserves_relationships_and_body_centre() {
+    let mut profile = profile(1.0);
+    let translation = [0.35, 0.1, 0.15];
+    let mut kit = default_kit();
+    for p in &mut kit {
+        p.radius *= MIN_FIT_SCALE;
+        p.position = std::array::from_fn(|i| p.position[i] * MIN_FIT_SCALE + translation[i]);
+    }
+    profile.pelvis = std::array::from_fn(|i| profile.pelvis[i] * MIN_FIT_SCALE + translation[i]);
+    assert!(layout::violations(&profile, &kit).is_empty());
+}
+
+#[test]
+fn nonstandard_tom_roles_do_not_panic_in_group_search() {
+    let mut kit = default_kit();
+    kit.iter_mut()
+        .find(|p| p.instrument == Instrument::TomMid)
+        .unwrap()
+        .instrument = Instrument::TomHigh;
+    assert!(fit_kit(&profile(1.0), &kit).is_ok());
 }

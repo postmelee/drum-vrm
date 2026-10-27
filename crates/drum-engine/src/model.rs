@@ -68,6 +68,23 @@ pub struct KitPiece {
     pub radius: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub geometry: Option<crate::equipment::PieceGeometry>,
+    /// Horizontal toe direction of a pedal; absent legacy data faces world +Z.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pedal_forward: Option<Vec3>,
+    /// Absolute tripod phase about world +Y; absent data lets hardware route it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stand_rotation: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mount: Option<PieceMount>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PieceMount {
+    StandClamp {
+        #[serde(rename = "supportPieceId")]
+        support_piece_id: String,
+    },
 }
 
 impl<'de> Deserialize<'de> for KitPiece {
@@ -81,6 +98,9 @@ impl<'de> Deserialize<'de> for KitPiece {
             position: Vec3,
             radius: f64,
             geometry: Option<crate::equipment::PieceGeometry>,
+            pedal_forward: Option<Vec3>,
+            stand_rotation: Option<f64>,
+            mount: Option<PieceMount>,
         }
         let fields = Fields::deserialize(deserializer)?;
         // Version-one layouts used the instrument enum as their piece ID.
@@ -97,6 +117,9 @@ impl<'de> Deserialize<'de> for KitPiece {
             position: fields.position,
             radius: fields.radius,
             geometry: fields.geometry,
+            pedal_forward: fields.pedal_forward,
+            stand_rotation: fields.stand_rotation,
+            mount: fields.mount,
         })
     }
 }

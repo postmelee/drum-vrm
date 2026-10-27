@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { prepareAutomaticFit } from '../src/automatic-fit';
+import { applyKitHardwarePreset } from '../src/kit-layout-presets';
+import { setLocale, translate } from '../src/i18n';
 import type { KitFitProposal, KitPiece, PieceId, RigProfile } from '../src/types';
 
 const ids: PieceId[]=['kick','snare','hihat','openHat','pedalHat','tomHigh','tomMid','tomLow','crash','ride'];
@@ -14,12 +16,30 @@ describe('automatic import fitting',()=>{
     const repeated=await prepareAutomaticFit(profile,baseline,first.kit,fit);
     expect(repeated.kit).toEqual(first.kit);expect(baseline).toEqual(old);
     expect(repeated.kit[0].radius).toBeCloseTo(.16);
+    expect(repeated.message).toBe('Compact drum shells fitted · size 80%');
   });
   it('retains the active layout when a candidate cannot satisfy fit constraints',async()=>{
     const current=layout(.17),baseline=layout();
     const result=await prepareAutomaticFit(profile,baseline,current,async()=>proposal(layout(.12),false));
     expect(result.applied).toBe(false);expect(result.kit).toEqual(current);expect(result.message).toContain('ride');
     result.kit[0].radius=.3;expect(current[0].radius).toBe(.17);
+  });
+  it('rejects an incomplete physical mount change before any adoption instead of accepting its measured fallback',async()=>{
+    const accepted=layout(.17), candidate=applyKitHardwarePreset(accepted,'suspended-floor');
+    const before=structuredClone({accepted,candidate}), adopt=vi.fn();
+    await expect(prepareAutomaticFit(profile,candidate,candidate,async()=>({...proposal(candidate,false),clearancePieceIds:['tomLow']}),{requireComplete:true}).then(adopt)).rejects.toThrow('Hardware layout was not applied');
+    expect(adopt).not.toHaveBeenCalled();expect({accepted,candidate}).toEqual(before);
+    const result=await prepareAutomaticFit(profile,candidate,accepted,async()=>proposal(candidate),{requireComplete:true});
+    expect(result.applied).toBe(true);expect(result.kit.find(piece=>piece.id==='tomLow')!.mount).toEqual({kind:'standClamp',supportPieceId:'ride'});
+  });
+  it('distinguishes compact and full-size fits in both interface languages',async()=>{
+    const compact=await prepareAutomaticFit(profile,layout(),layout(),async()=>proposal(layout()));
+    const full=await prepareAutomaticFit(profile,layout(),layout(),async()=>({...proposal(layout()),scale:1}));
+    expect(compact.message).toContain('Compact drum shells');expect(full.message).not.toContain('Compact');
+    try {
+      setLocale('ko');expect(translate(compact.message)).toBe('소형 드럼 셸로 체형을 맞췄습니다 · 크기 80%');
+      expect(translate(full.message)).toBe('체형에 맞게 배치를 조정했습니다 · 크기 100%');
+    } finally { setLocale('en'); }
   });
   it('rejects a malformed success before any caller can adopt it',async()=>{
     const malformed=layout();malformed[0].position[1]=NaN;
@@ -32,4 +52,11 @@ describe('automatic import fitting',()=>{
     })).rejects.toThrow('fit failed');
     expect({profile,baseline,current}).toEqual(before);
   });
+});
+
+it('reports canonical layout failures without adopting the rejected candidate', async () => {
+  const current = layout(.17), result = await prepareAutomaticFit(profile, layout(), current, async () => ({...proposal(layout(.12), false), layoutViolations: ['rack-row', 'tomHigh-ahead-of-snare']}));
+  expect(result.applied).toBe(false); expect(result.kit).toEqual(current);
+  expect(result.message).toContain('Rack toms need a shallow row');
+  expect(result.message).toContain('Rack toms must stay ahead of the snare');
 });

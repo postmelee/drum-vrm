@@ -5,29 +5,44 @@ own measured results and publication evidence.
 
 ## Current batch and next work
 
-The detailed-hardware [PR #59](https://github.com/postmelee/drum-vrm/pull/59)
-follows [PR #57](https://github.com/postmelee/drum-vrm/pull/57)
-(natural posture/contact) and [PR #55](https://github.com/postmelee/drum-vrm/pull/55)
-(VRM 0.0 import). The owner requested Pages publication of the completed hardware
-batch, with no tag or GitHub Release. Read the
-[hardware verification](verification/detailed-hardware.md) for exact tested WASM,
-three-model fitting, multi-view inspection, performance regression and publication
-record; do not infer public deployment from this entrypoint.
+The owner narrowed this local increment to the left knee facing the hi-hat pedal,
+the floor tom moving closer to the kick, and the left crash moving closer to the
+performer. Preserve the preferred conventional arrangement while reviewing those
+changes from the front, side and above. Do not resume the broader fitting search
+as part of this increment.
 
-- [#18](https://github.com/postmelee/drum-vrm/issues/18): use score-observed
-  simultaneous combinations and nearby transfers in bounded fitting. All three
-  public models fit the 53-hit study, but the full song still loses one hand in
-  the high/floor-tom chord at 10.166442 s. Preserve hardware assembly constraints.
+The current work started from `d8055d0`. The separate unified-fitting work in
+[PR #58](https://github.com/postmelee/drum-vrm/pull/58), candidate `e5fafb9` on
+`main` `6038e8e`, owns the integration of common placement/search constraints.
+These are distinct source lines; reconcile their contracts and measurements before
+integration rather than assuming either candidate includes the other.
+The [reference-layout record](verification/reference-layout.md) separates the
+narrow local change, preserved experimental work and incomplete acceptance.
+
+The earlier detailed-hardware [PR #59](https://github.com/postmelee/drum-vrm/pull/59)
+and [hardware verification](verification/detailed-hardware.md) retain their tested
+WASM, multi-view evidence and limitations. Their successful study results do not
+validate the newer lower-limb gate, measured sole frames or nominal cymbal sizes.
+
+- [#18](https://github.com/postmelee/drum-vrm/issues/18): retain the unfinished
+  grouped-layout and lower-limb clearance candidate for the separate fitting
+  integration. No fresh three-public-model acceptance is established for that
+  gate. Preserve body dimensions, hardware constraints and exact contact frames;
+  report a failed fit rather than weakening them.
 - [#20](https://github.com/postmelee/drum-vrm/issues/20): carry validated pair/path
-  witnesses through the whole motion. Some dynamic equipment-proxy penetration
-  increased with the new obstacle set/layout; do not call static clearance a
-  complete-motion success. Strike variation remains deferred.
+  witnesses through the whole motion after placement is accepted. Static clearance
+  does not establish complete-motion or skin/clothing clearance. Motion expansion
+  and strike variation remain outside the narrow local increment.
 - [#23](https://github.com/postmelee/drum-vrm/issues/23): retain source IDs,
   deterministic contact/pose checks and actual rendered marker evidence; inspect
   skin/clothing separately. Profile fitting latency before expanding the search.
 - [#44](https://github.com/postmelee/drum-vrm/issues/44) owns automatic-fit/menu
   acceptance. Fitting/planning use cancellable Workers. [#54](https://github.com/postmelee/drum-vrm/issues/54)
   owns VRM 0.0 import; see its [verification](verification/vrm-0-support.md).
+
+Validate the narrow candidate locally and record its exact source/checks before
+claiming completion. Previous publication approvals do not authorize a new Pages
+deployment, release or tag; follow the [release policy](release-policy.md).
 
 Start with [equipment/contact](../specs/architecture/equipment-contact.md),
 [calibration](../specs/architecture/calibration.md),

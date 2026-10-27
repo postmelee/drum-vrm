@@ -96,7 +96,18 @@ fn profile_contact_reachable(
     limb: usize,
     hit: &Hit,
     equipment: Option<&crate::equipment_motion::EquipmentContext>,
+    kit: &[KitPiece],
 ) -> bool {
+    if limb >= 2 {
+        if let Some(piece) = kit.iter().find(|piece| piece.id == hit.piece_id) {
+            let rotation =
+                crate::equipment::pedal_rotation(piece, profile.contact_rotations[limb], 0.);
+            let ankle = sub(hit.target, profile.offset(limb, rotation));
+            let d = distance(profile.roots[limb], ankle);
+            let [a, b] = profile.lengths[limb];
+            return d >= (a - b).abs() + 1e-5 && d <= a + b - 1e-4;
+        }
+    }
     if limb < 2 && equipment.is_some() && profile.hand_frames.is_some() {
         crate::contact_feasibility::hand_probe_fits(
             profile,
@@ -254,7 +265,15 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
                     .or_insert_with(|| {
                         let valid = profile.map_or_else(
                             || reachable(limb, hit.target),
-                            |p| profile_contact_reachable(p, limb, hit, equipment.as_deref()),
+                            |p| {
+                                profile_contact_reachable(
+                                    p,
+                                    limb,
+                                    hit,
+                                    equipment.as_deref(),
+                                    &plan.kit,
+                                )
+                            },
                         );
                         let cost = if valid && limb < 2 {
                             profile.map_or(0.0, |p| {
@@ -593,7 +612,17 @@ impl Motion {
             {
                 return Err("페달 타격과 키트의 고정 접촉 위치가 일치하지 않습니다.".into());
             }
-            if !profile.reachable(limb, anchor) {
+            let rotation = plan
+                .kit
+                .iter()
+                .find(|piece| piece.instrument == instrument)
+                .map_or(profile.contact_rotations[limb], |piece| {
+                    crate::equipment::pedal_rotation(piece, profile.contact_rotations[limb], 0.)
+                });
+            let ankle = sub(anchor, profile.offset(limb, rotation));
+            let [upper, lower] = profile.lengths[limb];
+            let reach = distance(profile.roots[limb], ankle);
+            if reach < (upper - lower).abs() + 1e-5 || reach > upper + lower - 1e-4 {
                 plan.diagnostics.push(Diagnostic::new(
                     "RIG_UNREACHABLE_PEDAL",
                     format!(
@@ -666,6 +695,7 @@ impl Motion {
                                             limb,
                                             hit,
                                             equipment.as_deref(),
+                                            &plan.kit,
                                         )
                                     })
                             },
@@ -1276,14 +1306,30 @@ impl Motion {
                         continue;
                     }
                 }
-                *rotation = pitch_rotation(
-                    profile.contact_rotations[limb],
-                    if limb < 2 {
-                        -pitch
-                    } else {
-                        self.pedal_pitch_at(limb, time)
-                    },
-                );
+                let pedal = self
+                    .plan
+                    .kit
+                    .iter()
+                    .find(|piece| piece.id == if limb == 2 { "pedalHat" } else { "kick" });
+                let tool_pitch = if limb < 2 {
+                    -pitch
+                } else {
+                    self.pedal_pitch_at(limb, time)
+                };
+                *rotation = if limb >= 2 {
+                    pedal.map_or_else(
+                        || pitch_rotation(profile.contact_rotations[limb], tool_pitch),
+                        |piece| {
+                            crate::equipment::pedal_rotation(
+                                piece,
+                                profile.contact_rotations[limb],
+                                tool_pitch,
+                            )
+                        },
+                    )
+                } else {
+                    pitch_rotation(profile.contact_rotations[limb], tool_pitch)
+                };
                 let offset = profile.offset(limb, *rotation);
                 let root = profile.roots[limb];
                 let desired_end = if limb < 2 {

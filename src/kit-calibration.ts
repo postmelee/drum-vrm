@@ -8,6 +8,12 @@ export function validateKitLayout(kit: readonly KitPiece[]): KitPiece[] {
   for (const piece of kit) {
     const expected = piece.id === 'crashRight' ? 'crash' : piece.id;
     if (pieceInstrument(piece) !== expected) throw new Error(WORKER_MESSAGES.pieceRole);
+    if (piece.mount) {
+      const host = kit.find(candidate => candidate.id === piece.mount!.supportPieceId);
+      if (piece.id !== 'tomLow' || piece.mount.kind !== 'standClamp' || !host || host.id === piece.id || host.mount || !['ride','crash'].includes(pieceInstrument(host))) throw new Error(WORKER_MESSAGES.mount);
+    }
+    if (piece.pedalForward && (piece.id !== 'pedalHat' || piece.pedalForward.length !== 3 || !piece.pedalForward.every(Number.isFinite) || Math.abs(piece.pedalForward[1]) > 1e-8 || Math.abs(Math.hypot(...piece.pedalForward)-1) > 1e-6)) throw new Error(WORKER_MESSAGES.dimensions);
+    if (piece.standRotation !== undefined && (!['snare','hihat','crash','ride'].includes(pieceInstrument(piece)) || !Number.isFinite(piece.standRotation) || Math.abs(piece.standRotation)>Math.PI)) throw new Error(WORKER_MESSAGES.dimensions);
     const g=piece.geometry;
     if(g && (g.version!==1 || !['procedural','mesh-bounds'].includes(g.source) || !Number.isFinite(g.referenceRadius) || g.referenceRadius<.01 || g.referenceRadius>1 || !g.body.center.every(Number.isFinite) || !g.body.halfExtents.every(v=>Number.isFinite(v)&&v>=.001&&v<=2) || !g.surface.center.every(Number.isFinite) || !g.surface.normal.every(Number.isFinite) || Math.abs(Math.hypot(...g.surface.normal)-1)>1e-5 || !Number.isFinite(g.surface.radius) || g.surface.radius<.01 || g.surface.radius>1)) throw new Error(WORKER_MESSAGES.dimensions);
     const motion = g?.surface.motion;
@@ -39,4 +45,19 @@ export function applyKitLayout(plan: PerformancePlan, layout: readonly KitPiece[
     if (!target) throw new Error(WORKER_MESSAGES.missingPiece);
     return {...hit,target:[...target]};
   }),diagnostics:plan.diagnostics.map(d=>({...d}))};
+}
+
+/** Ignore JSON object-key order and sub-nanometre round-trip noise, not actual
+ * equipment edits. Keep the accepted descriptor rather than remeasure it. */
+export function sameKitLayout(a: readonly KitPiece[], b: readonly KitPiece[]): boolean {
+  const same = (left: unknown, right: unknown): boolean => {
+    if (typeof left === 'number' && typeof right === 'number') return Number.isFinite(left) && Number.isFinite(right) && Math.abs(left - right) <= 1e-10;
+    if (left === right) return true;
+    if (Array.isArray(left) && Array.isArray(right)) return left.length === right.length && left.every((value, index) => same(value, right[index]));
+    if (!left || !right || typeof left !== 'object' || typeof right !== 'object' || Array.isArray(left) || Array.isArray(right)) return false;
+    const l = left as Record<string, unknown>, r = right as Record<string, unknown>;
+    const keys = Object.keys(l).filter(key => l[key] !== undefined), other = Object.keys(r).filter(key => r[key] !== undefined);
+    return keys.length === other.length && keys.every(key => Object.hasOwn(r, key) && same(l[key], r[key]));
+  };
+  return same(a.map(piece => ({...piece, instrument: pieceInstrument(piece)})), b.map(piece => ({...piece, instrument: pieceInstrument(piece)})));
 }

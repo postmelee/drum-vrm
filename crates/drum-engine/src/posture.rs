@@ -364,6 +364,9 @@ pub fn ready_pose(profile: &RigProfile, kit: &[KitPiece]) -> Result<Vec<f32>, St
             }
         } else {
             let id = if limb == 2 { "pedalHat" } else { "kick" };
+            if let Some(piece) = kit.iter().find(|p| p.id == id) {
+                rotations[limb] = crate::equipment::pedal_rotation(piece, rotations[limb], 0.);
+            }
             let tip = kit
                 .iter()
                 .find(|p| p.id == id)

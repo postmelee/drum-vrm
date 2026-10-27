@@ -37,21 +37,56 @@ floating-point movement across adjustments.
 
 Automatic fitting estimates a starting height from both pedal targets and measured
 leg reach. The current heuristic reserves a fraction of total leg extension and uses
-a shared forward reference. It does not optimize shoulder comfort, wrist limits,
+a shared forward reference. The left-knee bend preference follows the accepted
+hi-hat pedal's horizontal heel-to-toe direction; the kick-leg preference is
+unchanged. Candidate measurement restores the previous pedal frame as well as
+the seat. It does not optimize shoulder comfort, wrist limits,
 skin clearance or all drum targets. Implementation details live in
 [`getAutomaticCalibration`](../../src/rig-humanoid.ts).
 
+## Reference arrangement and setup ownership
+
+The automatic fitter uses one conventional right-handed five-piece arrangement:
+snare between the legs, two rack toms in a shallow forward row, floor tom on the
+right flank, a linked left hi-hat/pedal, and reachable outer cymbals. This is the
+product's reference family, not a universal rule for all drummers. Its measured
+surface relationships are checked independently of reach and hardware clearance;
+assigning every note cannot substitute for preserving that arrangement.
+
+The reference is reviewed from fixed top, front, left, right and player views.
+Elevated cymbals may overlap drums in top projection when three-dimensional body,
+hardware and complete-stick approach checks pass. Two rack toms must not become
+front/back rows merely because independent targets can be reached there.
+
+Character or physical-equipment replacement may produce a new bounded fit. Once
+accepted, that character's measured kit and seat are the session setup. MIDI/demo
+selection, note editing, ordinary preparation, playback and seeking consume the
+same setup; they do not fit it again. A source-preparation transaction captures
+the kit/profile before asynchronous work and cannot install a result against a
+different setup. Exact project restoration keeps the saved arrangement.
+
+Manual adjustment remains explicit. A failed bounded search retains the preceding
+usable setup and exposes reach, arrangement and clearance reasons separately.
+The reference arrangement does not certify relaxed posture, skin/clothing
+clearance or the complete route of a fast fill; these remain separate checks.
+
 ## Bounded kit fitting
+
+The grouped-layout and lower-limb implementation in this candidate is under
+integration. Its search does not yet pass the complete native/public-model
+regression set. The [verification record](../../docs/verification/reference-layout.md)
+separates the selected reference from unfinished automatic-fit acceptance.
 
 Different arm-to-leg ratios can require target layout changes even when both feet
 reach their pedals. [fit.rs](../../crates/drum-engine/src/fit.rs) proposes a layout
 from the measured body, with the snare posture as the first reference. It fits
 hand-played surfaces in two stages:
 
-1. Try local repair of the current layout, then uniform scales
-   `1.00, 0.92, 0.84, 0.76, 0.68, 0.60`. Positions scale about
-   `[0, 1.235, 0.06]` metres; contact radii and the complete measured body dimensions
-   scale together. Each scale tries the snare-reference height shift, bounded to
+1. Try local repair of the current layout, then shell/layout factors
+   `1.00, 0.92, 0.84, 0.76`. Positions scale about
+   `[0, 1.235, 0.06]` metres; snare/tom contact radii and their complete measured shell dimensions
+   scale together. Hi-hat, crash and ride diameters remain nominal; their positions
+   still participate in the layout fit. Each scale tries the snare-reference height shift, bounded to
    ±0.5 m, with the reference forward shift bounded to −0.25–+0.10 m, then the same
    height with zero forward shift. Lateral shift is zero. At the first successful
    coarse scale, at most three 2% probes between it and the preceding coarse scale
@@ -67,7 +102,8 @@ hand-played surfaces in two stages:
 
 The kick and its pedal remain fixed. The direct hi-hat is a coupled pedal/mast/cymbal
 assembly: its seed places the mast left of the snare by both radii plus 35 mm and
-50 mm farther from the player. The pedal is 120 mm behind the mast. At most 250 mm lateral
+50 mm farther from the player. The pedal contact is 120 mm behind the mast along
+its `pedalForward`, aimed from the seated left-leg root toward that mast. At most 250 mm lateral
 or forward/back movement from the input pedal is allowed. Preferred and original
 axis combinations are tested at board pitch `0, −0.09, −0.18` rad with the real
 sole offset, leg lengths and a 55–155° interior knee range. A failed seed retains
@@ -76,6 +112,20 @@ Closed/open hi-hat share the resulting physical anchor and subsequently vary onl
 in height. Before locking a snare candidate, the search requires a feasible
 hi-hat height and a clear snare/hi-hat pair, including both complete-tool approaches.
 This avoids using the hi-hat mast corridor for a locally convenient snare.
+
+The two rack toms are placed as a group: one shallow left/right row with shared
+height/depth and bounded spacing. Individual reach cannot split them into front/back
+rows. Floor-tom candidates remain on the right flank; the measured shell and its
+supports must also clear the seated thighs, shins and footwear. The optional suspended
+preset places its host stand before the supported floor tom. Physical mount metadata,
+including an accepted `standRotation`, is retained in the resulting kit.
+
+Lower-limb checks evaluate board pitches `0, −0.09, −0.18` rad using real bone lengths,
+yawed pedal contacts and [measured numeric envelopes](rig-contract.md#numeric-body-geometry).
+They test bodies, stands and both boards. Only the foot's intended own-board contact
+is excluded; a shin, another pedal or an unrelated stand has no such exemption.
+The finite skeleton shin ends at the ankle rather than extending a rounded cap below
+it. These are setup samples, not a continuous skinned collision simulation.
 
 All branches share a maximum of 80,000 layout candidates; exact hand and pair
 memoization each retain at most 100,000 entries. Each direct-hat assembly's height
@@ -152,11 +202,12 @@ alone is insufficient when its shaft or arm intersects equipment. This is a boun
 proxy search, not certification of every frame, transfer speed, anatomical comfort,
 skin, exact meshes or support-to-support clearance.
 
-The proposal records the uniform `scale` and `translation`, plus `pieceAdjustments`
+The proposal records the shell/layout `scale` and common `translation`, plus `pieceAdjustments`
 entries containing `pieceId` and local `translation`. If no complete candidate exists,
 return the **original layout unchanged**, `scale: 1`, zero translation,
 `pieceAdjustments: []` and `complete: false`. `unreachablePieceIds` identifies reach
 or posture failures; `clearancePieceIds` identifies unresolved common equipment geometry.
+`layoutViolations` separates arrangement and lower-limb clearance failures.
 The browser automatically applies a complete fit when importing a character or
 restoring the built-in rig, and offers persistent undo. Incomplete fitting retains
 a usable previous layout and explicit warnings. Repeated imports start from the
@@ -352,8 +403,11 @@ Literal open/close notes and explicit short-open/close interpretation feed one
 absolute-time hi-hat state used by the left foot, upper cymbal and stick target.
 Source meaning remains in [MIDI interpretation](midi-interpretation.md).
 This implements repeatable kinematics, not measured pedal pressure or a complete
-heel-up/down force model. A sole socket is not the shoe mesh; support and skin
-clearance still require visible inspection.
+heel-up/down force model. Measured footwear supplies the neutral sole height from its lower vertical percentile
+(without the 3 mm envelope inflation); a model without footwear samples keeps the
+explicit 25 mm ankle-to-sole fallback. Toe reach and bone lengths are unchanged.
+A sole socket is not the full shoe mesh; support and skin clearance still require
+visible inspection.
 
 ## Stable mounts and replaceable drum bodies
 

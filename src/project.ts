@@ -45,7 +45,7 @@ export function validateProjectView(value:unknown):SceneViewState {
   };
   const position=vector(camera.position),target=vector(camera.target);
   if(Math.hypot(...position.map((v,i)=>v-target[i]))<.01)throw new Error(msg("The camera position is too close to its target.", "카메라 위치와 목표가 너무 가깝습니다."));
-  return {view:choice(camera.view,['stage','front','top','player']),position,target,
+  return {view:choice(camera.view,['stage','front','top','left','right','player']),position,target,
     fov:number(camera.fov,15,100),near:number(camera.near,.005,.5)};
 }
 

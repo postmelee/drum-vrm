@@ -30,6 +30,7 @@ export function pedalPitchFromPose(pose: ArrayLike<number> | undefined, limb: 2 
  * cymbals remain static and report no false mechanical compatibility. */
 export class KitMechanismLayer {
   private readonly bindings: MechanismBinding[] = [];
+  private readonly pitchRotation = new THREE.Quaternion();
   private kickTimes: number[] = [];
   constructor(private readonly hardware: THREE.Object3D, bodies: readonly { id: string; root: THREE.Object3D }[], geometry: KitGeometry) {
     hardware.updateWorldMatrix(true, true);
@@ -66,7 +67,12 @@ export class KitMechanismLayer {
   apply(songTime: number, hihatOpening: number, pose?: ArrayLike<number>): void {
     const opening = Math.max(0, Math.min(1, Number.isFinite(hihatOpening) ? hihatOpening : 0));
     for (const { frame, board, beater, top } of this.bindings) {
-      if (board) board.rotation.x = pedalPitchFromPose(pose, frame.kind === 'kick' ? 3 : 2);
+      if (board) {
+        const pitch = pedalPitchFromPose(pose, frame.kind === 'kick' ? 3 : 2);
+        board.quaternion.fromArray(frame.boardRotation ?? [0, 0, 0, 1]);
+        this.pitchRotation.set(Math.sin(pitch * .5), 0, 0, Math.cos(pitch * .5));
+        board.quaternion.multiply(this.pitchRotation);
+      }
       if (beater) beater.rotation.x = -frame.restAngle * (1 - kickMechanismAmount(this.kickTimes, songTime));
       for (const moving of top) moving.node.position.copy(moving.rest).addScaledVector(moving.direction, frame.maxOpening * opening);
     }

@@ -5,6 +5,10 @@ use crate::rig::RigProfile;
 use serde::Serialize;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
+#[path = "fit_layout.rs"]
+mod layout;
+#[path = "fit_lower_limb.rs"]
+mod lower_limb;
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,6 +24,7 @@ pub struct KitFitProposal {
     pub translation: Vec3,
     pub unreachable_piece_ids: Vec<String>,
     pub clearance_piece_ids: Vec<String>,
+    pub layout_violations: Vec<String>,
     pub complete: bool,
     pub piece_adjustments: Vec<PieceAdjustment>,
     pub search_candidates: usize,
@@ -31,6 +36,9 @@ pub struct KitFitProposal {
 /// It changes neither arithmetic nor search ordering. Bounded storage prevents
 /// pathological custom kits from turning this optimization into unbounded work.
 pub const MAX_FIT_LAYOUT_CANDIDATES: usize = 80_000;
+/// Automatic fitting may choose a bounded compact kit; it may not keep
+/// shrinking until a different, miniature arrangement happens to pass.
+pub const MIN_FIT_SCALE: f64 = 0.76;
 #[derive(Default)]
 struct FitCache {
     candidates: Cell<usize>,
@@ -245,6 +253,7 @@ fn proposal(
 ) -> KitFitProposal {
     let unreachable_piece_ids = missed(profile, &kit, false);
     let clearance_piece_ids = kit_clearance_ids(&kit);
+    let layout_violations = layout::violations(profile, &kit);
     KitFitProposal {
         complete: unreachable_piece_ids.is_empty(),
         kit,
@@ -252,6 +261,7 @@ fn proposal(
         translation,
         unreachable_piece_ids,
         clearance_piece_ids,
+        layout_violations,
         piece_adjustments: Vec::new(),
         search_candidates: 0,
         search_limit_reached: false,
@@ -259,8 +269,9 @@ fn proposal(
     }
 }
 fn transform(kit: &[KitPiece], scale: f64, translation: Vec3) -> Vec<KitPiece> {
-    // Stable, documented kit origin; uniform scaling preserves relative surface
-    // order and distances. The kick body and both pedal contacts stay fixed.
+    // Stable kit origin for the shared layout factor. Only shell dimensions
+    // shrink; cymbals keep nominal diameter. The bass body/contact stay fixed
+    // and the direct hi-hat pedal is solved as its own connected assembly.
     const ORIGIN: Vec3 = [0.0, 1.235, 0.06];
     kit.iter()
         .map(|piece| {
@@ -269,7 +280,18 @@ fn transform(kit: &[KitPiece], scale: f64, translation: Vec3) -> Vec<KitPiece> {
                 next.position = std::array::from_fn(|i| {
                     ORIGIN[i] + (piece.position[i] - ORIGIN[i]) * scale + translation[i]
                 });
-                next.radius *= scale;
+                // Compact shell families do not turn standard cymbals into
+                // miniatures. Position search adapts their centres/stands while
+                // preserving the authored hi-hat, crash and ride diameters.
+                if matches!(
+                    piece.instrument,
+                    Instrument::Snare
+                        | Instrument::TomHigh
+                        | Instrument::TomMid
+                        | Instrument::TomLow
+                ) {
+                    next.radius *= scale;
+                }
             }
             next
         })
@@ -302,7 +324,11 @@ fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
         .collect();
     let kit = measured.as_slice();
     let cache = FitCache::default();
-    let original = proposal(profile, kit.to_vec(), 1.0, [0.0; 3]);
+    let mut original = proposal(profile, kit.to_vec(), 1.0, [0.0; 3]);
+    certify(profile, &mut original);
+    if original.complete {
+        return Ok(cache.finish(original));
+    }
     let repaired = repair_posture(profile, original.clone(), &cache);
     if repaired.complete {
         return Ok(cache.finish(repaired));
@@ -343,7 +369,7 @@ fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
         None
     };
     let mut previous = 1.0;
-    for scale in [1.0, 0.92, 0.84, 0.76, 0.68, 0.60] {
+    for scale in [1.0, 0.92, 0.84, MIN_FIT_SCALE] {
         if cache.exhausted.get() {
             break;
         }
@@ -362,55 +388,96 @@ fn uniform_fit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
         }
         previous = scale;
     }
-    let mut unchanged = original;
-    unchanged.unreachable_piece_ids = missed(profile, kit, true);
-    add_equipment_misses(profile, &mut unchanged);
-    unchanged.clearance_piece_ids = kit_clearance_ids(kit);
-    unchanged.complete = unchanged.unreachable_piece_ids.is_empty()
-        && unchanged.clearance_piece_ids.is_empty()
-        && crate::posture::required_pairs(profile, &unchanged.kit).is_empty();
-    Ok(cache.finish(unchanged))
+    Ok(cache.finish(original))
 }
 /// First retain the original bounded uniform reach fit, then repair only
 /// surfaces that fail the common posture guard. No partial unsafe proposal is
 /// applied: failure returns the original layout with explicit offending IDs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RepairProgress {
+    HatRejected,
+    ReferenceRejected,
+    LaterBlocked,
+}
 fn repair_posture(
     profile: &RigProfile,
     result: KitFitProposal,
     cache: &FitCache,
 ) -> KitFitProposal {
-    let first = repair_posture_order(profile, result.clone(), cache, false);
-    if first.complete || cache.exhausted.get() {
-        return first;
+    let pedals = hihat_pedal_candidates(profile, &result);
+    let mut last = result.clone();
+    let mut promising = 0;
+    for pedal in pedals {
+        if cache.exhausted.get() {
+            break;
+        }
+        let mut branch = result.clone();
+        if let Some(pedal) = pedal {
+            let index = branch
+                .kit
+                .iter()
+                .position(|p| p.instrument == Instrument::PedalHat)
+                .unwrap();
+            let shift =
+                std::array::from_fn(|axis| pedal.position[axis] - branch.kit[index].position[axis]);
+            branch.kit[index] = pedal;
+            if crate::motion::distance(shift, [0.; 3]) > 1e-9 {
+                branch.piece_adjustments.push(PieceAdjustment {
+                    piece_id: branch.kit[index].id.clone(),
+                    translation: shift,
+                });
+            }
+        }
+        let (first, progress) = repair_posture_order(profile, branch.clone(), cache, true);
+        if first.complete {
+            return first;
+        }
+        // A failed direct-hat precheck returns without running the snare search.
+        // Keep sampling inexpensive whole-assembly candidates in that case.
+        last = first;
+        if progress != RepairProgress::HatRejected {
+            promising += 1;
+            // Rack/floor order cannot repair an already failed snare/hat
+            // reference. Avoid repeating that same search before trying the
+            // next linked pedal/mast candidate or compact shell family.
+            if progress == RepairProgress::LaterBlocked {
+                let (second, _) = repair_posture_order(profile, branch, cache, false);
+                if second.complete {
+                    return second;
+                }
+                last = second;
+            }
+            if promising >= 3 {
+                break;
+            }
+        }
     }
-    // A rack-first alternative avoids locking a floor tom into the rack's only
-    // usable corridor. Both orders share exactly the same finite work budget.
-    repair_posture_order(profile, result, cache, true)
+    last
 }
 /// Keep the direct hi-hat assembly near the seated left foot while leaving room
 /// for the snare. Candidates preserve real leg/foot dimensions and test the full
 /// footboard pitch range, rather than detaching the cymbal from a fixed pedal.
-fn place_hihat_pedal(profile: &RigProfile, result: &mut KitFitProposal) {
+fn hihat_pedal_candidates(profile: &RigProfile, result: &KitFitProposal) -> Vec<Option<KitPiece>> {
     let Some(hat) = result
         .kit
         .iter()
         .find(|p| p.instrument == Instrument::Hihat)
     else {
-        return;
+        return vec![None];
     };
     let Some(snare) = result
         .kit
         .iter()
         .find(|p| p.instrument == Instrument::Snare)
     else {
-        return;
+        return vec![None];
     };
     let Some(index) = result
         .kit
         .iter()
         .position(|p| p.instrument == Instrument::PedalHat)
     else {
-        return;
+        return vec![None];
     };
     let original = result.kit[index].position;
     let reference = snare_reference(profile);
@@ -419,20 +486,58 @@ fn place_hihat_pedal(profile: &RigProfile, result: &mut KitFitProposal) {
         original[1],
         reference[2] + 0.05 - crate::equipment::HIHAT_PEDAL_TO_AXIS,
     ];
-    let candidates = [
-        desired,
-        [desired[0], original[1], original[2]],
-        [original[0], original[1], desired[2]],
-        original,
+    let original_mast = crate::equipment::pedal_frame_point(
+        &result.kit[index],
+        [0., 0., crate::equipment::HIHAT_PEDAL_TO_AXIS],
+    );
+    let desired_mast = [
+        desired[0],
+        original[1],
+        desired[2] + crate::equipment::HIHAT_PEDAL_TO_AXIS,
     ];
-    for position in candidates {
+    let mut candidates = vec![
+        original_mast,
+        desired_mast,
+        [desired_mast[0], original[1], original_mast[2]],
+        [original_mast[0], original[1], desired_mast[2]],
+    ];
+    // Bounded mechanical assembly offsets preserve its pedal-to-mast linkage.
+    // Hand/posture/equipment feasibility is tested before choosing this branch.
+    for step in [0.06, 0.12] {
+        for [x, z] in [
+            [-1., 0.],
+            [1., 0.],
+            [0., -1.],
+            [0., 1.],
+            [-1., -1.],
+            [1., -1.],
+            [-1., 1.],
+            [1., 1.],
+        ] {
+            candidates.push([
+                original_mast[0] + x * step,
+                original[1],
+                original_mast[2] + z * step,
+            ]);
+        }
+    }
+    let mut out = Vec::new();
+    for mast in candidates {
+        let direction = crate::equipment::horizontal_direction(profile.roots[2], mast);
+        let position = [
+            mast[0] - direction[0] * crate::equipment::HIHAT_PEDAL_TO_AXIS,
+            original[1],
+            mast[2] - direction[2] * crate::equipment::HIHAT_PEDAL_TO_AXIS,
+        ];
         if (position[0] - original[0]).abs() > 0.25 || (position[2] - original[2]).abs() > 0.25 {
             continue;
         }
         let mut piece = result.kit[index].clone();
         piece.position = position;
+        piece.pedal_forward = Some(direction);
         let feasible = [0.0, -0.09, -0.18].iter().all(|&pitch| {
-            let rotation = crate::rig::pitch_rotation(profile.contact_rotations[2], pitch);
+            let rotation =
+                crate::equipment::pedal_rotation(&piece, profile.contact_rotations[2], pitch);
             let ankle = crate::motion::sub(
                 crate::equipment::pedal_contact(&piece, pitch),
                 profile.offset(2, rotation),
@@ -446,26 +551,197 @@ fn place_hihat_pedal(profile: &RigProfile, result: &mut KitFitProposal) {
                 && d <= a + b - 1e-4
                 && (55_f64.to_radians()..=155_f64.to_radians()).contains(&inner)
         });
-        if feasible {
-            let shift = std::array::from_fn(|axis| position[axis] - original[axis]);
-            if crate::motion::distance(shift, [0.0; 3]) > 1e-9 {
-                result.piece_adjustments.push(PieceAdjustment {
-                    piece_id: piece.id.clone(),
-                    translation: shift,
-                });
-                result.kit[index] = piece;
-            }
-            return;
+        if feasible
+            && !out.iter().any(|p: &Option<KitPiece>| {
+                p.as_ref()
+                    .is_some_and(|p| crate::motion::distance(p.position, position) < 1e-8)
+            })
+        {
+            out.push(Some(piece));
         }
     }
+    if out.is_empty() {
+        out.push(None);
+    }
+    out
 }
+/// Place both bass-mounted toms as one shallow row. The bounded group search
+/// changes centre, spacing and shared elevation; neither member can escape into
+/// a separate front/back row to make a local reach/obstacle test pass.
+fn place_rack_group(
+    profile: &RigProfile,
+    result: &mut KitFitProposal,
+    rack: &[usize],
+    locked: &[usize],
+    cache: &FitCache,
+) -> bool {
+    let high = *rack
+        .iter()
+        .find(|&&i| result.kit[i].instrument == Instrument::TomHigh)
+        .unwrap();
+    let mid = *rack
+        .iter()
+        .find(|&&i| result.kit[i].instrument == Instrument::TomMid)
+        .unwrap();
+    let h = result.kit[high].position;
+    let m = result.kit[mid].position;
+    let center: Vec3 = std::array::from_fn(|axis| (h[axis] + m[axis]) * 0.5);
+    let sum = crate::equipment::surface(&result.kit[high]).radius
+        + crate::equipment::surface(&result.kit[mid]).radius;
+    let spacing = (m[0] - h[0]).max(sum + 0.015);
+    let height_delta = (h[1] - m[1]).clamp(-0.03, 0.03);
+    let depth_delta = (h[2] - m[2]).clamp(-0.03, 0.03);
+    let mut candidates = Vec::new();
+    for x in -4..=4 {
+        for y in -3..=3 {
+            for z in -5..=4 {
+                for width in [spacing, sum + 0.025, sum + 0.06] {
+                    let c = [
+                        center[0] + x as f64 * 0.05,
+                        center[1] + y as f64 * 0.05,
+                        center[2] + z as f64 * 0.05,
+                    ];
+                    let positions = [
+                        [
+                            c[0] - width * 0.5,
+                            c[1] + height_delta * 0.5,
+                            c[2] + depth_delta * 0.5,
+                        ],
+                        [
+                            c[0] + width * 0.5,
+                            c[1] - height_delta * 0.5,
+                            c[2] - depth_delta * 0.5,
+                        ],
+                    ];
+                    if positions.iter().zip([h, m]).all(|(p, o)| {
+                        (p[0] - o[0]).abs() <= 0.30 + 1e-9
+                            && (p[1] - o[1]).abs() <= 0.25 + 1e-9
+                            && (p[2] - o[2]).abs() <= 0.30 + 1e-9
+                    }) {
+                        let cost = positions
+                            .iter()
+                            .zip([h, m])
+                            .map(|(p, o)| shift_cost(std::array::from_fn(|a| p[a] - o[a])))
+                            .sum::<f64>();
+                        candidates.push((cost, positions));
+                    }
+                }
+            }
+        }
+    }
+    candidates.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for (_, positions) in candidates {
+        if !cache.candidate() {
+            return false;
+        }
+        let mut candidate = result.kit.clone();
+        candidate[high].position = positions[0];
+        candidate[mid].position = positions[1];
+        let mut fixed: Vec<KitPiece> = locked
+            .iter()
+            .filter(|&&i| candidate[i].instrument != Instrument::OpenHat)
+            .map(|&i| candidate[i].clone())
+            .collect();
+        fixed.push(candidate[high].clone());
+        fixed.push(candidate[mid].clone());
+        if !layout::violations(profile, &fixed).is_empty()
+            || !piece_clear(fixed.len() - 1, &fixed)
+            || !piece_clear(fixed.len() - 2, &fixed)
+            || !piece_posture_fits(profile, &candidate[high], cache)
+            || !piece_posture_fits(profile, &candidate[mid], cache)
+        {
+            continue;
+        }
+        let ctx = crate::equipment_motion::EquipmentContext {
+            geometry: crate::equipment::kit_geometry(&fixed),
+            kit: fixed,
+        };
+        if !ctx.geometry.unresolved_piece_ids.is_empty()
+            || !lower_limb::violations(profile, &ctx.kit, &ctx.geometry).is_empty()
+            || !ctx
+                .kit
+                .iter()
+                .all(|p| equipment_posture_fits(profile, p, &ctx))
+            || !crate::posture::required_pairs_with_equipment(profile, &ctx.kit, Some(&ctx))
+                .is_empty()
+        {
+            continue;
+        }
+        for (i, old) in [(high, h), (mid, m)] {
+            let translation = std::array::from_fn(|axis| candidate[i].position[axis] - old[axis]);
+            if crate::motion::distance(translation, [0.; 3]) > 1e-9 {
+                result.piece_adjustments.push(PieceAdjustment {
+                    piece_id: candidate[i].id.clone(),
+                    translation,
+                });
+            }
+        }
+        result.kit = candidate;
+        return true;
+    }
+    false
+}
+
+/// Tripod phase is a real hardware degree of freedom, stored in the accepted
+/// kit so runtime reconstruction cannot silently choose another leg direction.
+/// Try it only when the current piece's support intersects the lower body;
+/// moving an unrelated obstruction or weakening an envelope is not a repair.
+fn choose_leg_clear_stand_phase(
+    profile: &RigProfile,
+    candidate: &mut [KitPiece],
+    index: usize,
+    locked: &[usize],
+    cache: &FitCache,
+) -> bool {
+    let fixed = |candidate: &[KitPiece]| {
+        let mut kit: Vec<_> = locked
+            .iter()
+            .filter(|&&i| i != index && candidate[i].instrument != Instrument::OpenHat)
+            .map(|&i| candidate[i].clone())
+            .collect();
+        kit.push(candidate[index].clone());
+        kit
+    };
+    let kit = fixed(candidate);
+    let geometry = crate::equipment::kit_geometry(&kit);
+    let failures = lower_limb::violations(profile, &kit, &geometry);
+    if failures.is_empty() {
+        return true;
+    }
+    if !matches!(
+        candidate[index].instrument,
+        Instrument::Snare | Instrument::Hihat | Instrument::Crash | Instrument::Ride
+    ) || failures
+        .iter()
+        .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
+    {
+        return false;
+    }
+    let original = candidate[index].stand_rotation;
+    for step in 0..24 {
+        if !cache.candidate() {
+            break;
+        }
+        let angle = -std::f64::consts::PI + step as f64 * std::f64::consts::PI / 12.;
+        candidate[index].stand_rotation = Some(angle);
+        let kit = fixed(candidate);
+        let geometry = crate::equipment::kit_geometry(&kit);
+        if geometry.unresolved_piece_ids.is_empty()
+            && lower_limb::violations(profile, &kit, &geometry).is_empty()
+        {
+            return true;
+        }
+    }
+    candidate[index].stand_rotation = original;
+    false
+}
+
 fn repair_posture_order(
     profile: &RigProfile,
     mut result: KitFitProposal,
     cache: &FitCache,
     rack_first: bool,
-) -> KitFitProposal {
-    place_hihat_pedal(profile, &mut result);
+) -> (KitFitProposal, RepairProgress) {
     // A direct hi-hat is one mechanical assembly with its foot contact.
     // Its surface may change height, but fitting cannot detach the mast from
     // its pedal merely to make the right hand reachable.
@@ -519,11 +795,18 @@ fn repair_posture_order(
                         .cloned()
                         .collect();
                     kit.push(hat.clone());
+                    let index = kit.len() - 1;
+                    let fixed: Vec<_> = (0..index).collect();
+                    if !choose_leg_clear_stand_phase(profile, &mut kit, index, &fixed, cache) {
+                        return None;
+                    }
+                    let hat = kit[index].clone();
                     let ctx = crate::equipment_motion::EquipmentContext {
                         geometry: crate::equipment::kit_geometry(&kit),
                         kit,
                     };
                     (ctx.geometry.unresolved_piece_ids.is_empty()
+                        && lower_limb::violations(profile, &ctx.kit, &ctx.geometry).is_empty()
                         && equipment_posture_fits(profile, &hat, &ctx))
                     .then_some(hat)
                 })
@@ -531,46 +814,96 @@ fn repair_posture_order(
         });
     if result.kit.iter().any(|p| p.instrument == Instrument::Hihat) && hat_candidates.is_empty() {
         result.complete = false;
-        return result;
+        return (result, RepairProgress::HatRejected);
     }
     // Solve the supported ready surface first. A later target repair must keep
     // already placed bodies clear instead of fixing one hand by intersecting a tom.
     let mut order: Vec<usize> = (0..result.kit.len())
         .filter(|&i| hand_piece(&result.kit[i]))
         .collect();
-    // Place the right-hand-only ride corridor before instruments that can use
-    // either hand. A later crash must not consume the ride's only approach.
+    // Establish the snare/hat reference, coupled rack row and floor flank
+    // before fitting the outer cymbals around those fixed playing regions.
     order.sort_by_key(|&i| match result.kit[i].instrument {
         Instrument::Snare => 0,
         Instrument::Hihat | Instrument::OpenHat => 1,
-        Instrument::Ride => 2,
+        Instrument::TomHigh | Instrument::TomMid => {
+            if rack_first {
+                2
+            } else {
+                3
+            }
+        }
         Instrument::TomLow => {
             if rack_first {
-                5
-            } else {
-                3
-            }
-        }
-        Instrument::TomHigh => {
-            if rack_first {
                 3
             } else {
-                4
+                2
             }
         }
-        Instrument::TomMid => {
-            if rack_first {
-                4
-            } else {
-                5
-            }
-        }
-        _ => 6,
+        Instrument::Ride => 4,
+        _ => 5,
     });
+    // Equipment attachments are a dependency graph, not a presentation order.
+    // A suspended tom must retain its host stand in every partial certificate.
+    // Missing/cyclic hosts remain explicit unresolved geometry in certification.
+    for _ in 0..order.len() {
+        let mut moved = false;
+        for position in 0..order.len() {
+            let Some(crate::model::PieceMount::StandClamp { support_piece_id }) =
+                &result.kit[order[position]].mount
+            else {
+                continue;
+            };
+            if let Some(host_position) = order
+                .iter()
+                .position(|&i| result.kit[i].id == *support_piece_id)
+            {
+                if host_position > position {
+                    let host = order.remove(host_position);
+                    order.insert(position, host);
+                    moved = true;
+                    break;
+                }
+            }
+        }
+        if !moved {
+            break;
+        }
+    }
     let mut locked: Vec<usize> = (0..result.kit.len())
         .filter(|&i| !hand_piece(&result.kit[i]))
         .collect();
     for index in order {
+        if locked.contains(&index) {
+            continue;
+        }
+        if matches!(
+            result.kit[index].instrument,
+            Instrument::TomHigh | Instrument::TomMid
+        ) {
+            let rack: Vec<usize> = result
+                .kit
+                .iter()
+                .enumerate()
+                .filter_map(|(i, p)| {
+                    matches!(p.instrument, Instrument::TomHigh | Instrument::TomMid).then_some(i)
+                })
+                .collect();
+            if rack.len() == 2
+                && rack
+                    .iter()
+                    .any(|&i| result.kit[i].instrument == Instrument::TomHigh)
+                && rack
+                    .iter()
+                    .any(|&i| result.kit[i].instrument == Instrument::TomMid)
+            {
+                if !place_rack_group(profile, &mut result, &rack, &locked, cache) {
+                    break;
+                }
+                locked.extend(rack);
+                continue;
+            }
+        }
         if !cache.candidate() {
             break;
         }
@@ -595,6 +928,9 @@ fn repair_posture_order(
                 .collect();
             fixed.push(candidate[index].clone());
             if !piece_clear(fixed.len() - 1, &fixed) {
+                return false;
+            }
+            if !layout::violations(profile, &fixed).is_empty() {
                 return false;
             }
             let geometry = crate::equipment::kit_geometry(&fixed);
@@ -667,7 +1003,17 @@ fn repair_posture_order(
                     true
                 }
         };
-        if piece_posture_fits(profile, &result.kit[index], cache) && against_locked(&result.kit) {
+        let placement_fits = |candidate: &mut [KitPiece]| {
+            if !against_locked(candidate) {
+                return false;
+            }
+            let phase = candidate[index].stand_rotation;
+            choose_leg_clear_stand_phase(profile, candidate, index, &locked, cache)
+                && (phase == candidate[index].stand_rotation || against_locked(candidate))
+        };
+        let mut initial = result.kit.clone();
+        if piece_posture_fits(profile, &initial[index], cache) && placement_fits(&mut initial) {
+            result.kit = initial;
             locked.push(index);
             continue;
         }
@@ -762,7 +1108,7 @@ fn repair_posture_order(
                 || indices
                     .iter()
                     .any(|&i| !piece_posture_fits(profile, &candidate[i], cache))
-                || !against_locked(&candidate)
+                || !placement_fits(&mut candidate)
             {
                 continue;
             }
@@ -793,13 +1139,37 @@ fn repair_posture_order(
         }
         locked.push(index);
     }
+    certify(profile, &mut result);
+    let reference_locked = [Instrument::Snare, Instrument::Hihat].iter().all(|role| {
+        !result.kit.iter().any(|p| p.instrument == *role)
+            || locked.iter().any(|&i| result.kit[i].instrument == *role)
+    });
+    (
+        result,
+        if reference_locked {
+            RepairProgress::LaterBlocked
+        } else {
+            RepairProgress::ReferenceRejected
+        },
+    )
+}
+
+/// The same acceptance predicate gates a fresh proposal and an existing fitted
+/// kit. Keeping this separate from search makes repeated preparation idempotent.
+fn certify(profile: &RigProfile, result: &mut KitFitProposal) {
     result.unreachable_piece_ids = missed(profile, &result.kit, true);
-    add_equipment_misses(profile, &mut result);
+    add_equipment_misses(profile, result);
     result.clearance_piece_ids = kit_clearance_ids(&result.kit);
-    result.complete = result.unreachable_piece_ids.is_empty()
+    result.layout_violations = layout::violations(profile, &result.kit);
+    result.layout_violations.extend(lower_limb::violations(
+        profile,
+        &result.kit,
+        &crate::equipment::kit_geometry(&result.kit),
+    ));
+    result.complete = result.layout_violations.is_empty()
+        && result.unreachable_piece_ids.is_empty()
         && result.clearance_piece_ids.is_empty()
         && crate::posture::required_pairs(profile, &result.kit).is_empty();
-    result
 }
 
 fn add_equipment_misses(profile: &RigProfile, result: &mut KitFitProposal) {

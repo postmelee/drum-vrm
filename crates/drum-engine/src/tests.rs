@@ -808,11 +808,15 @@ fn pedal_strokes_follow_board_hinges_and_preserve_contacts_through_seek() {
                     })
                     .unwrap();
                 let q = std::array::from_fn(|j| poses[i][57 + limb * 4 + j] as f64);
-                let base = profile.contact_rotations[limb];
+                let base =
+                    crate::equipment::pedal_rotation(piece, profile.contact_rotations[limb], 0.);
                 let local_x = base[3] * q[0] - base[0] * q[3] - base[1] * q[2] + base[2] * q[1];
                 let local_w = base.iter().zip(q).map(|(a, b)| a * b).sum::<f64>();
                 let expected = crate::equipment::pedal_contact(piece, 2.0 * local_x.atan2(local_w));
                 assert!(distance(expected, pose_point(&poses[i], limb, 3)) < 1e-6);
+                let forward = rig::rotate(q, [0., 0., 1.]);
+                let direction = crate::equipment::horizontal_direction([0.; 3], forward);
+                assert!(distance(direction, crate::equipment::pedal_forward(piece)) < 1e-6);
                 let rendered = motion::add(pose_point(&poses[i], limb, 2), profile.offset(limb, q));
                 assert!(distance(rendered, pose_point(&poses[i], limb, 3)) < 1e-6);
             }

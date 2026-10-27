@@ -108,3 +108,52 @@ describe('performance preparation transaction', () => {
     expect(state.active.time).toBe(state.previous.time);
   });
 });
+
+// This boundary uses the same snapshot operation as MIDI/demo load and replan.
+// The callback is intentionally asynchronous so a later UI setup cannot leak
+// into an earlier accepted request.
+describe('accepted setup during score preparation', () => {
+  it('keeps kit dimensions, measured geometry and calibrated body fixed across different scores', async () => {
+    const { preparePerformanceInSetup } = await import('../src/preparation');
+    const { NativeHumanoidRigAdapter } = await import('../src/rig-humanoid');
+    const { DEFAULT_KIT } = await import('../src/kit-default');
+    const rig = new NativeHumanoidRigAdapter();
+    const kit = structuredClone(DEFAULT_KIT);
+    kit[1].geometry = { version: 1, source: 'procedural', referenceRadius: kit[1].radius,
+      body: {center: [0, -.06, 0], halfExtents: [.18, .06, .18]}, surface: {center: [0, 0, 0], normal: [0, 1, 0], radius: .18} };
+    const setup = { profile: rig.getProfile(), kit }, before = structuredClone(setup), seat = rig.getCalibration();
+    const seen: unknown[] = [];
+    try {
+      for (const duration of [8, 30, 3]) {
+        const source = plan(duration), pending = deferred<PerformancePlan>();
+        const result = preparePerformanceInSetup({setup, candidate: () => pending.promise, audio: () => 'audio', current: () => true,
+          commit: async (candidate, profile, fixedKit) => {
+            seen.push(structuredClone({profile, kit: fixedKit}));
+            // Simulate downstream preparation attaching per-score data.
+            fixedKit[1].radius = .01;
+            return {...candidate, kit: structuredClone(before.kit)};
+          },
+        });
+        pending.resolve(source);
+        expect((await result)!.plan.duration).toBe(duration);
+        expect(setup).toEqual(before);
+      }
+      expect(seen).toEqual([before, before, before]);
+      expect(rig.getCalibration()).toEqual(seat);
+    } finally { rig.dispose(); }
+  });
+
+  it('captures setup before analysis starts and never commits a canceled request', async () => {
+    const { preparePerformanceInSetup } = await import('../src/preparation');
+    const { DEFAULT_KIT } = await import('../src/kit-default');
+    const setup = {profile: {id: 'original'} as import('../src/types').RigProfile, kit: structuredClone(DEFAULT_KIT)};
+    const before = structuredClone(setup), pending = deferred<PerformancePlan>(), commit = vi.fn(async (candidate, profile, kit) => ({...candidate, kit, profile}));
+    const result = preparePerformanceInSetup({setup, candidate: () => pending.promise, audio: () => 'audio', commit, current: () => true});
+    setup.profile.id = 'later character'; setup.kit[1].radius *= .8;
+    pending.resolve(plan(8)); await result;
+    expect(commit).toHaveBeenCalledWith(expect.anything(), before.profile, before.kit);
+    const canceledCommit = vi.fn(async (candidate: PerformancePlan) => candidate);
+    expect(await preparePerformanceInSetup({setup, candidate: async () => plan(30), audio: () => 'audio', commit: canceledCommit, current: () => false})).toBeNull();
+    expect(canceledCommit).not.toHaveBeenCalled();
+  });
+});

@@ -39,22 +39,45 @@ inspection is a separate boundary from these rendered attachment measurements.
 `RigProfile.bodyGeometry` is an optional version-1 numeric contract. It carries
 `source` (`mesh-estimate` or `skeleton-fallback`), seated engine-world torso
 `center`, shoulder-right/up/forward `halfExtents`, left/right upper/lower
-`armRadii`, `handRadii`, optional `handCenters`/`handCapsules`, and `sampleCount`, all lengths in metres. Hand centers and capsule endpoints are wrist-relative in the tool frame; the solver transforms them with the actual solved wrist and tool rotation. Capsules take precedence over offset spheres. Missing optional hand geometry uses the wrist-centered sphere fallback.
+`armRadii`, `handRadii`, optional `legRadii` (left/right thigh/shin), `footRadii`,
+`legBoxes`/`footBoxes`, `legRestFrames`, `handCenters`/`handCapsules`, and `sampleCount`, all lengths in metres. Hand centers and capsule endpoints are wrist-relative in the tool frame; the solver transforms them with the actual solved wrist and tool rotation. Capsules take precedence over offset spheres. Missing optional hand geometry uses the wrist-centered sphere fallback.
 [body-geometry.ts](../../src/body-geometry.ts) derives it without avatar or material
 name branches; Rust validates it independently. Seat translation moves the center,
 and torso facing rotates it with the same shoulders used by the solver.
 
 The adapter samples at most 12,000 vertices deterministically across skinned
-meshes. A semantic region needs at least 65% of a vertex's valid skin weight;
-extra bones inherit the nearest mapped semantic ancestor. Head/leg regions are
-excluded. At least 24 torso samples within the pelvis-to-shoulder height band are
+meshes, considering only indices in the active draw ranges and visible material groups. Shared but unreferenced attribute vertices do not contribute. A semantic region needs at least 65% of a vertex's valid skin weight;
+extra bones inherit the nearest mapped semantic ancestor. Head/hair are excluded;
+legs and feet are measured separately. At least 24 torso samples within the pelvis-to-shoulder height band are
 needed; otherwise the shoulder/segment-based fallback remains explicit. Torso
 width/depth use the 1st–99th percentile plus 4 mm padding; limb radii use the 98th
 percentile plus 3 mm, bounded to 5–250 mm. Sparse limb regions retain their
-skeletal estimate even when the torso is mesh-derived. Hand vertices are sampled after the normalized grip is applied to raw bones. A deterministic principal-axis capsule uses the 1st–99th percentile along its axis and the 98th-percentile radial distance plus 3 mm. Palm-direction changes transport the descriptor into the new tool frame; they do not remeasure an unrelated open-hand pose.
+skeletal estimate even when another region is mesh-derived. Lower-limb measurements
+are retained even if torso coverage is insufficient. Missing leg radii use 14% of
+thigh length (25–90 mm) and 10% of shin length (20–70 mm); missing foot radii use
+40 mm. Foot width is measured around the ankle-to-toes axis, or a sampled principal
+axis when that segment has insufficient samples. These are explicit proxy defaults,
+not measured shoe dimensions. Hand vertices are sampled after the normalized grip is applied to raw bones. A deterministic principal-axis capsule uses the 1st–99th percentile along its axis and the 98th-percentile radial distance plus 3 mm. Palm-direction changes transport the descriptor into the new tool frame; they do not remeasure an unrelated open-hand pose.
+
+Measured lower limbs additionally provide offset boxes so hanging fabric behind a
+leg does not expand an equal-radius tube in every direction. `legBoxes` pairs
+left/right thigh/shin descriptors, each `{center, halfExtents}`. The origin is the
+proximal joint; local Y points toward the distal joint, X is shoulder-right projected
+perpendicular to Y, and Z is X × Y. `footBoxes` are ankle-relative in the neutral
+tool frame. Every axis uses 1st–99th percentile bounds plus 3 mm. Centers have length
+at most 3 m and half extents are 1–1000 mm. All four leg regions (or both feet) need
+sufficient samples before the corresponding optional field is emitted.
+`legRestFrames` optionally records the four measurement-frame unit quaternions
+in the same side/segment order. The seated frame applies the minimum swing from
+that frame's Y axis to the solved leg direction, then the original frame rotation:
+`Qposed = Qswing(Yrest → Yposed) × Qrest`. This matches the adapter's leg transport
+instead of independently projecting body-right again after bending. Older profiles
+without rest frames retain the projected body-right fallback. Foot boxes use the
+actual tool rotation directly. The fit retains a small segment-based core. Missing boxes retain the radius-based
+fallback. No garment region is removed to make a candidate pass.
 
 These are sampled **surface envelopes**, not an anatomical body segmentation or
-containment proof. Torso/arm-weighted clothing can enlarge them, excluded outliers
+containment proof. Torso/limb-weighted clothing can enlarge them, excluded outliers
 can fall outside them, and skinning changes with pose. The raw mesh and textures
 stay outside the Rust profile and saved project. Rendering/visual checks remain
 separate from proxy clearance; see [calibration](calibration.md).
