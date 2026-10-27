@@ -4,7 +4,11 @@ import { msg } from './i18n';
 export const FBX_BONES = Object.values(VRMHumanBoneName);
 export const FBX_REQUIRED = ['hips', 'spine', 'head', ...['left', 'right'].flatMap(side =>
   ['UpperArm', 'LowerArm', 'Hand', 'UpperLeg', 'LowerLeg', 'Foot'].map(bone => side + bone))];
+export const FBX_MATERIAL_MODES = ['original', 'matte', 'unlit'] as const;
+export type FBXMaterialMode = typeof FBX_MATERIAL_MODES[number];
 export interface FBXConfig {
+  /** Missing in older settings means original. */
+  materialMode?: FBXMaterialMode;
   bones: Partial<Record<VRMHumanBoneName, string>>;
   metersPerUnit: number;
   /** Stable material traversal index -> explicitly selected companion basename. */
@@ -16,6 +20,7 @@ export function validateFBXConfig(value: unknown): FBXConfig {
   const obj = (v: unknown): Record<string, unknown> => v && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : fail();
   const input = obj(value), bones = obj(input.bones), textures = obj(input.textures);
   if (typeof input.metersPerUnit !== 'number' || !Number.isFinite(input.metersPerUnit) || input.metersPerUnit < .000001 || input.metersPerUnit > 10) fail();
+  if (input.materialMode !== undefined && !FBX_MATERIAL_MODES.includes(input.materialMode as FBXMaterialMode)) fail();
   const used = new Set<string>();
   for (const [name, path] of Object.entries(bones)) {
     if (!FBX_BONES.includes(name as VRMHumanBoneName) || typeof path !== 'string' || path.length > 512 || !/^\d+(?:\/\d+)*$/.test(path) || used.has(path)) fail();
@@ -27,5 +32,5 @@ export function validateFBXConfig(value: unknown): FBXConfig {
   for (const [index, name] of Object.entries(textures)) {
     if (!/^(?:0|[1-9]\d{0,2})$/.test(index) || Number(index) >= 128 || typeof name !== 'string' || name.length > 512 || name !== imageKey(name) || !/\.(png|jpe?g)$/i.test(name) || name.includes('\0')) fail();
   }
-  return { bones: { ...bones } as FBXConfig['bones'], metersPerUnit: input.metersPerUnit as number, textures: { ...textures } as Record<string, string> };
+  return { ...(input.materialMode === undefined ? {} : { materialMode: input.materialMode as FBXMaterialMode }), bones: { ...bones } as FBXConfig['bones'], metersPerUnit: input.metersPerUnit as number, textures: { ...textures } as Record<string, string> };
 }

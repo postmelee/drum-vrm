@@ -145,6 +145,15 @@ describe('versioned local project',()=>{
 describe('FBX project references',()=>{
   const mapping = () => Object.fromEntries(['hips','spine','head',...['left','right'].flatMap(side=>['UpperArm','LowerArm','Hand','UpperLeg','LowerLeg','Foot'].map(part=>side+part))].map((name,index)=>[name,`0/${index}`]));
   const fbxProject = ():DrumProject => ({...structuredClone(fixture),rig:'fbx',fbx:{bones:mapping(),metersPerUnit:.01,textures:{'0':'body.png'}},assets:[...fixture.assets,{kind:'fbx',name:'character.fbx',sha256:'b'.repeat(64),bytes:100},{kind:'fbxTexture',name:'Body.PNG',sha256:'c'.repeat(64),bytes:200}]});
+  it('round-trips all material modes and accepts older settings without a mode',()=>{
+    for(const materialMode of ['original','matte','unlit'] as const){
+      const project=fbxProject();project.fbx!.materialMode=materialMode;
+      expect(parseProject(JSON.stringify(project)).fbx!.materialMode).toBe(materialMode);
+    }
+    expect(parseProject(JSON.stringify(fbxProject())).fbx!.materialMode).toBeUndefined();
+    const bad=fbxProject();(bad.fbx! as unknown as {materialMode:string}).materialMode='glossy';
+    expect(()=>parseProject(JSON.stringify(bad))).toThrow();
+  });
   it('round-trips explicit bone paths, units, texture assignments and hashes without changing older projects',()=>{
     const project=fbxProject();expect(parseProject(JSON.stringify(project))).toEqual(JSON.parse(JSON.stringify(project)));
     expect(parseProject(JSON.stringify(fixture)).fbx).toBeUndefined();

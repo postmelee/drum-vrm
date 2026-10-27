@@ -4,13 +4,14 @@ import { imageDimensions } from './model-image';
 import { imageKey, type FBXConfig } from './fbx-config';
 import { disposeFBX } from './fbx-rig';
 import { msg } from './i18n';
+import { createFBXMaterials, type FBXMaterialMetadata, type FBXSourceMaterial } from './fbx-materials';
 
 export const MAX_FBX_BYTES = 50 * 1024 * 1024;
 export const MAX_FBX_EXPANDED_BYTES = 128 * 1024 * 1024;
 export const MAX_FBX_TEXTURE_BYTES = 50 * 1024 * 1024;
 /** Validate binary records and declared array expansion before the loader allocates.
  * Only the two binary versions covered by our fixtures are accepted. */
-export function inspectFBX(bytes: ArrayBuffer): { offset: number; bytes: number; expanded: number }[] {
+export function inspectFBX(bytes: ArrayBuffer, materialInfo?: FBXMaterialMetadata): { offset: number; bytes: number; expanded: number }[] {
   const fail = (): never => { throw new Error(msg('Invalid or oversized binary FBX. Export binary FBX 7.4 or 7.5.', '바이너리 FBX 형식 또는 크기가 올바르지 않습니다. 바이너리 FBX 7.4 또는 7.5로 내보내세요.')); };
   if (bytes.byteLength < 40 || bytes.byteLength > MAX_FBX_BYTES) fail();
   const view = new DataView(bytes), data = new Uint8Array(bytes), decoder = new TextDecoder();
@@ -20,8 +21,9 @@ export function inspectFBX(bytes: ArrayBuffer): { offset: number; bytes: number;
   const uint = (p: number) => { const n = wide ? Number(view.getBigUint64(p, true)) : view.getUint32(p, true); if (!Number.isSafeInteger(n)) fail(); return n; };
   let expanded = 0, entries = 0, nodes = 0, images = 0, textureCount = 0, materialCount = 0;
   const arrays: { offset: number; bytes: number; expanded: number }[] = [];
+  const materialIds = new Set<number>();
   const models = new Set<number>(), links: [number, number][] = [];
-  const node = (start: number, limit: number, depth: number): number => {
+  const node = (start: number, limit: number, depth: number, parent = '', materialId?: number): number => {
     if (depth > 128 || ++nodes > 100000 || start + head > limit) fail();
     const end = uint(start); if (!end) return start + head;
     const count = uint(start + (wide ? 8 : 4)), size = uint(start + (wide ? 16 : 8)), nameSize = data[start + head - 1];
@@ -37,7 +39,10 @@ export function inspectFBX(bytes: ArrayBuffer): { offset: number; bytes: number;
         const width = scalarBytes[type]; if (cursor + width > propertyEnd) fail();
         if (type === 'L') { const n = Number(view.getBigInt64(cursor, true)); if (!Number.isSafeInteger(n)) fail(); scalars.push(n); }
         if (type === 'I') scalars.push(view.getInt32(cursor, true));
-        if ((type === 'F' && !Number.isFinite(view.getFloat32(cursor, true))) || (type === 'D' && !Number.isFinite(view.getFloat64(cursor, true)))) fail();
+        if (type === 'F' || type === 'D') {
+          const value = type === 'F' ? view.getFloat32(cursor, true) : view.getFloat64(cursor, true);
+          if (!Number.isFinite(value)) fail(); scalars.push(value);
+        }
         cursor += width;
       } else if (type === 'S' || type === 'R') {
         if (cursor + 4 > propertyEnd) fail();
@@ -60,9 +65,15 @@ export function inspectFBX(bytes: ArrayBuffer): { offset: number; bytes: number;
     if (name === 'Video' && ++images > 64) fail();
     if (name === 'Texture' && ++textureCount > 256) fail();
     if (name === 'Material' && ++materialCount > 128) fail();
+    if (name === 'Material' && parent === 'Objects' && typeof scalars[0] === 'number') { materialId = scalars[0]; materialIds.add(materialId); }
+    if (name === 'P' && parent === 'Properties70' && materialId !== undefined && scalars[0] === 'SpecularFactor') {
+      const value = scalars[4];
+      if (typeof value !== 'number' || value < 0 || value > 1) fail();
+      materialInfo?.factors.set(materialId, value as number);
+    }
     if (name === 'Model' && typeof scalars[0] === 'number') models.add(scalars[0]);
     if (name === 'C' && scalars[0] === 'OO' && typeof scalars[1] === 'number' && typeof scalars[2] === 'number') links.push([scalars[1], scalars[2]]);
-    while (cursor < end) { const next = node(cursor, end, depth + 1); if (next <= cursor) fail(); cursor = next; }
+    while (cursor < end) { const next = node(cursor, end, depth + 1, name, materialId); if (next <= cursor) fail(); cursor = next; }
     return end;
   };
   let cursor = 27;
@@ -77,6 +88,9 @@ export function inspectFBX(bytes: ArrayBuffer): { offset: number; bytes: number;
   for (const id of models) {
     const seen = new Set<number>(); let current: number | undefined = id;
     while (current !== undefined) { if (seen.has(current) || seen.size > 128) fail(); seen.add(current); current = parents.get(current); }
+  }
+  for (const [child, parent] of links) if (materialInfo && materialIds.has(child)) {
+    const bound = materialInfo.bindings.get(parent) ?? []; bound.push(child); materialInfo.bindings.set(parent, bound);
   }
   return arrays;
 }
@@ -96,7 +110,7 @@ export async function validateFBXCompression(bytes: ArrayBuffer, arrays = inspec
 }
 
 export interface LoadedFBX {
-  scene: THREE.Group; materials: THREE.MeshPhongMaterial[]; metersPerUnit: number;
+  scene: THREE.Group; materials: FBXSourceMaterial[]; metersPerUnit: number;
   images: File[]; animationCount: number;
   applyTextures(config: FBXConfig): Promise<void>;
   release(): void;
@@ -111,7 +125,8 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
     if (!/\.(png|jpe?g)$/.test(key) || files.has(key)) throw new Error(msg('Companion images must be PNG/JPEG with distinct filenames.', '함께 선택한 이미지는 이름이 중복되지 않는 PNG/JPEG여야 합니다.'));
     files.set(key, image);
   }
-  const bytes = await file.arrayBuffer(); await validateFBXCompression(bytes);
+  const materialInfo: FBXMaterialMetadata = { factors: new Map(), bindings: new Map() };
+  const bytes = await file.arrayBuffer(); await validateFBXCompression(bytes, inspectFBX(bytes, materialInfo));
   let pixels = 0, imageCount = 0;
   const resources = new Map<string, Promise<Uint8Array>>(), textures = new Set<THREE.Texture>(), urls = new Set<string>();
   const read = (url: string): Promise<Uint8Array> => {
@@ -160,8 +175,8 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
     override load(url: string): THREE.Texture<HTMLImageElement> { const texture = new THREE.Texture<HTMLImageElement>(); textures.add(texture); void decode(url, texture); return texture; }
   }
   manager.addHandler(/.*/, new LocalTextureLoader(manager));
-  let scene: THREE.Group | undefined;
-  const release = () => { textures.forEach(texture => texture.dispose()); urls.forEach(url => URL.revokeObjectURL(url)); urls.clear(); };
+  let scene: THREE.Group | undefined, appearance: ReturnType<typeof createFBXMaterials> | undefined;
+  const release = () => { appearance?.dispose(); textures.forEach(texture => texture.dispose()); urls.forEach(url => URL.revokeObjectURL(url)); urls.clear(); };
   try {
     // Include unassigned companions in the image budget before allowing a mapping.
     await Promise.all([...files.keys()].map(read));
@@ -174,7 +189,7 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
     } finally { URL.createObjectURL = create; }
     const results = await Promise.allSettled(pending);
     const failed = results.find(result => result.status === 'rejected'); if (failed?.status === 'rejected') throw failed.reason;
-    let nodes = 0, vertices = 0; const remove: THREE.Object3D[] = [], materials = new Set<THREE.MeshPhongMaterial>();
+    let nodes = 0, vertices = 0; const remove: THREE.Object3D[] = [], materials = new Set<FBXSourceMaterial>();
     scene.traverse(node => {
       if (++nodes > 10000) throw new Error(msg('FBX exceeds 10,000 scene nodes.', 'FBX 장면 노드가 10,000개를 넘습니다.'));
       if (![...node.position.toArray(), ...node.quaternion.toArray(), ...node.scale.toArray()].every(Number.isFinite)) throw new Error(msg('FBX contains an invalid transform.', 'FBX에 유효하지 않은 변환 값이 있습니다.'));
@@ -188,7 +203,7 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
         // three-vrm first-person head masking requires indexed triangles. Keep
         // FBXLoader's existing vertex order and all skin/UV attributes intact.
         if (count <= 1000000 && !node.geometry.index) node.geometry.setIndex(Array.from({ length: count }, (_, i) => i));
-        for (const mat of Array.isArray(node.material) ? node.material : [node.material]) if (mat instanceof THREE.MeshPhongMaterial || mat instanceof THREE.MeshLambertMaterial) materials.add(mat as THREE.MeshPhongMaterial);
+        for (const mat of Array.isArray(node.material) ? node.material : [node.material]) if (mat instanceof THREE.MeshPhongMaterial || mat instanceof THREE.MeshLambertMaterial) materials.add(mat);
       }
     });
     if (vertices > 1000000 || materials.size > 128) throw new Error(msg('FBX exceeds 1M vertices or 128 materials.', 'FBX가 정점 1M개 또는 재질 128개를 넘습니다.'));
@@ -196,6 +211,7 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
     const animationCount = scene.animations.length; scene.animations = [];
     const assignedTextures = new Map<string, THREE.Texture>();
     const factor = Number(scene.userData.unitScaleFactor), materialList = [...materials];
+    appearance = createFBXMaterials(scene, materialInfo);
     const originalMaterials = materialList.map(material => ({ map: material.map, color: material.color.clone() }));
     const result: LoadedFBX = { scene, materials: materialList, images: companions, animationCount,
       metersPerUnit: Number.isFinite(factor) && factor > 0 ? factor / 100 : .01,
@@ -211,6 +227,7 @@ export async function loadLocalFBX(file: File, companions: File[] = []): Promise
           }
           material.map = texture; material.color.set(0xffffff); material.needsUpdate = true;
         }
+        appearance!.apply(config.materialMode ?? 'original');
       }, release, dispose: () => { disposeFBX(scene!); release(); },
     };
     return result;

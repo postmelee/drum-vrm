@@ -366,6 +366,9 @@ async function importCharacter(fileOrPreset: File | CharacterPreset) {
 }
 function showFBXInfo(name:string) {
   const host=get('character-info');host.replaceChildren();
+  const mode=currentFBX?.materialMode??'original';
+  const appearance=mode==='unlit'?msg('Texture only (Unlit)','텍스처 그대로 (Unlit)'):mode==='matte'?msg('Matte lighting','무광 조명'):msg('Original material','원본 재질');
+  const appearanceLabel=document.createElement('p');bindText(appearanceLabel,msg('Material appearance: {0}','재질 표현: {0}',appearance));host.append(appearanceLabel);
   const p=document.createElement('p');bindText(p,msg('FBX · {0} · mapped humanoid. Original model terms apply; toon shaders, physics and embedded animations are not reproduced.', 'FBX · {0} · 연결된 휴머노이드. 모델의 원본 이용 조건을 확인하세요. 툰 셰이더·물리·내장 애니메이션은 재현하지 않습니다.',raw(name)));host.append(p);
 }
 async function importFBXCharacter(file:File,images:File[]) {

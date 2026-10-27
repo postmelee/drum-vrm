@@ -38,7 +38,7 @@ it('remembers only validated settings for exact hashes, bounds history and toler
   const data = new Map<string,string>();
   vi.stubGlobal('localStorage', { getItem:(k:string)=>data.get(k)??null, setItem:(k:string,v:string)=>data.set(k,v) });
   const loaded = await loadLocalFBX(new File([encodeFBX(fbxDocument())], 'authored.fbx'));
-  const config = { bones:suggestFBXBones(fbxBones(loaded.scene)), metersPerUnit:.01, textures:{} };
+  const config = { bones:suggestFBXBones(fbxBones(loaded.scene)), metersPerUnit:.01, textures:{}, materialMode:'unlit' as const };
   try {
     for (let i=0;i<12;i++) rememberFBXSetup(i.toString(16).padStart(64,'0'),config);
     expect(savedFBXSetup('0'.repeat(64))).toBeUndefined();

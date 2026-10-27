@@ -1,6 +1,6 @@
 import { bindAttribute, bindText, joinMessages, msg, raw } from './i18n';
 import { engineMessage } from './engine-messages';
-import { FBX_BONES, FBX_REQUIRED, imageKey, validateFBXConfig, type FBXConfig } from './fbx-config';
+import { FBX_BONES, FBX_REQUIRED, imageKey, type FBXMaterialMode, validateFBXConfig, type FBXConfig } from './fbx-config';
 import { availableFBXBones, matchingFBXBones, fbxBones, resolveFBXBones, suggestFBXBones } from './fbx-rig';
 import { loadLocalFBX, type LoadedFBX } from './fbx-import';
 import { createFBXPreview } from './fbx-preview';
@@ -47,10 +47,10 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
     let loaded: LoadedFBX | null = null, finished = false, busy = false;
     let preview: ReturnType<typeof createFBXPreview> | undefined;
     let textureWork: Promise<void> = Promise.resolve();
-    let boneInputs: { name: typeof FBX_BONES[number]; input: HTMLSelectElement }[] = [], unit: HTMLInputElement;
+    let boneInputs: { name: typeof FBX_BONES[number]; input: HTMLSelectElement }[] = [], unit: HTMLInputElement, materialMode: HTMLSelectElement;
     const textureInputs: HTMLSelectElement[] = [];
     const mapping = (): FBXConfig['bones'] => Object.fromEntries(boneInputs.flatMap(({ name, input }) => input.value ? [[name, input.value]] : []));
-    const config = (): FBXConfig => ({ bones: mapping(), metersPerUnit: Number(unit.value), textures: Object.fromEntries(textureInputs.flatMap((select, index) => select.value ? [[String(index), select.value]] : [])) });
+    const config = (): FBXConfig => ({ materialMode: materialMode.value as FBXMaterialMode, bones: mapping(), metersPerUnit: Number(unit.value), textures: Object.fromEntries(textureInputs.flatMap((select, index) => select.value ? [[String(index), select.value]] : [])) });
     const finish = async (value: { loaded: LoadedFBX; config: FBXConfig } | null) => {
       if (finished) return; finished = true; next.disabled = true; cancel.disabled = true;
       await textureWork; preview?.dispose();
@@ -124,11 +124,19 @@ export function setupFBX(file: File, companions: File[] = []): Promise<{ loaded:
       const details = document.createElement('p'); bindText(details, msg('{0} bones · {1} materials · {2} embedded clips (not played).', '본 {0}개 · 재질 {1}개 · 내장 클립 {2}개 (재생하지 않음).', candidates.length, source.materials.length, source.animationCount)); advanced.append(details); settings.append(advanced);
       settings.append(text('h3', 'Colors and textures', '색상 · 텍스처'), text('p', 'Image names suggest connections. Check the preview and change any incorrect choices.', '이미지 이름으로 연결을 제안합니다. 미리보기를 확인하고 맞지 않는 항목은 변경하세요.'));
       const applyTextures = async () => {
-        busy = true; next.disabled = true; textureInputs.forEach(input => { input.disabled = true; });
+        busy = true; next.disabled = true; materialMode.disabled = true; textureInputs.forEach(input => { input.disabled = true; });
         try { await source.applyTextures(config()); if (!finished) preview?.draw(); }
         catch (cause) { if (!finished) bindText(error, engineMessage(cause instanceof Error ? cause.message : String(cause))); }
-        finally { busy = false; textureInputs.forEach(input => { input.disabled = false; }); if (!finished) refresh(); }
+        finally { busy = false; materialMode.disabled = false; textureInputs.forEach(input => { input.disabled = false; }); if (!finished) refresh(); }
       };
+      const modeLabel = text('label', 'Material appearance', '재질 표현');
+      materialMode = document.createElement('select'); materialMode.id = 'fbx-material-mode';
+      materialMode.append(option(msg('Original material (default)', '원본 재질 (기본)'), 'original'),
+        option(msg('Matte lighting', '무광 조명'), 'matte'), option(msg('Texture only (Unlit)', '텍스처 그대로 (Unlit)'), 'unlit'));
+      materialMode.value = saved?.materialMode ?? 'original';
+      materialMode.onchange = () => { error.textContent = ''; textureWork = applyTextures(); };
+      modeLabel.append(materialMode); settings.append(modeLabel);
+      settings.append(text('p', 'Original uses the FBX lighting properties. Matte removes highlights; Unlit shows base colors without lights or tone mapping. Choose Unlit for a flat, texture-only reference. It does not recreate an authoring-tool toon shader.', '원본은 FBX의 조명 속성을 사용합니다. 무광은 반짝임을 없애고, Unlit은 조명·톤 매핑 없이 기본색을 보여줍니다. 텍스처 중심의 평면적인 미리보기에는 Unlit을 선택하세요. 제작 도구의 툰 셰이더를 재현하는 기능은 아닙니다.'));
       source.materials.forEach((material, index) => {
         const row = document.createElement('label'); row.textContent = material.name || `Material ${index + 1}`;
         const select = document.createElement('select'); select.id = `fbx-material-${index}`;
