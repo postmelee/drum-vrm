@@ -65,6 +65,11 @@ into long toasts. Colors never substitute for labels.
 - Structure: 18 px severity icon, short title, optional short supporting sentence,
   at most one labeled action, always a close control. Color only the icon/accent.
   Action/close hit targets are at least 32 px on desktop and 44 px on touch layouts.
+  Separate the action hit area from its visual highlight: a single-line label has
+  an 18 px line height and 3 px vertical padding (24 px highlight). Hover, pressed
+  and keyboard-focus styling wraps that label, not the entire 44 px button. Long
+  labels can wrap and grow. Hover styling applies only to hover-capable pointers;
+  touch uses pressed feedback. Keep a visible keyboard outline around the label.
 - Target one title line and up to two supporting lines at desktop width. Translate
   naturally and wrap at narrow widths/200% zoom; never clip essential recovery copy.
   Dense details belong behind the action. Avoid seconds/countdown badges.

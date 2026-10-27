@@ -73,3 +73,12 @@ Browser-computed success-card heights were 89.59 px desktop and 97.59 px in the
 The no-action result card measured 51.59 px, confirming content-dependent height.
 English and Korean narrow previews were inspected; the local screenshot is
 `/private/tmp/drum-vrm-toast-compact.png`. Syntax, diff and docs checks passed.
+
+## Compact action highlight
+
+The subsequent mobile refinement separates the action label's visible highlight
+from its hit target. Browser inspection in the narrow preview measured a 24 px
+highlight inside the unchanged 44 px button. Keyboard focus visibly outlines the
+label; the outer button remains transparent. Hover feedback is gated by pointer
+capability, while pressed feedback also works on touch. Syntax, diff and docs
+checks passed. Screenshot: `/private/tmp/drum-vrm-toast-highlight.png` (local only).
