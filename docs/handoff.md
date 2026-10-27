@@ -9,8 +9,9 @@ next worker; contracts own behavior and evidence reports own measured results.
   [verification](verification/fbx-import.md) and the
   [import contract](../specs/architecture/rig-contract.md#fbx-import).
   PR #58 also includes the owner-requested folder/dropdown/preview setup follow-up
-  and exact-file settings reuse. Review the PR before integration; this is not a
-  Pages deployment.
+  and exact-file settings reuse, plus original/matte/unlit material choices and
+  source specular-factor correction. Review the PR before integration; this is
+  not a Pages deployment.
 - [#54](https://github.com/postmelee/drum-vrm/issues/54) adds VRM 0.0 local imports
   alongside 1.0, with source-basis normalization and original legacy model terms.
   Review the [verification](verification/vrm-0-support.md) and PR before any merge or publication; the Pages

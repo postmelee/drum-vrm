@@ -111,8 +111,25 @@ folding. Referenced images resolve only to explicit local companions or embedded
 PNG/JPEG data; no external fetch is allowed. Repeated image references share a decoded source. Decoded textures and embedded blob
 URLs are disposed on failure/cancel/replacement. Manual base-color assignment is
 by stable material traversal index, uses sRGB and a white diffuse tint, and is
-saved with the original image identity. Other Phong/Lambert properties remain.
+saved with the original image identity. Original mode preserves other supported Phong/Lambert properties.
 This does not reconstruct authoring-tool toon/node graphs or layered materials.
+
+`fbx.materialMode` accepts `original` (default), `matte` or `unlit`; omission in
+older settings means `original`. Original preserves supported Phong/Lambert
+properties. Matte removes direct specular highlights and environment reflections.
+Unlit displays base color/alpha and vertex colors without lighting, tone mapping
+or fog. Opacity, alpha test, sidedness, depth and blending remain. Switching is
+reversible; variants are shared across meshes and inactive variants are disposed
+on cancellation/replacement. Preview, adoption and project restore apply the same
+choice, also retained in the browser's successful-setting cache.
+
+Explicit `Material/Properties70/SpecularFactor` must be finite in [0, 1]. The
+bounded scanner collects material IDs and mesh connection order; the importer
+multiplies the Phong specular color in linear space once, without confusing
+same-named materials or multiplying shared materials repeatedly. Missing factors
+preserve loader behavior (multiplier 1). Source bytes are unchanged. This is a
+loader correction, not inference of toon graphs or Sketchfab viewer settings;
+there are no avatar-name defaults.
 
 Folder selection collects VRM/FBX models and PNG/JPEG companions recursively,
 ignores unrelated files and asks which model to import when several exist. The

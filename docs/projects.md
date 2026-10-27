@@ -30,4 +30,4 @@ the stored project. The current schema does not migrate projects across engine
 revisions. The [project contract](../specs/architecture/project-format.md) describes
 the format and validation boundaries.
 
-FBX projects also preserve explicit humanoid bone paths, metre conversion and material-image assignments. Keep every selected PNG/JPEG companion with the FBX; renamed identical files are accepted by their hashes. See [FBX import](models.md#import-a-rigged-fbx).
+FBX projects also preserve explicit humanoid bone paths, metre conversion, material-image assignments and the original/matte/unlit appearance choice. Keep every selected PNG/JPEG companion with the FBX; renamed identical files are accepted by their hashes. See [FBX import](models.md#import-a-rigged-fbx).

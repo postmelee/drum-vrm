@@ -133,6 +133,62 @@ correctness, shader fidelity or new all-song performance guarantees. Folder imag
 budgets are still aggregate; select a single extracted package rather than a
 large collection, and resolve duplicate image basenames before import.
 
+## Material appearance follow-up — 2026-10-27
+
+Implementation: `1774dcd`. The owner requested selectable original/matte/unlit
+appearance and correction of the omitted FBX specular intensity. New imports
+start with original materials; cached settings and projects preserve an explicit
+choice. Missing mode fields in older schema-1 projects retain original mode.
+No Rust, WASM or dependency version changed.
+
+The bounded binary scanner reads explicit material `SpecularFactor` values in
+[0, 1]. Material IDs and ordered model connections match the pinned FBXLoader
+output, avoiding name collisions. The factor multiplies the linear Phong specular
+color once per shared material. Missing factors keep loader behavior. Matte
+removes specular highlights and environment reflection; Unlit uses base color,
+alpha and vertex colors without lighting, tone mapping or fog. Original settings
+remain available when switching back; active and inactive material resources are
+released. These are rendering choices, not reconstructed toon shader graphs.
+
+Private evidence: the owner-provided seven-material FBX had white specular colors
+and explicit factor 0.25. Actual loader output previously used `[1, 1, 1]`; the
+corrected output uses `[0.25, 0.25, 0.25]` for all seven. A second private FBX with
+six materials showed the same correction. The matching locally downloaded GLB,
+whose metadata identifies the owner's linked
+[Sketchfab page](https://sketchfab.com/3d-models/umamusume-gold-ship-race-2cb9610f06a34b959cde35f2009894d3),
+uses `KHR_materials_unlit` for all seven materials. The observed site preview is
+flat and texture-focused; this evidence motivated the owner's explicit Unlit
+choice, not any filename rule in the app.
+
+Validation:
+
+- Full suite: **32 files / 237 tests passed**. Focused FBX/material/setup/project
+  suite: **32 tests passed**. Typecheck, production web build, documentation and
+  whitespace checks passed. The existing large-chunk advisory remains.
+- Authored binary 7400/7500 mesh/material fixtures verify factors 0/0.25/missing,
+  duplicate material names, shared materials and no repeated multiplication after
+  mode switching. Invalid factors are rejected before loader allocation.
+- Material tests check reversible/shared variants, alpha, sidedness, vertex colors,
+  changed textures/colors and inactive-variant disposal. Project tests round-trip
+  every mode, preserve missing legacy fields and reject unknown modes. The browser
+  preference test now includes an explicit Unlit setting.
+- Actual browser imports compared all three modes on the private model. Unlit
+  visibly removed the highlights. The production preview at localhost:5180 repeated
+  texture selection, Unlit adoption and the 193-hit Studio Groove preparation.
+  The saved project contained `materialMode: "unlit"`; after switching to the
+  default skeleton, reopening restored the textured Unlit character and showed
+  its mode in Character settings. Timeline seek remained usable. No warning/error
+  console entries were captured in that production check.
+- A private adapter check compared the actual model's measured profile across all
+  three modes and found exact equality. The model still reports automatic-fit /
+  ready-pose clearance limitations and the demo has 12 unassigned hits; this work
+  changes appearance only and does not claim to resolve those motion constraints.
+
+Private models, GLB metadata, screenshots, diagnostic probes and the saved project
+remain outside tracked files. This does not certify pixel-identical rendering to
+Sketchfab, arbitrary toon fidelity or video output. The local preview was rebuilt;
+no merge, release or public deployment was authorized or performed.
+
 ## Limits and release boundary
 
 The implemented contract accepts binary FBX 7.4/7.5 only. It preserves supported
