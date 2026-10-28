@@ -10,6 +10,8 @@ export function diagnosticTitle(code: string): string {
     HAND_OVERRIDE_INFEASIBLE: ['Hand assignment unavailable', '지정한 손으로 연주 불가'],
     BODY_PATH_CLEARANCE: ['Body path overlap', '신체 경로 겹침'],
     EQUIPMENT_PATH_CLEARANCE: ['Equipment path overlap', '악기 경로 겹침'],
+    TOOL_EQUIPMENT_PATH_CLEARANCE: ['Stick–equipment overlap', '스틱·악기 겹침'],
+    TOOL_PAIR_PATH_CLEARANCE: ['Stick–stick overlap', '스틱 간 겹침'],
     EQUIPMENT_LAYOUT_CLEARANCE: ['Equipment layout overlap', '악기 배치 겹침'],
     COUNT_IN_GESTURE_UNAVAILABLE: ['Count-in motion unavailable', '카운트인 동작 불가'],
     HIHAT_INTENT_CONFLICT: ['Hi-hat interpretation conflict', '하이햇 해석 충돌'],
@@ -26,12 +28,24 @@ export function diagnosticTitle(code: string): string {
  * engine exposes structured diagnostic arguments at this boundary. */
 export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = [
   [
+    '{0} sampled whole-stick paths intersect drum equipment (minimum signed proxy clearance {1} mm). Original contact times are preserved; inspect the marked interval.',
+    '스틱 전체 경로 표본 {0}개가 악기와 겹칩니다(대리 형상 최소 간격 {1} mm). 원래 타격 시각은 유지합니다. 표시된 구간을 확인하세요.'
+  ],
+  [
+    '{0} sampled whole-stick paths intersect the other stick (minimum signed proxy clearance {1} mm). Original contact times are preserved; inspect the marked interval.',
+    '스틱 전체 경로 표본 {0}개가 반대쪽 스틱과 겹칩니다(대리 형상 최소 간격 {1} mm). 원래 타격 시각은 유지합니다. 표시된 구간을 확인하세요.'
+  ],
+  [
     "{0} impact pitches have no safe posture/equipment witness within the bounded pitch-rate schedule. Original contact times are preserved; inspect the marked interval.",
     "타격 피치 {0}개는 제한된 피치 변화율 안에서 안전한 자세·장비 접촉 후보를 유지하지 못했습니다. 원래 타격 시각은 유지합니다. 표시된 구간을 확인하세요."
   ],
   [
     "The selected hi-hat surface has no movable upper cymbal. Openness changes the pedal state; the displayed strike surface remains fixed.",
     "선택한 하이햇 표면에는 움직일 수 있는 상단 심벌이 없습니다. 개방량은 페달 상태에 반영하며 화면의 타격 표면은 고정합니다."
+  ],
+  [
+    "{0} sampled hand poses exceed the common posture limits during preparation, contact, recovery or rest. Original contact times are preserved; inspect the marked interval.",
+    "준비·타격·회수·대기 중 손 자세 표본 {0}개가 공통 자세 한계를 벗어납니다. 원래 타격 시각은 유지합니다. 표시된 구간을 확인하세요."
   ],
   [
     "{0} hand-impact poses exceed the common posture limits. Contact timing is preserved; adjust the layout and inspect the arms.",

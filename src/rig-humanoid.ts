@@ -1,7 +1,7 @@
 import { msg } from './i18n';
 import { fitThumbToShaft } from './shaft-grip';
 import { createStickGeometry } from './stick-geometry';
-import { DEFAULT_KIT, DEFAULT_PEDALS } from './kit-default';
+import { DEFAULT_KIT, DEFAULT_PEDALS, NATIVE_REFERENCE_SEAT } from './kit-default';
 import { pedalForwardDirection, pedalToolRotation } from './pedal-frame';
 import * as THREE from 'three';
 import { VRMHumanoid, VRMHumanBoneParentMap, type VRMHumanBoneName, type VRMHumanBones } from '@pixiv/three-vrm';
@@ -559,6 +559,8 @@ export class NativeHumanoidRigAdapter extends NormalizedHumanoidRigAdapter {
     const humanoid = new VRMHumanoid(Object.fromEntries(Object.entries(nodes).map(([name, node]) => [name, { node }])) as unknown as VRMHumanBones);
     source.add(humanoid.normalizedHumanBonesRoot);
     super(humanoid, source, 'humanoid-native-v1'); this.skeleton = new THREE.Skeleton(Object.values(nodes));
+    this.setCalibration(NATIVE_REFERENCE_SEAT, DEFAULT_KIT);
+    this.applyPose(createRestRigPose(this.getProfile(), DEFAULT_KIT));
   }
   override dispose(): void { this.skeleton.dispose(); super.dispose(); }
 }

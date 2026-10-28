@@ -1,8 +1,6 @@
 //! Deterministic whole-timeline elbow-plane planning over immutable contacts.
 //! Node and interpolated-edge checks share the calibrated body proxies. This
 //! bounded graph is not a guarantee of skin clearance or a continuous certificate.
-#[cfg(test)]
-use crate::rig::HandSolution;
 use crate::{clearance, model::Vec3, rig::RigProfile};
 use std::collections::HashMap;
 
@@ -34,6 +32,7 @@ pub struct HandCoordinationInput {
     pub pitches: [f64; 2],
     pub equipment: Option<std::sync::Arc<crate::equipment_motion::EquipmentContext>>,
     pub intended_stick_contact: bool,
+    pub close_tool_approach: bool,
     pub intended_pieces: [Option<String>; 2],
 }
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -51,15 +50,26 @@ fn angles(state: usize) -> [f64; 2] {
 fn deficit(clearance: f64, margin: f64) -> f64 {
     (margin - clearance).max(0.0).powi(2)
 }
-fn collision_cost(torso: [f64; 2], pair: clearance::PairClearance) -> f64 {
-    let depths = [torso[0], torso[1], pair.arms, pair.sticks, pair.cross];
-    // Every sampled safe candidate is cheaper than a collision candidate before
-    // neutral-pose preference. Depth still distinguishes unavoidable failures.
+fn collision_cost(equipment: [f64; 2], tools: f64, close_approach: bool) -> f64 {
+    let depths = [
+        (equipment[0], crate::posture::MARGIN),
+        (equipment[1], crate::posture::MARGIN),
+        (
+            tools,
+            if close_approach {
+                0.
+            } else {
+                crate::posture::MARGIN
+            },
+        ),
+    ];
+    // Only physical tool/hardware intersections receive a feasibility penalty.
+    // Body proxies remain bounded visual preferences, retained in inspection.
     depths
         .iter()
-        .map(|&c| deficit(c, crate::posture::MARGIN) * 10_000.0)
+        .map(|&(c, margin)| deficit(c, margin) * 10_000.0)
         .sum::<f64>()
-        + if depths.iter().any(|&c| c < crate::posture::MARGIN) {
+        + if depths.iter().any(|&(c, margin)| c < margin) {
             4.0
         } else {
             0.0
@@ -69,27 +79,49 @@ fn equipment_clearance(
     input: &HandCoordinationInput,
     limb: usize,
     hand: &crate::rig::HandSolution,
-) -> f64 {
-    input.equipment.as_ref().map_or(f64::INFINITY, |ctx| {
-        crate::equipment_motion::hand_clearance(
-            &input.profile,
-            limb,
-            hand,
-            ctx,
-            input.intended_pieces[limb].as_deref(),
-        )
-    })
+) -> crate::equipment_motion::HandClearance {
+    input.equipment.as_ref().map_or(
+        crate::equipment_motion::HandClearance {
+            tool: f64::INFINITY,
+            physical_tool: f64::INFINITY,
+            body: f64::INFINITY,
+        },
+        |ctx| {
+            crate::equipment_motion::assess_hand(
+                &input.profile,
+                limb,
+                hand,
+                ctx,
+                input.intended_pieces[limb].as_deref(),
+            )
+        },
+    )
 }
-fn pair(
-    input: &HandCoordinationInput,
+fn pair_cost_for_pose(
+    profile: &RigProfile,
     left: &crate::rig::HandSolution,
     right: &crate::rig::HandSolution,
-) -> clearance::PairClearance {
-    crate::count_in::contact_pair_clearance(
-        &input.profile,
-        left,
-        right,
-        input.intended_stick_contact,
+    equipment: [f64; 2],
+    intended_contact: bool,
+    close_approach: bool,
+) -> f64 {
+    let pair = clearance::pair_clearance(profile, left, right);
+    collision_cost(
+        equipment,
+        crate::count_in::contact_tool_clearance(profile, left, right, intended_contact),
+        close_approach && !intended_contact,
+    ) + clearance::body_penalty(pair.arms.min(pair.cross))
+}
+fn hand_cost_for_pose(
+    input: &HandCoordinationInput,
+    limb: usize,
+    hand: &crate::rig::HandSolution,
+) -> (f64, f64) {
+    let equipment = equipment_clearance(input, limb, hand);
+    let body = clearance::hand_clearance(&input.profile, limb, hand).min(equipment.body);
+    (
+        equipment.tool,
+        clearance::body_penalty(body) + posture_cost(&input.profile, limb, input.tips[limb], hand),
     )
 }
 fn posture_cost(
@@ -102,7 +134,7 @@ fn posture_cost(
         + if crate::posture::anatomical(profile, limb, target, hand) {
             0.0
         } else {
-            1.0
+            1e9
         }
 }
 fn pose_cost(input: &HandCoordinationInput, a: [f64; 2]) -> f64 {
@@ -117,16 +149,17 @@ fn pose_cost(input: &HandCoordinationInput, a: [f64; 2]) -> f64 {
     if !left.reachable || !right.reachable {
         return 1e9;
     }
-    collision_cost(
-        [
-            clearance::hand_clearance(&input.profile, 0, &left)
-                .min(equipment_clearance(input, 0, &left)),
-            clearance::hand_clearance(&input.profile, 1, &right)
-                .min(equipment_clearance(input, 1, &right)),
-        ],
-        pair(input, &left, &right),
-    ) + posture_cost(&input.profile, 0, input.tips[0], &left)
-        + posture_cost(&input.profile, 1, input.tips[1], &right)
+    let (lc, lp) = hand_cost_for_pose(input, 0, &left);
+    let (rc, rp) = hand_cost_for_pose(input, 1, &right);
+    pair_cost_for_pose(
+        &input.profile,
+        &left,
+        &right,
+        [lc, rc],
+        input.intended_stick_contact,
+        input.close_tool_approach,
+    ) + lp
+        + rp
 }
 /// Bounded joint wrist/elbow witness cost for torso and stroke-envelope planning.
 /// Candidates are shared with static calibration, never tied to an avatar name.
@@ -149,7 +182,9 @@ pub(crate) fn unconstrained_cost(profile: &RigProfile, tips: [Vec3; 2], pitches:
     for (left, lc) in &hands[0] {
         for (right, rc) in &hands[1] {
             best = best.min(
-                collision_cost([*lc, *rc], clearance::pair_clearance(profile, left, right))
+                pair_cost_for_pose(profile, left, right, [f64::INFINITY; 2], false, false)
+                    + clearance::body_penalty(*lc)
+                    + clearance::body_penalty(*rc)
                     + posture_cost(profile, 0, tips[0], left)
                     + posture_cost(profile, 1, tips[1], right),
             );
@@ -173,9 +208,7 @@ fn node_costs(input: &HandCoordinationInput) -> Vec<f64> {
                         i as f64 * ANGLE_STEP - MAX_SWIVEL,
                     )
                     .map(|h| {
-                        let c = clearance::hand_clearance(&input.profile, limb, &h)
-                            .min(equipment_clearance(input, limb, &h));
-                        let p = posture_cost(&input.profile, limb, input.tips[limb], &h);
+                        let (c, p) = hand_cost_for_pose(input, limb, &h);
                         (h, c, p)
                     })
             })
@@ -192,8 +225,14 @@ fn node_costs(input: &HandCoordinationInput) -> Vec<f64> {
                 return 1e9;
             }
             let a = angles(state);
-            collision_cost([lc, rc], pair(input, &left, &right))
-                + lp
+            pair_cost_for_pose(
+                &input.profile,
+                &left,
+                &right,
+                [lc, rc],
+                input.intended_stick_contact,
+                input.close_tool_approach,
+            ) + lp
                 + rp
                 + 0.002 * (a[0] * a[0] + a[1] * a[1])
         })
@@ -341,11 +380,6 @@ pub fn plan_with_checks(
 fn plan(inputs: &[HandCoordinationInput]) -> Vec<SwivelSample> {
     plan_with_checks(inputs, inputs).unwrap()
 }
-#[cfg(test)]
-fn pair_cost(profile: &RigProfile, left: &HandSolution, right: &HandSolution) -> f64 {
-    let pair = clearance::pair_clearance(profile, left, right);
-    (deficit(pair.arms, 0.002) + deficit(pair.sticks, 0.002) + deficit(pair.cross, 0.002)) * 2000.0
-}
 pub fn at(track: &[SwivelSample], time: f64) -> [f64; 2] {
     if track.is_empty() {
         return [0.0; 2];
@@ -384,7 +418,11 @@ mod tests {
     }
     #[test]
     fn coordination_preserves_contacts_and_bounds_interpolated_motion() {
-        let p = profile();
+        let mut p = profile();
+        // The old 86 cm primitive arms require anatomically folded elbows at
+        // these nearby targets. Author a feasible human-scale wrist workspace.
+        p.lengths[0] = [0.30, 0.27];
+        p.lengths[1] = [0.30, 0.27];
         let mut times: Vec<f64> = (0..=30).map(|i| i as f64 * STEP).collect();
         times.extend([0.517132, 0.517133, 1.431718, 2.083146]);
         times.sort_by(f64::total_cmp);
@@ -402,6 +440,7 @@ mod tests {
                     pitches: [0.0; 2],
                     equipment: None,
                     intended_stick_contact: false,
+                    close_tool_approach: false,
                     intended_pieces: [None, None],
                 }
             })
@@ -411,25 +450,35 @@ mod tests {
         let mut baseline = 0.0;
         let mut corrected = 0.0;
         for (input, sample) in inputs.iter().zip(&track) {
-            let before: Vec<_> = (0..2)
-                .map(|i| p.solve_hand(i, input.tips[i], 0.0).unwrap())
-                .collect();
             let after: Vec<_> = (0..2)
                 .map(|i| {
                     p.solve_hand_with_swivel(i, input.tips[i], 0.0, sample.angles[i])
                         .unwrap()
                 })
                 .collect();
-            baseline += pair_cost(&p, &before[0], &before[1]);
-            corrected += pair_cost(&p, &after[0], &after[1]);
+            // Compare the actual production objective: anatomical/tool limits
+            // are hard; estimated body overlap is a bounded preference.
+            baseline += pose_cost(input, [0.; 2]);
+            corrected += pose_cost(input, sample.angles);
+            assert!(
+                clearance::tool_pair_clearance(&p, &after[0], &after[1]) >= crate::posture::MARGIN
+            );
             for (i, hand) in after.iter().enumerate() {
                 assert!(sample.angles[i].abs() <= MAX_SWIVEL + 1e-10);
+                assert!(crate::posture::anatomical(&p, i, input.tips[i], hand));
                 assert!(crate::motion::distance(hand.tip, input.tips[i]) < 1e-8);
+                assert!(
+                    (crate::motion::distance(p.roots[i], hand.middle) - p.lengths[i][0]).abs()
+                        < 1e-8
+                );
+                assert!(
+                    (crate::motion::distance(hand.middle, hand.end) - p.lengths[i][1]).abs() < 1e-8
+                );
             }
         }
         assert!(
-            corrected < baseline * 0.85,
-            "pair penalty {baseline} -> {corrected}"
+            corrected < baseline,
+            "shared pose objective {baseline} -> {corrected}"
         );
         for pair in track.windows(2) {
             let dt = pair[1].time - pair[0].time;
@@ -469,6 +518,7 @@ mod tests {
                 pitches: [0.0; 2],
                 equipment: None,
                 intended_stick_contact: false,
+                close_tool_approach: false,
                 intended_pieces: [None, None],
             })
             .collect();
@@ -500,6 +550,7 @@ mod tests {
                 pitches: [0.0; 2],
                 equipment: None,
                 intended_stick_contact: false,
+                close_tool_approach: false,
                 intended_pieces: [None, None],
             })
             .collect();
@@ -538,6 +589,7 @@ mod tests {
             pitches: [0.0; 2],
             equipment: None,
             intended_stick_contact: false,
+            close_tool_approach: false,
             intended_pieces: [None, None],
         };
         let costs = node_costs(&input);

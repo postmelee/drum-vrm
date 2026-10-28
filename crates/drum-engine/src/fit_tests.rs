@@ -3,41 +3,43 @@ use crate::model::default_kit;
 use crate::rig::HandControlFrame;
 
 #[test]
-fn final_snare_miss_check_preserves_a_refined_only_ready_witness() {
-    // Independently authored body dimensions, not measurements from an avatar.
-    // This ready pose needs an intermediate elbow swivel: contact probes pass,
-    // but the coarse five-angle pair search has no witness. Final certification
-    // must preserve the same refined witness as the runtime posture solver.
+fn snare_ready_check_preserves_a_refined_only_pair_witness() {
+    // Independently authored dimensions and a near snare-ready boundary. The
+    // coarse five-angle search misses a pair available at an intermediate
+    // swivel. This certifies the ready pair only: rimshot preparation and other
+    // articulation gates still have to pass for a complete equipment fit.
     let mut p = profile(1.0);
     p.roots[0][0] = -0.24;
     p.roots[1][0] = 0.24;
-    p.body_geometry = Some(
-        serde_json::from_value(serde_json::json!({
-            "version": 1, "source": "skeleton-fallback", "sampleCount": 0,
-            "torso": {"center": [0., 0.95, 0.06], "halfExtents": [0.13, 0.24, 0.08]},
-            "armRadii": [[0.025, 0.02], [0.025, 0.02]], "handRadii": [0.025, 0.025]
-        }))
-        .unwrap(),
-    );
     p.validate().unwrap();
     let mut snare = default_kit()
         .into_iter()
         .find(|piece| piece.instrument == Instrument::Snare)
         .unwrap();
-    snare.position = [-0.1, 0.78, 0.30];
-    let kit = [snare];
-    let before = serde_json::to_string(&(&p, &kit)).unwrap();
-    assert!(!snare_ready_fits_cached(&p, &kit[0], &FitCache::default()));
+    snare.position = [-0.05, 0.995, 0.375];
+    let before = serde_json::to_string(&(&p, &snare)).unwrap();
+    assert!(!snare_ready_fits_cached(&p, &snare, &FitCache::default()));
     let refined = FitCache::default();
     refined.refine.set(true);
-    assert!(snare_ready_fits_cached(&p, &kit[0], &refined));
-    assert!(piece_targets(&p, &kit[0])
-        .iter()
-        .all(|&target| { (0..2).all(|limb| hand_posture_fits(&p, limb, target)) }));
-    assert!(snare_ready_fits(&p, &kit[0]));
-    assert!(missed(&p, &kit, true).is_empty());
-    assert!(missed(&p, &kit, true).is_empty());
-    assert_eq!(serde_json::to_string(&(&p, &kit)).unwrap(), before);
+    assert!(snare_ready_fits_cached(&p, &snare, &refined));
+    assert!(snare_ready_fits(&p, &snare));
+    let tips = crate::posture::ready_pair(&p, &snare, &snare);
+    let pair = crate::posture::pair_solution_mode(&p, tips, [0.; 2], None, [None; 2], true)
+        .expect("the refined ready check must retain an actual shared-solver witness");
+    for (limb, hand) in pair.iter().enumerate() {
+        assert!(crate::posture::anatomical(&p, limb, tips[limb], hand));
+        assert!(
+            (crate::motion::distance(p.roots[limb], hand.middle) - p.lengths[limb][0]).abs()
+                < 1e-10
+        );
+        assert!(
+            (crate::motion::distance(hand.middle, hand.end) - p.lengths[limb][1]).abs() < 1e-10
+        );
+    }
+    assert!(
+        crate::clearance::tool_pair_clearance(&p, &pair[0], &pair[1]) >= crate::posture::MARGIN
+    );
+    assert_eq!(serde_json::to_string(&(&p, &snare)).unwrap(), before);
 }
 
 fn profile(scale: f64) -> RigProfile {
@@ -63,6 +65,145 @@ fn profile(scale: f64) -> RigProfile {
     p.hand_frames = Some([frame.clone(), frame]);
     p
 }
+
+#[test]
+fn broad_contact_envelope_is_not_a_near_target_posture_certificate() {
+    let profile = profile(1.0);
+    let mut hat = default_kit()
+        .into_iter()
+        .find(|piece| piece.instrument == Instrument::Hihat)
+        .unwrap();
+    // The tool can geometrically reach near its own shoulder, but that does
+    // not make the folded wrist/arm a playable hi-hat posture.
+    hat.position = profile.roots[1];
+    assert!(missed(&profile, &[hat.clone()], false).is_empty());
+    assert_eq!(missed(&profile, &[hat], true), vec!["hihat"]);
+}
+
+#[test]
+fn crash_search_preserves_a_same_side_hand_for_the_dual_pair() {
+    // Independent short-arm fixture: the nearby crash admits the opposite
+    // hand but folds its own-side elbow. Moving it forward opens that elbow.
+    let mut p = profile(0.75);
+    for (limb, sign) in [(0, -1.), (1, 1.)] {
+        p.roots[limb] = [sign * 0.11, 1.10, 0.11];
+        p.lengths[limb] = [0.22, 0.215];
+        p.tip_offsets[limb] = [0., 0., 0.35];
+    }
+    let mut kit: Vec<_> = default_kit()
+        .into_iter()
+        .filter(|piece| piece.instrument == Instrument::Crash)
+        .take(2)
+        .collect();
+    kit[0].position = [-0.42, 1.09, 0.545];
+    kit[1].position = [0.65, 1.39, 0.65];
+    let ctx = crate::equipment_motion::EquipmentContext::new(
+        kit.clone(),
+        crate::equipment::kit_geometry(&[]),
+    );
+    let target = piece_targets(&p, &kit[0])[0];
+    assert!(
+        crate::contact_feasibility::candidate(&p, 1, target, 0., Some(&ctx), Some(&kit[0].id))
+            .is_some()
+    );
+    assert!(!crash_role_search_fits(&p, &kit, 0, &ctx));
+    kit[0].position[2] += 0.25;
+    assert!(crash_role_search_fits(&p, &kit, 0, &ctx));
+    kit.swap(0, 1);
+    assert!(crash_role_search_fits(&p, &kit, 1, &ctx));
+}
+
+#[test]
+fn relaxed_snare_seed_tracks_seating_without_following_costume_volume() {
+    let mut p = profile(0.8);
+    let reference = snare_reference(&p);
+    p.body_geometry = Some(
+        serde_json::from_value(serde_json::json!({
+            "version": 1, "source": "mesh-estimate", "sampleCount": 10,
+            "torso": {"center": [0., 0.95, 0.3], "halfExtents": [0.6, 0.4, 0.8]},
+            "armRadii": [[0.2, 0.2], [0.2, 0.2]], "handRadii": [0.2, 0.2]
+        }))
+        .unwrap(),
+    );
+    assert_eq!(snare_reference(&p), reference);
+    let offset = [0.1, 0.06, -0.08];
+    let seated = fit_profile::candidate(&p, offset, &[]);
+    for (axis, delta) in offset.iter().enumerate() {
+        assert!((snare_reference(&seated)[axis] - reference[axis] - delta).abs() < 1e-12);
+    }
+    // A shorter measured arm's relaxed contact lies closer to its shoulders;
+    // the fallback must not preserve the extended full-sized kit depth.
+    assert!(reference[2] < snare_reference(&profile(1.0))[2]);
+}
+
+#[test]
+fn fixed_equipment_is_preserved_when_seating_alone_recovers_pedal_posture() {
+    // A fixed real pedal is just beyond the original hip's supported knee
+    // angle. The common seat pass must find the admissible body translation
+    // without moving hardware or entering per-piece layout repair.
+    let mut p = profile(1.);
+    for limb in 2..4 {
+        p.roots[limb][1] = 0.66;
+        p.roots[limb][2] = 0.14;
+        p.grip_offsets[limb] = [0., -0.025, 0.];
+        p.tip_offsets[limb] = [0., 0., 0.16];
+    }
+    let mut pedal = default_kit()
+        .into_iter()
+        .find(|piece| piece.instrument == Instrument::Kick)
+        .unwrap();
+    pedal.position = [1., 0.08, 0.55];
+    pedal.pedal_forward = None;
+    p.roots[3][0] = 1.;
+    p.roots[3][1] = 0.91;
+    let kit = vec![pedal];
+    assert!(!fit_profile::feet_fit(&p, &kit));
+
+    let cache = FitCache::default();
+    let result = fixed_layout_fit(&p, &kit, &seat_offsets(&p), &cache)
+        .expect("the bounded seat choices must recover this fixed pedal");
+    assert!(result.complete);
+    assert_ne!(result.seat_offset, [0.; 3]);
+    assert_eq!(result.scale, 1.);
+    assert_eq!(result.translation, [0.; 3]);
+    assert!(result.piece_adjustments.is_empty());
+    assert_eq!(result.kit[0].position, kit[0].position);
+    assert_eq!(result.kit[0].radius, kit[0].radius);
+    assert_eq!(result.kit[0].pedal_forward, kit[0].pedal_forward);
+    let fitted = fit_profile::candidate(&p, result.seat_offset, &result.kit);
+    assert!(fit_profile::feet_fit(&fitted, &result.kit));
+    assert_eq!(fitted.lengths, p.lengths);
+
+    let repeated = fixed_layout_fit(&fitted, &result.kit, &seat_offsets(&fitted), &cache)
+        .expect("the accepted fixed layout remains valid");
+    assert_eq!(repeated.seat_offset, [0.; 3]);
+    assert_eq!(
+        serde_json::to_value(&repeated.kit).unwrap(),
+        serde_json::to_value(&result.kit).unwrap()
+    );
+
+    let mut dressed = fitted.clone();
+    let volume = serde_json::json!({
+        "center": [0., 0.2, 0.], "halfExtents": [0.5, 0.5, 0.5]
+    });
+    dressed.body_geometry = Some(
+        serde_json::from_value(serde_json::json!({
+            "version": 1, "source": "mesh-estimate", "sampleCount": 10,
+            "torso": {"center": [0., 0.95, 0.], "halfExtents": [0.1, 0.2, 0.1]},
+            "armRadii": [[0.03, 0.02], [0.03, 0.02]], "handRadii": [0.03, 0.03],
+            "legBoxes": [[volume.clone(), volume.clone()], [volume.clone(), volume.clone()]],
+            "footBoxes": [volume.clone(), volume]
+        }))
+        .unwrap(),
+    );
+    let advisory = fit_kit(&dressed, &result.kit).unwrap();
+    assert!(advisory.complete);
+    assert!(advisory.layout_violations.is_empty());
+    assert!(!advisory.advisory_layout_violations.is_empty());
+    assert_eq!(advisory.seat_offset, [0.; 3]);
+    assert_eq!(advisory.kit[0].position, result.kit[0].position);
+}
+
 #[test]
 fn bounded_common_fit_preserves_kick_and_fits_linked_hihat_idempotently() {
     for scale in [1.0, 0.8, 0.65] {
@@ -596,10 +737,10 @@ fn native_ready_pose_fits_real_equipment_without_stacked_heads_or_buried_shafts(
         "native kit should not require toy-sized drums"
     );
     assert!(result.search_candidates <= MAX_FIT_LAYOUT_CANDIDATES);
-    let ctx = crate::equipment_motion::EquipmentContext {
-        kit: result.kit.clone(),
-        geometry: crate::equipment::kit_geometry(&result.kit),
-    };
+    let ctx = crate::equipment_motion::EquipmentContext::new(
+        result.kit.clone(),
+        crate::equipment::kit_geometry(&result.kit),
+    );
     assert!(ctx.geometry.unresolved_piece_ids.is_empty());
     assert!(layout::violations(&profile, &result.kit).is_empty());
     assert!(lower_limb::violations(&profile, &result.kit, &ctx.geometry).is_empty());

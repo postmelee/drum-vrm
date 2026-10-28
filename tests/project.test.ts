@@ -79,7 +79,8 @@ describe('versioned local project',()=>{
     geometry.source='mesh-estimate';geometry.sampleCount=320;
     geometry.torso.halfExtents[2]=.12;
     geometry.handCapsules=[{start:[0,0,.02],end:[0,0,.09],radius:.025},{start:[0,0,.03],end:[0,0,.08],radius:.03}];
-    expect(parseProject(JSON.stringify(project)).profile.bodyGeometry).toEqual(geometry);
+    // JSON canonicalizes signed zero; compare the persisted numeric contract.
+    expect(parseProject(JSON.stringify(project)).profile.bodyGeometry).toEqual(JSON.parse(JSON.stringify(geometry)));
     delete project.profile.bodyGeometry;
     expect(parseProject(JSON.stringify(project)).profile.bodyGeometry).toBeUndefined();
   });

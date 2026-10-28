@@ -47,4 +47,13 @@ describe('local performance review', () => {
     expect(summarizeProxyReview([0],[{...sample,equipmentClearanceMeters:-.008,crossClearanceMeters:.02}])).toMatchObject({intersectingSamples:1,equipmentMinimumMeters:-.008,crossMinimumMeters:.02});
     expect(()=>summarizeProxyReview([0],[{...sample,crossClearanceMeters:NaN}])).toThrow(/Invalid/);
   });
+  it('separates advisory body overlaps from whole-stick equipment and pair failures', () => {
+    const sample:PoseInspection={scope:'skeletal-proxies',torsoClearanceMeters:-.04,armClearanceMeters:-.01,stickClearanceMeters:.01,equipmentClearanceMeters:-.02,boneLengthErrorMeters:0,poseFloats:77,toolEquipmentClearanceMeters:.003,toolPairClearanceMeters:.01};
+    expect(summarizeProxyReview([0],[sample])).toMatchObject({intersectingSamples:1,toolSamples:1,toolIntersectingSamples:0,firstToolIntersectionSeconds:null});
+    expect(summarizeProxyReview([0,.1,.2],[sample,{...sample,toolEquipmentClearanceMeters:-.004},{...sample,toolPairClearanceMeters:-.003}])).toMatchObject({toolSamples:3,toolIntersectingSamples:2,firstToolIntersectionSeconds:.1,toolEquipmentMinimumMeters:-.004,toolPairMinimumMeters:-.003});
+    for(const field of ['toolEquipmentClearanceMeters','toolPairClearanceMeters'] as const)expect(()=>summarizeProxyReview([0],[{...sample,[field]:NaN}])).toThrow(/Invalid/);
+    const {toolEquipmentClearanceMeters,toolPairClearanceMeters,...legacy}=sample;
+    expect(summarizeProxyReview([0],[legacy]).toolIntersectingSamples).toBeUndefined();
+    expect(summarizeProxyReview([0,.1],[{...legacy,toolEquipmentClearanceMeters:.003},{...legacy,toolPairClearanceMeters:.01}])).toMatchObject({toolSamples:0,toolIntersectingSamples:0,toolEquipmentMinimumMeters:.003,toolPairMinimumMeters:.01});
+  });
 });

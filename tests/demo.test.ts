@@ -239,8 +239,8 @@ it('the automatically fitted browser demo keeps right-hand hats and left-hand ba
     }
 
     // A tilted measured head's contact center is not its layout anchor.
-    // Recovery holds over that same region. Equipment routing may lift the
-    // waiting stick within its existing 20 cm bound to clear the whole shaft.
+    // Recovery holds near that same region, with room for the two shafts.
+    // Equipment routing may lift the waiting stick within its existing bound.
     const snare = backbeats[0].target;
     const ready = [snare[0], snare[1] + .035, snare[2]];
     const times = [.95, 1, 1.15, 2, 5];
@@ -248,13 +248,16 @@ it('the automatically fitted browser demo keeps right-hand hats and left-hand ba
     for (const index of [4, 1, 3, 0, 2]) {
       const pose = performance.evaluate_rig_at(times[index]);
       expect(Array.from(pose)).toEqual(poses[index]);
-      // Left hand has recovered from its backbeat without drifting to a
-      // different instrument or forcing the shaft through neighbouring gear.
-      expect(Math.hypot(pose[9] - ready[0], pose[11] - ready[2])).toBeLessThan(1e-6);
+      // It stays over the snare, and its settled horizontal location is stable
+      // across backbeats/seeks. It need not hover at the exact impact point.
+      expect(Math.hypot(pose[9] - ready[0], pose[11] - ready[2]))
+        .toBeLessThan(plan.kit.find(piece => piece.id === 'snare')!.radius / 2);
+      expect(Math.hypot(pose[9] - poses[0][9], pose[11] - poses[0][11])).toBeLessThan(1e-6);
       expect(pose[10]).toBeGreaterThanOrEqual(ready[1] - 1e-6);
       expect(pose[10]).toBeLessThanOrEqual(ready[1] + .20 + 1e-6);
       const inspection = JSON.parse(performance.inspect_pose_at(times[index]));
-      expect(inspection.equipmentClearanceMeters).toBeGreaterThanOrEqual(-1e-5);
+      expect(inspection.toolEquipmentClearanceMeters).toBeGreaterThanOrEqual(-1e-5);
+      expect(inspection.toolPairClearanceMeters).toBeGreaterThanOrEqual(-1e-5);
     }
   } finally { session.close(); }
 },60_000); // Includes two complete WASM equipment/joint plans, not just pose evaluation.

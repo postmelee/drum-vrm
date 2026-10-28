@@ -88,8 +88,11 @@ selection remains future work. [Instructional rationale](../../docs/research/erg
 Numeric torso-clearance cost is a soft preference at candidate contacts. Events
 outside the candidate cap retain sound/diagnostics. This is a bounded heuristic,
 not a globally optimal arrangement or a guarantee of clear motion paths.
-Minimum re-strike interval (45 ms) and maximum target speed (12 m/s) are engineering
-heuristics, not physiological research measurements. Reach uses the supplied body.
+Minimum re-strike interval (45 ms) and maximum target-chord speed (12 m/s) are
+assignment heuristics, not physiological research measurements. The speed is the
+straight-line distance between successive assigned targets divided by their source
+time interval; it does not bound the final curved stick-tip path or joint speed.
+Reach uses the supplied body.
 Unsupported notes and supported-but-unassigned hits are different diagnostics.
 
 ## WASM API and pose buffers
@@ -134,8 +137,10 @@ attachment semantics.
 only with a complete proposal, regenerate the profile through the same adapter,
 and prepare the plan before committing scene state. A failed proposal preserves
 the input layout and zero seat offset; search-stage evidence does not replace
-layout-specific reach/clearance diagnostics. The [calibration contract](calibration.md)
-owns search bounds and the distinction between static witnesses and motion safety.
+layout-specific reach/clearance diagnostics. Optional `advisoryLayoutViolations: string[]` contains
+measured leg/foot-envelope warnings for the returned setup, excluding structural failures already in
+`layoutViolations`. It does not affect `complete`; an absent legacy field means unreported, not clear.
+The [calibration contract](calibration.md) owns search bounds and static/motion acceptance.
 
 ## Preparation and Worker boundary
 
@@ -164,12 +169,16 @@ reuse, not a cache of arbitrary uploaded files.
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
 2, containing the plan, numeric profile, torso/elbow and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Installation checks engine/planner versions, expected source/profile
-identity, finite values, ordering, track bounds, exact control times and assigned
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v11` distinguishes
+the physical-tool/advisory-body policy; earlier prepared candidates must be rebuilt.
+Installation checks engine/planner versions, expected source/profile
+identity, finite values, ordering, track bounds, mandatory control times and assigned
 contact/pedal feasibility at the stored torso yaw and equipment pitch. A reachable
 alternative pose cannot validate an unreachable stored impact. Equipment tracks additionally require bounded lift/pitch,
-rate limits and zero lift at each source impact. Installation uses these validated
-samples without repeating equipment-path search on the main thread. The checksum
+rate limits and zero lift at each source impact. All mandatory equipment times must
+survive exactly; sorted extra controls may lie only within the original endpoints.
+Installation uses these validated samples without repeating equipment-path search
+on the main thread. The checksum
 detects stale or damaged data; it is not a
 cryptographic signature. Payloads are capped at 128 MiB. Exact float round trips
 preserve primary poses and numeric inspection. This ephemeral handoff is separate
@@ -183,8 +192,11 @@ returns a preparation error before allocating the search tables; shorten the
 selected passage or reduce selected tracks. The 50,000-hit parsing limit does not
 guarantee that a score fits this motion budget. Sampling and memory bounds are
 specified in [calibration](calibration.md). The independent equipment-approach track
-allows at most 16,000 samples from its 30 Hz grid plus exact assigned hand impacts;
-the same bound is enforced during preparation and transfer deserialization.
+retains its mandatory 30 Hz grid and exact assigned hand impacts. Up to three
+midpoint-refinement passes add failing interiors of intervals at least 1/240 s long,
+within a total of 16,000 controls. Preparation and transfer deserialization enforce
+the same total bound. [Equipment contact](equipment-contact.md) defines the subsequent
+bounded joint pitch/lift repair; neither search certifies the continuous path.
 
 ## Deterministic evaluation
 
@@ -202,12 +214,20 @@ clamped to 0.22–0.65 s and 0.18–0.65 s respectively. A gap within their sum 
 while preventing overlapping long moves from interrupting each other. Wider gaps
 join the ready pose between separate windows. These durations are engineering
 heuristics. The legacy primitive comparison retains its generic rest.
+Each `Motion` precomputes immutable ready-pose feasibility, including failed
+queries, keyed by limb, physical piece and exact target bits. Shared assembly
+reconstructs it on prepared restoration; there is no playback-dependent cache.
 
 Velocity scales lift and wrist pitch; short intervals reduce both to fit available
 time. Current/next velocity also moves the peak of a direct transition earlier after
 an accent and later before an accent, leaving both endpoints fixed. Exact impacts
 retain their targets and zero added stroke pitch. These are procedural strokes, not
 learned push-pull, force simulation or complete joint limits.
+Transfers between distinct surfaces also use a bounded smooth tip arch informed by
+nearby equipment bounds, retaining larger authored stroke lift. Its added height
+is limited to 0.20 m and the available endpoint travel budget; endpoints and source
+times are unchanged. This guide does not replace whole-tool collision inspection
+or establish a speed bound for the final solved pose.
 For hand transfers in the measured-profile path, a lifted intermediate tip is kept
 at least as far from its reference shoulder as the interpolated endpoint radii.
 This reduces inward folding during preparation; it is not obstacle routing.
@@ -220,7 +240,7 @@ the original world targets. Pelvis and leg roots remain fixed. This precomputed
 curve does not depend on playback order or frame rate. Every assigned hand impact
 is checked using interpolated yaw; losing reach attenuates adjacent knots with
 rate-bound propagation, with zero yaw as the bounded-repair fallback. The [calibration contract](calibration.md) defines
-the continuous neutral-wrist solve and bounded torso planning.
+the shared target-oriented shaft/wrist solve and bounded torso planning.
 
 For profiles with `handFrames`, a separate precomputed elbow-swivel track coordinates
 both arms against torso, arm and stick proxies. It uses the turned profiles and
@@ -233,10 +253,52 @@ collision-free motion.
 `armClearanceMeters`, `stickClearanceMeters`, `crossClearanceMeters`,
 `geometrySource`, `boneLengthErrorMeters` and `poseFloats`. Cross clearance is the
 minimum stick-to-opposite-arm/hand clearance; own-hand grip attachment is permitted.
-Negative clearance means overlap of the numeric proxies. Bone error is the maximum
-segment-length deviation across four limbs. These values inspect the evaluated
-numeric pose; they neither measure rendered attachment markers nor establish skin,
-clothing, imported instrument geometry or continuous-path clearance.
+Negative measured-body clearance is an advisory numeric overlap. The historical
+`equipmentClearanceMeters` remains the combined arm/hand/tool minimum; it must not
+be interpreted as the physical-stick acceptance result. Optional fields
+`toolEquipmentClearanceMeters` and `toolPairClearanceMeters` separately report
+whole-stick/equipment and whole-stick/stick clearance, including only the explicit
+playing-surface or count-in contact exceptions. Missing fields mean unmeasured, not
+zero clearance. Bone error is the maximum segment-length deviation across four
+limbs. These values inspect the evaluated numeric pose, not rendered attachment
+markers, skin or exact triangles.
+
+Browser review keeps the raw proxy minimum/count fields and additionally aggregates
+optional `toolSamples`, `toolEquipmentMinimumMeters`, `toolPairMinimumMeters`,
+`toolIntersectingSamples` and `firstToolIntersectionSeconds`. A negative value in
+either tool metric counts as an intersecting tool sample. Acceptance needs present,
+finite, nonnegative whole-tool measurements; advisory body minima cannot substitute
+for or invalidate that result. Frame samples still do not prove the continuous path.
+
+Final engine inspection evaluates the same quarter/mid/three-quarter interval
+times as tool-route repair, plus the path knots, hand controls and count-in controls.
+It checks the final pose after torso and hand coordination. `POSTURE_LIMIT`
+covers sampled preparation, contact, recovery and rest, not only impact instants;
+it retains the common anatomical bounds without treating body/clothing overlap
+as a hard failure. All these diagnostics are sampled findings, not continuous
+collision or posture certificates.
+
+The [reference-layout review](../../scripts/reference-layout-review.mjs) separately
+gates assignment coverage, tool paths and motion validity. `POSTURE_LIMIT`,
+`CONTACT_PITCH_LIMIT`, `COUNT_IN_GESTURE_UNAVAILABLE`, `TOOL_EQUIPMENT_PATH_CLEARANCE`
+and `TOOL_PAIR_PATH_CLEARANCE` block motion validity: clear review-grid samples
+cannot erase a physical failure found at an internal refined time. Each source
+count-in must retain two planned hand contacts at its original time, so omitting
+an unavailable cue cannot pass. Successful fit and full hit assignment alone do
+not establish temporal acceptance. Existing review
+times also receive primary-pose finite-difference measurements at ±1/240 s: sampled
+tip/wrist speed, tip acceleration and tool angular speed. These diagnostics are not
+a dense 240 Hz scan or a continuous speed certificate; f32 quantization affects
+derivatives, especially acceleration. No final-tip speed threshold is asserted.
+Actual adapter bone angles and these motion metrics are summarized globally and
+around semantic landmarks. Missing angle measurements remain unmeasured. The script
+still requires separate textured visual review of posture, skin and clothing.
+
+`BODY_PATH_CLEARANCE` reports advisory body overlap.
+`TOOL_EQUIPMENT_PATH_CLEARANCE` and `TOOL_PAIR_PATH_CLEARANCE` identify sampled
+physical-tool intersections; `EQUIPMENT_PATH_CLEARANCE` retains the combined
+historical report. These diagnostics preserve source hits/times and expose an
+imperfect motion result rather than asserting that every path is clear.
 
 The [calibration contract](calibration.md) explains target-dependent hand frames;
 [MIDI interpretation](midi-interpretation.md) owns hi-hat state and source semantics.

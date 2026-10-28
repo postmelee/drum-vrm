@@ -5,34 +5,44 @@ own measured results and publication evidence.
 
 ## Current review and next work
 
-The owner requested common automatic fitting (#18) and visual review of the
-three bundled public VRMs (#23), followed by a Pages test deployment. Work uses
-`codex/public-vrm-fit`, based on PR #58's integrated `c2b06f2`. Preserve its FBX,
-VRM 0.0 and expanded MIDI support, plus the accepted compact reference layout.
-The other import chat has been notified of this continuation to avoid duplicate
-solver edits. No new candidate has been merged or published by this batch. The visual/numeric
-review found all three public automatic fits incomplete; publication is not a
-three-model acceptance result.
+The active batch fixes common automatic fitting (#18) and validates the three
+bundled public VRMs (#23). Work uses `codex/public-vrm-fit`, stacked on PR #58's
+integrated `c2b06f2`. Preserve its FBX, VRM 0.0 and expanded MIDI support. Draft
+[PR #64](https://github.com/postmelee/drum-vrm/pull/64) retains the previous
+`f2d3b87` failed-acceptance evidence; the owner selected fixing the fits before
+another Pages review. The [common-motion review](verification/common-motion-fit.md)
+records the new uncommitted-source/WASM identity: all four fits and all study hits
+now succeed, but every model still fails temporal physical-tool acceptance.
+The [diagnostic follow-up](verification/common-motion-fit.md#diagnostic-follow-up-measurement)
+preserves the same fits and sampled motion while exposing previously missed
+tool-path and evaluated-posture failures; it is not a path-repair completion.
+No new candidate has been merged or published.
 
-- [#18](https://github.com/postmelee/drum-vrm/issues/18): the common fitter still
-  exhausts its bounded search for all three public models. Expanded snare/rack
-  seed experiments were rejected: they did not complete these fits and raised
-  native fitting latency to 138 seconds. The candidate keeps the integrated
-  fitter, nominal cymbal sizes, lower-limb constraints and failure rollback.
-  Next work needs a shared posture/approach and complete-kit feasibility solution,
-  not another avatar-specific placement exception.
-- [#23](https://github.com/postmelee/drum-vrm/issues/23): review evidence now covers
-  the three public models, source-derived groove/tom/recovery landmarks, actual
-  adapter contact markers and ordered/shuffled evaluations. Missing assignments
-  and intersections remain explicit failures. The candidate fixes an intended
-  cymbal surface query that could overlook the stick shaft crossing its bow.
-- [PR #58](https://github.com/postmelee/drum-vrm/pull/58) supplies the integrated
-  source baseline. Its [record](verification/shared-fit-integration.md) retains
-  the native success (seat +60 mm upward) and all six imported-model failures.
-  Automated baseline test success does not establish imported-model acceptance.
-- [#20](https://github.com/postmelee/drum-vrm/issues/20): broader motion-path
-  refinement, expression and strike variation remain after this fit/review batch.
-  Existing residual motion diagnostics must remain visible.
+- **Reference first:** the native skeleton starts at the reviewed fixed kit and
+  authored seat, without an automatic startup search. Imported models first try
+  common posture/seating with that kit, then bounded body-informed layout repair.
+  Do not add another large candidate grid or avatar-name placement exceptions.
+- **Physical tools versus estimated bodies:** whole-stick/equipment and
+  stick/stick intersections remain required checks. Measured arm/costume overlap
+  is advisory; structural lower-limb cores and actual pedal reach remain required.
+  Report measured lower-body warnings separately from fit completion. Extreme
+  costume clearance is outside this batch; character scaling is not implemented.
+- **Next acceptance:** preserve the successful fits and complete 53/53 posture,
+  82/82 interpretation assignments while repairing common tool trajectories and
+  final evaluated posture, including the retained impact-pitch failure. Do not
+  restart layout search to hide these diagnostics. Marker and ordered/reversed
+  checks passed; they do not
+  certify intervening motion. The new 45 textured ready/groove-entry/tom/dual-crash/
+  ending captures cover front/top/left views of all three models; tom transitions
+  still show excessive arm elevation, especially Seed-san. A final diagnostic-build
+  smoke check confirmed B playback to end and native seat restoration; Seed-san
+  and Twist continuous playback on that build remain unverified. Missing motion or tool
+  measurements cannot count as acceptance. The earlier 36 captures remain a
+  separate failed baseline.
+- **Integration:** the other import chat has been notified to avoid duplicate
+  solver edits. [PR #58](https://github.com/postmelee/drum-vrm/pull/58) and its
+  [integration record](verification/shared-fit-integration.md) preserve their
+  own scope/results. Keep broader #20 expression and strike variation deferred.
 
 Start with [calibration](../specs/architecture/calibration.md),
 [equipment/contact](../specs/architecture/equipment-contact.md), and
@@ -42,8 +52,9 @@ layout checkpoint, not proof of this candidate's public-model acceptance.
 [Hardware sources](research/drum-hardware.md) and
 [ergonomics/sticking](research/ergonomics-and-sticking.md) retain the rationale.
 
-Record actual checks, exact source/WASM and browser evidence in the
-[public VRM review](verification/public-vrm-fit.md) before publication.
+Record subsequent checks and browser evidence against the exact candidate in the
+[common-motion review](verification/common-motion-fit.md); preserve the older
+[public VRM review](verification/public-vrm-fit.md) as its own measurement.
 The owner's request covers this fitting/review Pages batch, not a Release/tag or
 unrelated changes; follow the [release policy](release-policy.md).
 

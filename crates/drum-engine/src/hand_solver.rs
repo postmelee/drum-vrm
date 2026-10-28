@@ -1,7 +1,7 @@
-//! Closed-form neutral-wrist contact. Treat the forearm and held tool as one
-//! rigid link while solving the elbow, then recover the actual wrist. This
-//! preserves both bone lengths and the calibrated hand/tool relationship.
-use super::{pitch_rotation, rotate, HandControlFrame, Quat, RigProfile};
+//! Target-oriented held-tool contact. Fix the shaft approach, recover the wrist
+//! from measured tool markers, and solve an ordinary two-bone arm. A bounded
+//! analytic roll refinement reduces wrist swing without changing the grip.
+use super::{rotate, HandControlFrame, Quat, RigProfile};
 use crate::model::Vec3;
 use crate::motion::{add, distance, sub};
 
@@ -54,7 +54,6 @@ fn multiply(a: Quat, b: Quat) -> Quat {
         a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
     ]
 }
-#[cfg(test)]
 fn inverse(q: Quat) -> Quat {
     [-q[0], -q[1], -q[2], q[3]]
 }
@@ -89,8 +88,7 @@ fn frame(direction: Vec3, normal: Vec3) -> Quat {
     };
     normalize(q)
 }
-/// The shortest swing preserves the calibrated neutral wrist without building
-/// an up-vector frame that flips when the effective link crosses vertical.
+/// Deterministic shortest swing, with a calibrated antipodal fallback.
 fn shortest_arc(from: Vec3, to: Vec3, reference: Vec3) -> Quat {
     let from = unit(from);
     let to = unit(to);
@@ -101,16 +99,51 @@ fn shortest_arc(from: Vec3, to: Vec3, reference: Vec3) -> Quat {
     let axis = cross(from, to);
     normalize([axis[0], axis[1], axis[2], 1.0 + cosine])
 }
-/// A bounded continuous correction retains palm preference without selecting
-/// between two exact roots. The neutral calibration remains the roll reference;
-/// a near-degenerate projected palm cannot cause an arbitrary half turn.
-fn palm_roll(delta: Quat, axis: Vec3, reference: &HandControlFrame) -> Quat {
-    let palm = rotate(delta, reference.palm);
-    let desired = reference.desired_palm;
-    let a = dot(desired, palm) - dot(desired, axis) * dot(axis, palm);
-    let b = dot(desired, cross(axis, palm));
-    let angle = (b / (a.abs() + 0.2)).atan();
-    normalize(multiply(axis_rotation(axis, angle), delta))
+/// Initial shaft inclination is a common approach prior, not a surface-clearance
+/// certificate. The bounded pitch family and full tool query own acceptance.
+const APPROACH_INCLINE: f64 = 0.25;
+const ROLL_REFINEMENTS: usize = 4;
+
+fn approach_rotation(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    reference: &HandControlFrame,
+) -> Quat {
+    let delta = sub(target, profile.roots[limb]);
+    let horizontal = if delta[0].hypot(delta[2]) < 1e-8 {
+        [0., 0., 1.]
+    } else {
+        unit([delta[0], 0.0, delta[2]])
+    };
+    let incline = APPROACH_INCLINE + pitch;
+    let shaft = add(mul(horizontal, incline.cos()), [0., -incline.sin(), 0.]);
+    let base = profile.contact_rotations[limb];
+    let swing = shortest_arc(
+        rotate(base, unit(profile.tip_offsets[limb])),
+        shaft,
+        reference.palm,
+    );
+    let palm = projected(rotate(swing, reference.palm), shaft);
+    let desired = projected(reference.desired_palm, shaft);
+    let roll = (dot(shaft, cross(palm, desired)) / (dot(palm, desired).abs() + 0.2)).atan();
+    normalize(multiply(axis_rotation(shaft, roll), multiply(swing, base)))
+}
+pub fn wrist_deviation(profile: &RigProfile, limb: usize, hand: &HandSolution) -> f64 {
+    let Some(frames) = &profile.hand_frames else {
+        return 0.;
+    };
+    let Some(frame) = frames.get(limb) else {
+        return 0.;
+    };
+    let delta = multiply(hand.rotation, inverse(profile.contact_rotations[limb]));
+    dot(
+        unit(sub(hand.end, hand.middle)),
+        rotate(delta, frame.forearm),
+    )
+    .clamp(-1., 1.)
+    .acos()
 }
 
 pub fn solve(
@@ -123,8 +156,10 @@ pub fn solve(
     solve_with_swivel(profile, limb, target, pitch, reference, 0.0)
 }
 
-/// Swivel changes only the elbow plane around the shoulder/contact axis. The
-/// numeric coordinator owns its bounded timeline; contact and lengths stay exact.
+/// The numeric coordinator owns pitch and elbow swivel. Roll around the fixed
+/// shaft minimizes measured wrist swing; the global palm is only the initial
+/// preference. Each refinement recomputes the exact wrist and arm, so no bone
+/// stretching or marker correction is hidden in the returned pose.
 pub fn solve_with_swivel(
     profile: &RigProfile,
     limb: usize,
@@ -133,61 +168,56 @@ pub fn solve_with_swivel(
     reference: &HandControlFrame,
     swivel: f64,
 ) -> HandSolution {
+    let mut rotation = approach_rotation(profile, limb, target, pitch, reference);
+    let shaft = rotate(rotation, unit(profile.tip_offsets[limb]));
+    for _ in 0..ROLL_REFINEMENTS {
+        let hand = solve_wrist(profile, limb, target, rotation, swivel);
+        let actual = unit(sub(hand.end, hand.middle));
+        let neutral = rotate(
+            multiply(rotation, inverse(profile.contact_rotations[limb])),
+            reference.forearm,
+        );
+        let a = projected(neutral, shaft);
+        let b = projected(actual, shaft);
+        let roll = dot(shaft, cross(a, b)).atan2(dot(a, b));
+        rotation = normalize(multiply(axis_rotation(shaft, roll), rotation));
+    }
+    solve_wrist(profile, limb, target, rotation, swivel)
+}
+fn solve_wrist(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    rotation: Quat,
+    swivel: f64,
+) -> HandSolution {
     let root = profile.roots[limb];
     let [upper, lower] = profile.lengths[limb];
-    let template = pitch_rotation(profile.contact_rotations[limb], pitch);
-    let compound = add(
-        mul(reference.forearm, lower),
-        profile.offset(limb, template),
-    );
-    let compound_length = distance(compound, [0.0; 3]);
-    let desired_distance = distance(root, target);
-    let axis = unit(sub(target, root));
-    if compound_length < 1e-6 {
-        // Degenerate custom profiles can fold the tool back onto the elbow.
-        // Keep finite real bone lengths and expose this as unreachable.
-        let middle = add(root, mul(axis, upper));
-        let end = add(middle, mul(reference.forearm, lower));
-        return HandSolution {
-            middle,
-            end,
-            tip: add(end, profile.offset(limb, template)),
-            rotation: template,
-            reachable: false,
-        };
-    }
-    let inner = (upper - compound_length).abs();
-    let outer = upper + compound_length;
+    let wrist = sub(target, profile.offset(limb, rotation));
+    let desired_distance = distance(root, wrist);
+    let axis = unit(sub(wrist, root));
+    let inner = (upper - lower).abs();
+    let outer = upper + lower;
     let reachable = desired_distance >= inner + 1e-5 && desired_distance <= outer - 1e-4;
     let length = desired_distance.clamp(inner + 1e-6, outer - 1e-6);
-    let tip = add(root, mul(axis, length));
-    // Prefer a low elbow with modest outward/front clearance. A pole recovered
-    // from the wrist rest target can project upward and behind the shoulder
-    // when a long forearm/tool link folds toward a near drum target.
-    let outward = if limb == 0 { -1.0 } else { 1.0 };
-    // Transport a transverse anatomical pole from the forward hemisphere.
-    // Projecting one fixed 3D pole onto the target axis instead has a singularity
-    // at a reachable drum target parallel to that pole and can flip the elbow.
-    let shoulder_delta = sub(profile.roots[1], profile.roots[0]);
-    let horizontal = [shoulder_delta[0], 0.0, shoulder_delta[2]];
-    let shoulder_axis = if distance(horizontal, [0.0; 3]) < 1e-8 {
-        [1.0, 0.0, 0.0]
+    let end = add(root, mul(axis, length));
+    let outward = if limb == 0 { -1. } else { 1. };
+    let shoulders = sub(profile.roots[1], profile.roots[0]);
+    let horizontal = [shoulders[0], 0., shoulders[2]];
+    let right = if distance(horizontal, [0.; 3]) < 1e-8 {
+        [1., 0., 0.]
     } else {
         unit(horizontal)
     };
-    let forward = [-shoulder_axis[2], 0.0, shoulder_axis[0]];
-    let transverse = unit(add(mul(shoulder_axis, outward * 0.45), [0.0, -1.0, 0.0]));
-    let bend = rotate(shortest_arc(forward, axis, transverse), transverse);
-    let bend = rotate(axis_rotation(axis, swivel), bend);
-    let along =
-        (upper * upper - compound_length * compound_length + length * length) / (2.0 * length);
-    let radius = (upper * upper - along * along).max(0.0).sqrt();
+    let forward = [-right[2], 0., right[0]];
+    let transverse = unit(add(mul(right, outward * 0.45), [0., -1., 0.]));
+    let bend = rotate(
+        axis_rotation(axis, swivel),
+        rotate(shortest_arc(forward, axis, transverse), transverse),
+    );
+    let along = (upper * upper - lower * lower + length * length) / (2. * length);
+    let radius = (upper * upper - along * along).max(0.).sqrt();
     let middle = add(add(root, mul(axis, along)), mul(bend, radius));
-    let effective = sub(tip, middle);
-    let delta = shortest_arc(compound, effective, reference.palm);
-    let delta = palm_roll(delta, unit(effective), reference);
-    let end = add(middle, mul(rotate(delta, reference.forearm), lower));
-    let rotation = normalize(multiply(delta, template));
     HandSolution {
         middle,
         end,

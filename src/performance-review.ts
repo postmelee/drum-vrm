@@ -8,6 +8,8 @@ export interface PoseReview {
   durationSeconds: number;
   proxy?: { scope: 'skeletal-proxies'; samples: number; torsoMinimumMeters: number;
     equipmentMinimumMeters?:number; crossMinimumMeters?:number; armsMinimumMeters: number; sticksMinimumMeters: number; boneLengthMaximumErrorMeters: number;
+    toolEquipmentMinimumMeters?:number; toolPairMinimumMeters?:number;
+    toolSamples?:number; toolIntersectingSamples?:number; firstToolIntersectionSeconds?:number|null;
     intersectingSamples: number; firstIntersectionSeconds: number | null };
 }
 
@@ -69,6 +71,20 @@ export function summarizeProxyReview(times: number[], inspections: readonly Pose
     const extra:number[]=[];
     if(sample.equipmentClearanceMeters!==undefined){if(!Number.isFinite(sample.equipmentClearanceMeters))throw new Error(msg("Invalid equipment clearance.", "유효하지 않은 장비 간격입니다."));result.equipmentMinimumMeters=Math.min(result.equipmentMinimumMeters??Infinity,sample.equipmentClearanceMeters);extra.push(sample.equipmentClearanceMeters);}
     if(sample.crossClearanceMeters!==undefined){if(!Number.isFinite(sample.crossClearanceMeters))throw new Error(msg("Invalid crossing clearance.", "유효하지 않은 교차 간격입니다."));result.crossMinimumMeters=Math.min(result.crossMinimumMeters??Infinity,sample.crossClearanceMeters);extra.push(sample.crossClearanceMeters);}
+    const toolValues:number[]=[];
+    for (const [field,minimum] of [['toolEquipmentClearanceMeters','toolEquipmentMinimumMeters'],['toolPairClearanceMeters','toolPairMinimumMeters']] as const) {
+      const value=sample[field];
+      if(value===undefined)continue;
+      if(!Number.isFinite(value))throw new Error(msg('Invalid stick clearance.', '유효하지 않은 스틱 간격입니다.'));
+      result[minimum]=Math.min(result[minimum]??Infinity,value);toolValues.push(value);
+    }
+    if(toolValues.length){
+      // A complete physical-tool sample needs both queries. Partial legacy or
+      // mixed data may retain minima, but cannot certify the missing boundary.
+      result.toolSamples=(result.toolSamples??0)+Number(toolValues.length===2);
+      result.toolIntersectingSamples??=0;result.firstToolIntersectionSeconds??=null;
+      if(Math.min(...toolValues)<0){result.toolIntersectingSamples++;result.firstToolIntersectionSeconds??=times[index];}
+    }
     if (Math.min(...values.slice(0,3),...extra) < 0) { result.intersectingSamples++;result.firstIntersectionSeconds??=times[index]; }
   });
   return result;

@@ -49,7 +49,7 @@ export interface KitCapabilities {
 export interface KitFitProposal {
   kit: KitPiece[]; scale: number; translation: Vec3;
   pieceAdjustments: {pieceId: string; translation: Vec3}[];
-  unreachablePieceIds: string[]; clearancePieceIds?: string[]; layoutViolations?: string[];
+  unreachablePieceIds: string[]; clearancePieceIds?: string[]; layoutViolations?: string[]; advisoryLayoutViolations?:string[];
   complete: boolean; capabilities?: KitCapabilities;
   searchCandidates?: number; searchLimitReached?: boolean;
   seatOffset?: Vec3; searchFailures?: {stage: string; pieceId: string; branches: number}[];
@@ -117,4 +117,4 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const outputFrameCount = (plan: PerformancePlan) => Math.ceil((PRE_ROLL + plan.duration + TAIL) * FPS);
 export const outputDuration = (plan: PerformancePlan) => outputFrameCount(plan) / FPS;
 
-export interface PoseInspection { equipmentClearanceMeters?:number; intentionalStickContact?:boolean; countIn?:{sourceEventId:string;time:number;contactPoint:Vec3}; scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; crossClearanceMeters?: number; geometrySource?: string; boneLengthErrorMeters: number; poseFloats: number; }
+export interface PoseInspection { equipmentClearanceMeters?:number; toolEquipmentClearanceMeters?:number; toolPairClearanceMeters?:number; intentionalStickContact?:boolean; countIn?:{sourceEventId:string;time:number;contactPoint:Vec3}; scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; crossClearanceMeters?: number; geometrySource?: string; boneLengthErrorMeters: number; poseFloats: number; }

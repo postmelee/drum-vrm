@@ -262,26 +262,34 @@ impl Motion {
             } else {
                 Vec::new()
             };
-        if p.equipment_path.len() != equipment_times.len()
-            || p.equipment_path
-                .iter()
-                .zip(equipment_times)
-                .any(|(s, time)| {
-                    !s.time.is_finite()
-                        || s.time.to_bits() != time.to_bits()
-                        || s.lift
-                            .iter()
-                            .any(|v| !v.is_finite() || *v < 0.0 || *v > 0.20 + 1e-9)
-                        || s.pitch
-                            .iter()
-                            .any(|v| !v.is_finite() || v.abs() > 0.60 + 1e-9)
-                })
+        if p.equipment_path.len() > MAX_EQUIPMENT_SAMPLES
+            || (equipment_times.is_empty() && !p.equipment_path.is_empty())
+            || equipment_times.iter().any(|time| {
+                p.equipment_path
+                    .binary_search_by(|s| s.time.total_cmp(time))
+                    .map_or(true, |i| {
+                        p.equipment_path[i].time.to_bits() != time.to_bits()
+                    })
+            })
+            || p.equipment_path.iter().any(|s| {
+                !s.time.is_finite()
+                    || equipment_times.first().is_none_or(|start| s.time < *start)
+                    || equipment_times.last().is_none_or(|end| s.time > *end)
+                    || s.lift
+                        .iter()
+                        .any(|v| !v.is_finite() || *v < 0.0 || *v > 0.20 + 1e-9)
+                    || s.pitch
+                        .iter()
+                        .any(|v| !v.is_finite() || v.abs() > 0.60 + 1e-9)
+            })
             || p.equipment_path.windows(2).any(|w| {
                 let dt = w[1].time - w[0].time;
                 dt <= 0.0
                     || (0..2).any(|i| {
-                        (w[1].lift[i] - w[0].lift[i]).abs() > 1.2 * dt + 1e-9
-                            || (w[1].pitch[i] - w[0].pitch[i]).abs() > 2.0 * dt + 1e-9
+                        (w[1].lift[i] - w[0].lift[i]).abs()
+                            > crate::equipment_motion::LIFT_RATE * dt + 1e-9
+                            || (w[1].pitch[i] - w[0].pitch[i]).abs()
+                                > crate::equipment_motion::PITCH_RATE * dt + 1e-9
                     })
             })
             || p.plan.hits.iter().any(|hit| {
@@ -300,10 +308,15 @@ impl Motion {
                 if let Some(limb) = hit.limb.filter(|&limb| limb < 2) {
                     let pitch =
                         crate::equipment_motion::sample(&p.equipment_path, hit.time, limb).1;
-                    if !profile
-                        .turned(body_motion::at(&p.body_turns, hit.time))
-                        .reachable_at_pitch(limb, hit.target, pitch)
-                    {
+                    let turned = profile.turned(body_motion::at(&p.body_turns, hit.time));
+                    let swivel = hand_coordination::at(&p.hand_swivels, hit.time)[limb];
+                    let reachable = turned
+                        .solve_hand_with_swivel(limb, hit.target, pitch, swivel)
+                        .map_or_else(
+                            || turned.reachable_at_pitch(limb, hit.target, pitch),
+                            |hand| hand.reachable,
+                        );
+                    if !reachable {
                         return Err(
                             "준비된 연주의 몸통 회전이 원본 타격 접촉을 보존하지 않습니다.".into(),
                         );
@@ -382,6 +395,43 @@ mod tests {
                 .any(|t| t.to_bits() == plan.hits[0].time.to_bits()));
             assert_eq!(times.iter().filter(|t| (**t - 0.1).abs() < 1e-9).count(), 1);
         }
+    }
+    #[test]
+    fn refined_equipment_controls_preserve_mandatory_times_and_worker_poses() {
+        let original = sample_equipment();
+        let text = original.prepared_json();
+        let mut prepared: Prepared = serde_json::from_str(&text).unwrap();
+        let time = (prepared.equipment_path[0].time + prepared.equipment_path[1].time) * 0.5;
+        let controls: [_; 2] = std::array::from_fn(|limb| {
+            crate::equipment_motion::sample(&prepared.equipment_path, time, limb)
+        });
+        prepared.equipment_path.insert(
+            1,
+            PathSample {
+                time,
+                lift: controls.map(|s| s.0),
+                pitch: controls.map(|s| s.1),
+            },
+        );
+        prepared.checksum = prepared.checksum();
+        let restored = Motion::from_prepared_json(
+            &serde_json::to_string(&prepared).unwrap(),
+            &original.plan.midi_hash,
+            &profile_json(&original),
+        )
+        .unwrap();
+        for t in [time, 0.0, 0.1, -0.5, 0.417, 0.75] {
+            assert_eq!(original.evaluate_rig(t), restored.evaluate_rig(t));
+        }
+        // Adding controls is allowed; removing even one mandatory control is not.
+        prepared.equipment_path.remove(0);
+        prepared.checksum = prepared.checksum();
+        assert!(Motion::from_prepared_json(
+            &serde_json::to_string(&prepared).unwrap(),
+            &original.plan.midi_hash,
+            &profile_json(&original),
+        )
+        .is_err());
     }
     #[test]
     fn equipment_tracks_transfer_exactly_and_reject_recomputed_checksum_tampering() {

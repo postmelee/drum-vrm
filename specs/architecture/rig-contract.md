@@ -73,14 +73,19 @@ that frame's Y axis to the solved leg direction, then the original frame rotatio
 `Qposed = Qswing(Yrest → Yposed) × Qrest`. This matches the adapter's leg transport
 instead of independently projecting body-right again after bending. Older profiles
 without rest frames retain the projected body-right fallback. Foot boxes use the
-actual tool rotation directly. The fit retains a small segment-based core. Missing boxes retain the radius-based
-fallback. No garment region is removed to make a candidate pass.
+actual tool rotation directly. These measured boxes and radii remain advisory
+inspection data; missing fields retain their explicit radius fallback. Hard
+lower-limb layout acceptance uses separate bone-length-based structural cores,
+with the same real joint lengths and sole/tool transforms. It does not use costume
+width as anatomical thickness or discard measurements to manufacture a pass.
 
 These are sampled **surface envelopes**, not an anatomical body segmentation or
 containment proof. Torso/limb-weighted clothing can enlarge them, excluded outliers
 can fall outside them, and skinning changes with pose. The raw mesh and textures
-stay outside the Rust profile and saved project. Rendering/visual checks remain
-separate from proxy clearance; see [calibration](calibration.md).
+stay outside the Rust profile and saved project. Their overlaps guide visual
+ranking and warnings rather than rejecting an otherwise valid physical-tool pose.
+Rendering/visual checks remain separate; [calibration](calibration.md) defines
+hard structural/tool constraints and the advisory-body policy.
 
 ## Model import
 
@@ -232,10 +237,11 @@ individual provenance records.
 
 - Seat height: 0.30–1.20 m. Forward/back adjustment: −0.50–0.50 m.
 - Automatic seat fitting gives a pedal-aware starting position, not collision-free fitting.
-- Explicit kit fitting adjusts hand-played contact positions/radii together; the kick
-  remains fixed while the direct hi-hat moves as a coupled pedal/mast/cymbal assembly.
-  [Calibration](calibration.md) owns search bounds and
-  the limited meaning of a complete proposal.
+- Fitting first searches posture and bounded seat changes with the kit unchanged.
+  Only if that fails does it adjust hand-played positions/shell radii within bounds;
+  the kick stays fixed and the direct hi-hat moves as a coupled pedal/mast/cymbal
+  assembly. Character scaling is not implemented. [Calibration](calibration.md)
+  owns search bounds and the limited meaning of a complete proposal.
 - Target X is bounded to ±2 m, Y to 0.02–2.50 m and Z to −0.50–2.50 m.
 - Kick and hi-hat pedal height is further bounded to 0.04–0.20 m.
 - Closed and open hi-hat share one movable upper surface; its opening and the
@@ -258,16 +264,19 @@ Symmetric palms-up is not a complete traditional grip. The thumb solver jointly
 minimizes pad-to-shaft distance and distal-axis misalignment with bounded rotations
 about the model's rest joints; it never extends finger bones. Missing optional
 fingers retain reduced grip detail. Optional measured `handFrames` let the common solver
-orient the wrist for each target through a compound forearm/tool link, instead of a
-fixed world rotation. Forearm roll carries palm orientation. This preserves segment
-lengths and the calibrated grip. The bend plane is transported continuously across
-the front workspace, and palm roll is a bounded preference rather than an exact
-constraint. This does not establish anatomical limits or skin clearance. Profiles
-without hand frames retain the previous fixed-orientation path.
-With hand frames, a bounded, precomputed two-arm swivel track adjusts the elbow
-planes while retaining the calibrated hand/tool relationship. It evaluates existing
-contact paths against numeric proxies; its limits and remaining collision scope
-are defined in [calibration](calibration.md).
+orient the shaft toward each target, recover the wrist from the rotated grip/tool
+offset, and solve the real two-bone arm. Four analytic roll refinements reduce wrist
+swing while preserving segment lengths and the calibrated grip. Desired palm direction
+is an initial preference; the shared posture gate limits actual wrist swing to 0.60 rad.
+The bend plane is transported across the front workspace before planned elbow swivel.
+This is not a complete anatomical or skin-clearance model. Profiles without hand frames
+retain the previous fixed-orientation path. [Calibration](calibration.md) owns the numeric rules.
+With hand frames, bounded joint pitch/lift repair adjusts the shared tool path
+before the precomputed two-arm swivel track coordinates elbow planes. Both retain
+the calibrated hand/tool relationship and original contact times. Complete physical
+tool clearance is required; measured body overlap is advisory. Fit and complete hit
+assignment do not certify the resulting motion. [Calibration](calibration.md) and
+[equipment contact](equipment-contact.md) define the limits and remaining collision scope.
 
 Optional `torsoPivot` in the numeric profile is the measured normalized spine
 position, translated with the seat. The evaluator uses it to coordinate shoulder

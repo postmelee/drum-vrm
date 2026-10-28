@@ -7,6 +7,8 @@ use crate::{
 };
 use serde::Serialize;
 pub const MARGIN: f64 = 0.002;
+/// Common measured hand-to-forearm swing bound (34.4 degrees).
+pub const MAX_WRIST_SWING: f64 = 0.6;
 pub const SWIVELS: [f64; 5] = [0.0, -0.4, 0.4, -0.8, 0.8];
 
 /// Common geometric posture measures, independent of the avatar's bone axes.
@@ -53,18 +55,36 @@ pub fn comfort_cost(profile: &RigProfile, limb: usize, target: Vec3, hand: &Hand
     .min(0.39)
 }
 
-pub fn anatomical(profile: &RigProfile, limb: usize, target: Vec3, hand: &HandSolution) -> bool {
+/// Squared dimensionless deficit of the exact shared hard posture bounds.
+/// Zero is feasible; positive values guide bounded repairs without changing any
+/// bound. Position deficits use the corresponding measured bone length.
+pub fn anatomical_violation(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    hand: &HandSolution,
+) -> f64 {
     let root = profile.roots[limb];
     let [upper, lower] = profile.lengths[limb];
     let posture = arm_posture(profile, limb, hand);
-    hand.reachable
-        && posture.elevation
-            <= (70.0 + 45.0 * elevation_allowance(profile, limb, target)).to_radians()
-        && posture.elbow >= 55_f64.to_radians()
-        && posture.elbow <= 165_f64.to_radians()
-        && hand.middle[2] >= root[2] - upper * 0.35
-        && hand.end[2] >= root[2] + lower * 0.15
+    let values = [
+        profile.wrist_deviation(limb, hand) - MAX_WRIST_SWING,
+        posture.elevation - (70.0 + 45.0 * elevation_allowance(profile, limb, target)).to_radians(),
+        55_f64.to_radians() - posture.elbow,
+        posture.elbow - 165_f64.to_radians(),
+        (root[2] - upper * 0.35 - hand.middle[2]) / upper,
+        (root[2] + lower * 0.15 - hand.end[2]) / lower,
+    ];
+    if values.iter().any(|v| !v.is_finite()) {
+        return f64::INFINITY;
+    }
+    values.into_iter().map(|v| v.max(0.).powi(2)).sum::<f64>()
+        + if hand.reachable { 0. } else { 1. }
 }
+pub fn anatomical(profile: &RigProfile, limb: usize, target: Vec3, hand: &HandSolution) -> bool {
+    anatomical_violation(profile, limb, target, hand) == 0.
+}
+
 fn hand_candidate(
     profile: &RigProfile,
     limb: usize,
@@ -74,10 +94,7 @@ fn hand_candidate(
 ) -> Option<HandSolution> {
     profile
         .solve_hand_with_swivel(limb, target, pitch, angle)
-        .filter(|hand| {
-            anatomical(profile, limb, target, hand)
-                && clearance::hand_clearance(profile, limb, hand) >= MARGIN
-        })
+        .filter(|hand| anatomical(profile, limb, target, hand))
 }
 /// Lazy enumeration lets feasibility checks stop at their first witness.
 pub fn hand_candidates(
@@ -142,18 +159,23 @@ fn pair_search(
                 refined_hand_candidates(profile, limb, tips[limb], pitches[limb] + delta)
                     .take(if refine { 28 } else { 0 }),
             ) {
-                if equipment.is_some_and(|ctx| {
-                    crate::equipment_motion::hand_clearance(
+                let assessment = equipment.map(|ctx| {
+                    crate::equipment_motion::assess_hand(
                         profile,
                         limb,
                         &hand,
                         ctx,
                         intended_ids[limb],
-                    ) < MARGIN
-                }) {
+                    )
+                });
+                if assessment.is_some_and(|value| value.tool < MARGIN) {
                     continue;
                 }
-                let cost = comfort_cost(profile, limb, tips[limb], &hand) + 0.015 * delta * delta;
+                let body = clearance::hand_clearance(profile, limb, &hand)
+                    .min(assessment.map_or(f64::INFINITY, |value| value.body));
+                let cost = comfort_cost(profile, limb, tips[limb], &hand)
+                    + clearance::body_penalty(body)
+                    + 0.015 * delta * delta;
                 choices.push((cost, hand));
             }
         }
@@ -171,9 +193,12 @@ fn pair_search(
             if best.as_ref().is_some_and(|(cost, _)| a + b >= *cost) {
                 break;
             }
-            if clearance::pair_clearance(profile, &left, &right).minimum() >= MARGIN {
-                best = Some((a + b, [left, right]));
-                break;
+            if clearance::tool_pair_clearance(profile, &left, &right) >= MARGIN {
+                let pair = clearance::pair_clearance(profile, &left, &right);
+                let cost = a + b + clearance::body_penalty(pair.arms.min(pair.cross));
+                if best.as_ref().is_none_or(|(current, _)| cost < *current) {
+                    best = Some((cost, [left, right]));
+                }
             }
         }
     }
@@ -443,6 +468,48 @@ pub fn ready_pose(profile: &RigProfile, kit: &[KitPiece]) -> Result<Vec<f32>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn measured_clothing_does_not_remove_anatomical_contact_candidates() {
+        let mut p = RigProfile::primitive();
+        for i in 0..2 {
+            p.roots[i] = [if i == 0 { -0.19 } else { 0.19 }, 1.235, 0.06];
+            p.lengths[i] = [0.3, 0.27];
+            p.grip_offsets[i] = [0.; 3];
+            p.tip_offsets[i] = [0., 0., 0.31];
+            p.contact_rotations[i] = [0., 0., 0., 1.];
+        }
+        let frame = crate::rig::HandControlFrame {
+            forearm: [0., 0., 1.],
+            palm: [0., 1., 0.],
+            desired_palm: [0., 1., 0.],
+        };
+        p.hand_frames = Some([frame.clone(), frame]);
+        let target = [-0.2, 0.95, 0.55];
+        let before: Vec<_> = hand_candidates(&p, 0, target, 0.).collect();
+        assert!(!before.is_empty());
+        p.body_geometry = Some(
+            serde_json::from_value(serde_json::json!({
+                "version":1,"source":"mesh-estimate","sampleCount":100,
+                "torso":{"center":[0.,1.,0.2],"halfExtents":[0.4,0.4,0.4]},
+                "armRadii":[[0.2,0.2],[0.2,0.2]],"handRadii":[0.2,0.2]
+            }))
+            .unwrap(),
+        );
+        let after: Vec<_> = hand_candidates(&p, 0, target, 0.).collect();
+        assert_eq!(after.len(), before.len());
+        for (a, b) in after.iter().zip(before) {
+            assert_eq!(a.middle, b.middle);
+            assert_eq!(a.end, b.end);
+            assert!(clearance::hand_clearance(&p, 0, a) < 0.);
+            assert!(anatomical(&p, 0, target, a));
+            assert!((crate::motion::distance(p.roots[0], a.middle) - p.lengths[0][0]).abs() < 1e-9);
+            assert!((crate::motion::distance(a.middle, a.end) - p.lengths[0][1]).abs() < 1e-9);
+        }
+        assert!(hand_candidates(&p, 0, [-0.2, 0.95, 3.], 0.)
+            .next()
+            .is_none());
+    }
+
     #[test]
     fn relaxed_low_target_is_preferred_without_banning_high_accents() {
         let mut p = RigProfile::primitive();

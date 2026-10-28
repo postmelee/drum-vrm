@@ -630,7 +630,13 @@ fn profile_replanning_diagnoses_outer_and_inner_reach_without_losing_audio() {
         .diagnostics
         .iter()
         .any(|d| d.code == "RIG_UNREACHABLE_HIT" && d.hit_id == Some(0)));
-    let repeated = Motion::with_profile(motion.plan.clone(), profile.clone()).unwrap();
+    let mut previous_plan = motion.plan.clone();
+    for code in ["TOOL_EQUIPMENT_PATH_CLEARANCE", "TOOL_PAIR_PATH_CLEARANCE"] {
+        previous_plan
+            .diagnostics
+            .push(Diagnostic::new(code, "stale setup result".into()));
+    }
+    let repeated = Motion::with_profile(previous_plan, profile.clone()).unwrap();
     assert_eq!(
         serde_json::to_value(&repeated.plan).unwrap(),
         serde_json::to_value(&motion.plan).unwrap()

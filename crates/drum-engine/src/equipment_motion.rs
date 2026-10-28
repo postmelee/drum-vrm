@@ -12,19 +12,30 @@ use std::sync::Arc;
 mod radial_clearance;
 
 pub const PITCH_OFFSETS: [f64; 9] = [0., -0.15, 0.15, -0.30, 0.30, -0.45, 0.45, -0.60, 0.60];
+pub(crate) const LIFT_RATE: f64 = 1.2;
+pub(crate) const PITCH_RATE: f64 = 2.0;
 
 pub struct EquipmentContext {
     pub kit: Vec<KitPiece>,
     pub geometry: equipment::EquipmentGeometry,
+    surfaces: std::collections::HashMap<String, equipment::Surface>,
 }
 impl EquipmentContext {
+    pub fn new(kit: Vec<KitPiece>, geometry: equipment::EquipmentGeometry) -> Self {
+        let surfaces = kit
+            .iter()
+            .map(|p| (p.id.clone(), equipment::surface(p)))
+            .collect();
+        Self {
+            kit,
+            geometry,
+            surfaces,
+        }
+    }
     pub fn for_kit(kit: &[KitPiece]) -> Option<Arc<Self>> {
-        kit.iter().any(|p| p.geometry.is_some()).then(|| {
-            Arc::new(Self {
-                kit: kit.to_vec(),
-                geometry: equipment::kit_geometry(kit),
-            })
-        })
+        kit.iter()
+            .any(|p| p.geometry.is_some())
+            .then(|| Arc::new(Self::new(kit.to_vec(), equipment::kit_geometry(kit))))
     }
 }
 fn mul(a: Vec3, s: f64) -> Vec3 {
@@ -148,8 +159,8 @@ fn segment_bounds(start: Vec3, end: Vec3) -> [Vec3; 2] {
 /// The boxes enclose the segment axes, so their distance is a lower bound
 /// on capsule clearance. Prune against the running minimum, never a fixed
 /// collision threshold: negative penetration depths and pose costs must survive.
-fn support_minimum(
-    segments: [(Vec3, Vec3, f64); 4],
+fn support_minimum<const N: usize>(
+    segments: [(Vec3, Vec3, f64); N],
     supports: &[equipment::EquipmentCapsule],
     mut minimum: f64,
 ) -> f64 {
@@ -179,13 +190,59 @@ fn support_minimum(
     minimum
 }
 
-pub fn hand_clearance(
+/// Equipment intersections have separate semantics: exact tool geometry is a
+/// feasibility constraint; estimated skin/clothing volumes are advisory.
+#[derive(Clone, Copy, Debug)]
+pub struct HandClearance {
+    /// Feasibility score: intended tangent surfaces include the planner margin.
+    pub tool: f64,
+    /// Signed physical bound, with no added free-obstacle margin.
+    pub physical_tool: f64,
+    pub body: f64,
+}
+impl HandClearance {
+    pub fn minimum(self) -> f64 {
+        self.tool.min(self.body)
+    }
+}
+/// Regression helper for the complete raw inspection metric.
+#[cfg(test)]
+fn hand_clearance(
     profile: &RigProfile,
     limb: usize,
     hand: &HandSolution,
     ctx: &EquipmentContext,
     intended_piece: Option<&str>,
 ) -> f64 {
+    assess_hand(profile, limb, hand, ctx, intended_piece).minimum()
+}
+pub fn assess_hand(
+    profile: &RigProfile,
+    limb: usize,
+    hand: &HandSolution,
+    ctx: &EquipmentContext,
+    intended_piece: Option<&str>,
+) -> HandClearance {
+    query_hand::<true>(profile, limb, hand, ctx, intended_piece)
+}
+/// The full tapered shaft, including the butt, against all drum hardware.
+/// Body thickness cannot change this result or grant a contact exception.
+pub fn tool_clearance(
+    profile: &RigProfile,
+    limb: usize,
+    hand: &HandSolution,
+    ctx: &EquipmentContext,
+    intended_piece: Option<&str>,
+) -> f64 {
+    query_hand::<false>(profile, limb, hand, ctx, intended_piece).tool
+}
+fn query_hand<const INCLUDE_BODY: bool>(
+    profile: &RigProfile,
+    limb: usize,
+    hand: &HandSolution,
+    ctx: &EquipmentContext,
+    intended_piece: Option<&str>,
+) -> HandClearance {
     let radii = clearance::arm_radii(profile, limb);
     let (hs, he, hr) = clearance::hand_volume(profile, limb, hand);
     let (butt, tip) = stick_segment(profile, limb, hand);
@@ -216,17 +273,21 @@ pub fn hand_clearance(
         }
     });
     let mut minimum = f64::INFINITY;
+    let mut physical_minimum = f64::INFINITY;
+    let mut body_minimum = f64::INFINITY;
     for body in &ctx.geometry.bodies {
-        for &(a, b, r) in &arm {
-            minimum = minimum.min(equipment::segment_box_clearance(a, b, r, body));
+        if INCLUDE_BODY {
+            for &(a, b, r) in &arm {
+                body_minimum = body_minimum.min(equipment::segment_box_clearance(a, b, r, body));
+            }
         }
         // An intended striking surface permits physical tangent contact, while
         // every unrelated body retains the free-obstacle margin. Test the
         // authored tapered tool, including its butt. Only the existing 20 mm
         // terminal contact region is exempt for an exact intended impact.
-        // Only the intended body can use a surface-contact exception. Avoid
-        // projecting the tip onto every unrelated radial/tilted surface; their
-        // complete-shaft box query below is independent of that projection.
+        // Contact exceptions are target-specific, but physical shape is not.
+        // An unrelated cymbal retains its measured bow rather than becoming a
+        // solid bounding box when a hand transitions to another instrument.
         let piece = if intended_body == Some(body.piece_id.as_str()) {
             ctx.kit.iter().find(|p| p.id == body.piece_id)
         } else {
@@ -250,8 +311,8 @@ pub fn hand_clearance(
                 actual_height >= -0.000_000_1
                     && distance(sub(d, mul(normal, height)), [0.; 3]) <= radius * 0.96
             });
-        let value = if approach {
-            let (center, normal, radius) = surface.expect("approach surface");
+        let physical = if approach {
+            let (center, normal, _) = surface.expect("approach surface");
             let contact_height = sub(tip, center)
                 .iter()
                 .zip(normal)
@@ -261,37 +322,62 @@ pub fn hand_clearance(
                 butt,
                 tip,
                 body,
-                &equipment::Surface {
-                    center,
-                    normal,
-                    radius,
-                    radial_profile: equipment::surface(piece.expect("approach surface owner"))
-                        .radial_profile,
-                    motion: None,
-                },
+                ctx.surfaces
+                    .get(&body.piece_id)
+                    .expect("approach surface owner"),
                 contact_height.abs() <= 0.012,
             );
             // The 0.1 nm numerical allowance handles a tangent point represented
             // through different coordinate transforms; it cannot hide a mesh gap.
-            (if clear.abs() < 1e-10 { 0.0 } else { clear }) + crate::posture::MARGIN
+            if clear.abs() < 1e-10 {
+                0.0
+            } else {
+                clear
+            }
+        } else if let Some(surface) = ctx
+            .surfaces
+            .get(&body.piece_id)
+            .filter(|surface| surface.radial_profile.is_some())
+        {
+            // No terminal exemption or contact margin on any unrelated body.
+            // Keep the complete shaft's maximum radius, including the tip.
+            // Flat heads keep their full box: their rim may protrude above it.
+            tapered_surface_interval(butt, tip, [shaft_radius; 2], body, surface)
         } else {
             equipment::segment_box_clearance(butt, tip, shaft_radius, body)
         };
-        minimum = minimum.min(value);
+        physical_minimum = physical_minimum.min(physical);
+        minimum = minimum.min(
+            physical
+                + if approach {
+                    crate::posture::MARGIN
+                } else {
+                    0.0
+                },
+        );
     }
     for pedal in &ctx.geometry.pedals {
-        for &(a, b, r) in arm
-            .iter()
-            .chain(std::iter::once(&(butt, tip, shaft_radius)))
-        {
-            minimum = minimum.min(equipment::segment_box_clearance(a, b, r, pedal));
+        if INCLUDE_BODY {
+            for &(a, b, r) in &arm {
+                body_minimum = body_minimum.min(equipment::segment_box_clearance(a, b, r, pedal));
+            }
         }
+        let physical = equipment::segment_box_clearance(butt, tip, shaft_radius, pedal);
+        physical_minimum = physical_minimum.min(physical);
+        minimum = minimum.min(physical);
     }
-    support_minimum(
-        [arm[0], arm[1], arm[2], (butt, tip, shaft_radius)],
-        &ctx.geometry.supports,
-        minimum,
-    )
+    // Physical minima cannot exceed the feasibility minimum. A single support
+    // query against the latter therefore preserves both exact minima.
+    let tool = support_minimum([(butt, tip, shaft_radius)], &ctx.geometry.supports, minimum);
+    HandClearance {
+        tool,
+        physical_tool: physical_minimum.min(tool),
+        body: if INCLUDE_BODY {
+            support_minimum(arm, &ctx.geometry.supports, body_minimum)
+        } else {
+            f64::INFINITY
+        },
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -319,36 +405,36 @@ pub fn limit_rates(track: &mut [PathSample], impacts: &[Vec<f64>; 2]) {
         // Only immutable impact knots are hard zeros here; raised
         // neighbours are propagated below within the same finite rate budget.
         for i in 1..caps.len() {
-            caps[i] = caps[i].min(caps[i - 1] + 1.2 * (track[i].time - track[i - 1].time));
+            caps[i] = caps[i].min(caps[i - 1] + LIFT_RATE * (track[i].time - track[i - 1].time));
         }
         for i in (0..caps.len().saturating_sub(1)).rev() {
-            caps[i] = caps[i].min(caps[i + 1] + 1.2 * (track[i + 1].time - track[i].time));
+            caps[i] = caps[i].min(caps[i + 1] + LIFT_RATE * (track[i + 1].time - track[i].time));
         }
         for (s, cap) in track.iter_mut().zip(&caps) {
             s.lift[limb] = s.lift[limb].min(*cap);
         }
         for i in 1..track.len() {
             track[i].lift[limb] = track[i].lift[limb]
-                .max(track[i - 1].lift[limb] - 1.2 * (track[i].time - track[i - 1].time))
+                .max(track[i - 1].lift[limb] - LIFT_RATE * (track[i].time - track[i - 1].time))
                 .min(caps[i]);
         }
         for i in (0..track.len().saturating_sub(1)).rev() {
             track[i].lift[limb] = track[i].lift[limb]
-                .max(track[i + 1].lift[limb] - 1.2 * (track[i + 1].time - track[i].time))
+                .max(track[i + 1].lift[limb] - LIFT_RATE * (track[i + 1].time - track[i].time))
                 .min(caps[i]);
         }
         for i in 1..track.len() {
             let dt = track[i].time - track[i - 1].time;
             track[i].pitch[limb] = track[i].pitch[limb].clamp(
-                track[i - 1].pitch[limb] - 2.0 * dt,
-                track[i - 1].pitch[limb] + 2.0 * dt,
+                track[i - 1].pitch[limb] - PITCH_RATE * dt,
+                track[i - 1].pitch[limb] + PITCH_RATE * dt,
             );
         }
         for i in (0..track.len().saturating_sub(1)).rev() {
             let dt = track[i + 1].time - track[i].time;
             track[i].pitch[limb] = track[i].pitch[limb].clamp(
-                track[i + 1].pitch[limb] - 2.0 * dt,
-                track[i + 1].pitch[limb] + 2.0 * dt,
+                track[i + 1].pitch[limb] - PITCH_RATE * dt,
+                track[i + 1].pitch[limb] + PITCH_RATE * dt,
             );
         }
     }
@@ -411,23 +497,27 @@ fn correction_search<const PRUNE: bool>(
                 continue;
             }
             let target = add(tip, [0., lift, 0.]);
-            for swivel in crate::posture::SWIVELS {
-                let Some(hand) =
-                    profile.solve_hand_with_swivel(limb, target, pitch + delta, swivel)
-                else {
-                    continue;
-                };
-                if !crate::posture::anatomical(profile, limb, target, &hand) {
-                    continue;
-                }
-                let clear = hand_clearance(profile, limb, &hand, ctx, intended_piece)
+            let mut coarse =
+                crate::posture::hand_candidates(profile, limb, target, pitch + delta).peekable();
+            let refine = coarse.peek().is_none();
+            // A static refined witness must not disappear at preparation. The
+            // target-oriented shaft is unchanged by swivel; use the finer
+            // anatomical search only when the coarse set has no valid pose.
+            let fine =
+                crate::posture::refined_hand_candidates(profile, limb, target, pitch + delta)
+                    .take(if refine { 28 } else { 0 });
+            for hand in coarse.chain(fine) {
+                let clear = assess_hand(profile, limb, &hand, ctx, intended_piece);
+                let penalty = (crate::posture::MARGIN - clear.tool).max(0.);
+                let body = clear
+                    .body
                     .min(clearance::hand_clearance(profile, limb, &hand));
-                let penalty = (0.002 - clear).max(0.);
                 let cost = penalty * penalty * 10_000.
                     + if penalty > 0. { 1. } else { 0. }
                     + lift * 0.1
                     + delta.abs() * 0.005
-                    + crate::posture::comfort_cost(profile, limb, target, &hand);
+                    + crate::posture::comfort_cost(profile, limb, target, &hand)
+                    + clearance::body_penalty(body);
                 if cost < best.0 {
                     best = (cost, lift, delta);
                 }
@@ -538,6 +628,183 @@ mod tests {
     }
 
     #[test]
+    fn body_envelopes_are_reported_without_changing_the_hard_tool_query() {
+        let mut profile = RigProfile::primitive();
+        profile.grip_offsets[0] = [0.; 3];
+        let hand = HandSolution {
+            middle: [-0.3, 1.1, -0.2],
+            end: [0., 1., 0.],
+            tip: [0., 1., 0.5],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        let mut ctx = EquipmentContext::new(
+            vec![],
+            equipment::EquipmentGeometry {
+                version: 1,
+                bodies: vec![equipment::EquipmentBox {
+                    piece_id: "near-arm".into(),
+                    center: hand.middle,
+                    half_extents: [0.03; 3],
+                    rotation: None,
+                    kind: "body",
+                }],
+                supports: vec![],
+                pedals: vec![],
+                mechanisms: vec![],
+                unresolved_piece_ids: vec![],
+            },
+        );
+        let before = tool_clearance(&profile, 0, &hand, &ctx, None);
+        assert!(before > crate::posture::MARGIN);
+        assert!(hand_clearance(&profile, 0, &hand, &ctx, None) < 0.);
+        // A large garment estimate cannot reject a tool that is physically clear.
+        profile.body_geometry = Some(
+            serde_json::from_value(serde_json::json!({
+                "version":1, "source":"mesh-estimate", "sampleCount":100,
+                "torso":{"center":[0.,1.,0.],"halfExtents":[0.4,0.4,0.4]},
+                "armRadii":[[0.2,0.2],[0.2,0.2]],"handRadii":[0.2,0.2]
+            }))
+            .unwrap(),
+        );
+        let assessment = assess_hand(&profile, 0, &hand, &ctx, None);
+        assert_eq!(assessment.tool, before);
+        assert!(assessment.body <= -0.19);
+        assert_eq!(
+            assessment.minimum(),
+            hand_clearance(&profile, 0, &hand, &ctx, None)
+        );
+        // The same policy must still reject a drum crossing the shaft midpoint.
+        ctx.geometry.bodies[0].center = [0., 1., 0.25];
+        assert!(tool_clearance(&profile, 0, &hand, &ctx, None) < 0.);
+    }
+
+    #[test]
+    fn unrelated_cymbal_uses_its_bow_but_never_a_contact_exception() {
+        let mut cymbal = default_kit()
+            .into_iter()
+            .find(|p| p.instrument == Instrument::Crash)
+            .unwrap();
+        cymbal.position = [0.; 3];
+        cymbal.radius = 0.25;
+        let mut shape = equipment::local_geometry(&cymbal);
+        shape.reference_radius = 0.25;
+        shape.body = equipment::LocalBox {
+            center: [0., -0.02, 0.],
+            half_extents: [0.25, 0.05, 0.25],
+        };
+        shape.surface = equipment::Surface {
+            center: [0.; 3],
+            normal: [0., 1., 0.],
+            radius: 0.25,
+            motion: None,
+            radial_profile: Some(equipment::RadialSurfaceProfile {
+                bell_radius: Some(0.06),
+                origin: [0.; 3],
+                rotation: [0., 0., 0., 1.],
+                points: vec![
+                    [0., 0.],
+                    [0.03, 0.02],
+                    [0.06, -0.005],
+                    [0.20, -0.025],
+                    [0.25, -0.03],
+                ],
+            }),
+        };
+        cymbal.geometry = Some(shape);
+        let body = equipment::body(&cymbal).unwrap();
+        let ctx = EquipmentContext::new(
+            vec![cymbal],
+            equipment::EquipmentGeometry {
+                version: 1,
+                bodies: vec![body.clone()],
+                supports: vec![],
+                pedals: vec![],
+                mechanisms: vec![],
+                unresolved_piece_ids: vec![],
+            },
+        );
+        let mut profile = RigProfile::primitive();
+        profile.grip_offsets[0] = [0.; 3];
+        let mut hand = HandSolution {
+            middle: [0.1, 0.2, -0.5],
+            end: [0.1, 0.015, -0.23],
+            tip: [0.1, 0.015, 0.23],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        let (butt, tip) = stick_segment(&profile, 0, &hand);
+        assert!(equipment::segment_box_clearance(butt, tip, 0.006, &body) < 0.);
+        let clear = assess_hand(&profile, 0, &hand, &ctx, None);
+        assert!(
+            clear.physical_tool > 0.,
+            "the shaft is above the curved bow"
+        );
+        assert_eq!(clear.physical_tool, clear.tool, "no target margin");
+        hand.end[0] = 0.;
+        hand.tip[0] = 0.;
+        assert!(
+            tool_clearance(&profile, 0, &hand, &ctx, None) < 0.,
+            "the raised bell still blocks the middle of the shaft"
+        );
+        hand.end[0] = 0.1;
+        hand.tip[0] = 0.1;
+        hand.end[1] = -0.03;
+        hand.tip[1] = -0.03;
+        assert!(
+            tool_clearance(&profile, 0, &hand, &ctx, None) < 0.,
+            "lowering the same shaft crosses the bow"
+        );
+    }
+
+    #[test]
+    fn physical_tool_inspection_does_not_hide_penetration_under_the_contact_margin() {
+        let mut profile = RigProfile::primitive();
+        profile.grip_offsets[0] = [0.; 3];
+        let hand = HandSolution {
+            middle: [-0.2, 1.1, -0.2],
+            end: [0., 1.06, 0.],
+            tip: [0., 1., 0.5],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        let mut drum = default_kit()
+            .into_iter()
+            .find(|p| p.instrument == Instrument::TomHigh)
+            .unwrap();
+        drum.position = hand.tip;
+        drum.radius = 0.10;
+        drum.geometry = None;
+        let ctx = EquipmentContext::new(
+            vec![drum.clone()],
+            equipment::EquipmentGeometry {
+                version: 1,
+                bodies: vec![equipment::EquipmentBox {
+                    piece_id: drum.id.clone(),
+                    center: [0., 0.97, 0.5],
+                    half_extents: [0.10, 0.03, 0.10],
+                    rotation: None,
+                    kind: "body",
+                }],
+                supports: vec![],
+                pedals: vec![],
+                mechanisms: vec![],
+                unresolved_piece_ids: vec![],
+            },
+        );
+        // A shallow shaft intersects the head outside the declared terminal
+        // contact region. Its physical deficit is smaller than the 2 mm margin.
+        let clear = assess_hand(&profile, 0, &hand, &ctx, Some(&drum.id));
+        assert!(clear.physical_tool < 0. && clear.physical_tool > -crate::posture::MARGIN);
+        assert!(clear.tool > 0. && clear.tool < crate::posture::MARGIN);
+        assert!((clear.tool - clear.physical_tool - crate::posture::MARGIN).abs() < 1e-12);
+        // An unrelated obstacle has no intended-contact adjustment; a global
+        // subtraction would incorrectly inflate its reported penetration.
+        let unrelated = assess_hand(&profile, 0, &hand, &ctx, None);
+        assert_eq!(unrelated.physical_tool, unrelated.tool);
+    }
+
+    #[test]
     fn shaft_middle_and_butt_are_obstacles_even_when_the_tip_is_clear() {
         let mut profile = RigProfile::primitive();
         profile.roots[0] = [-0.2, 1.3, -0.4];
@@ -549,9 +816,9 @@ mod tests {
             rotation: [0., 0., 0., 1.],
             reachable: true,
         };
-        let mut ctx = EquipmentContext {
-            kit: Vec::new(),
-            geometry: equipment::EquipmentGeometry {
+        let mut ctx = EquipmentContext::new(
+            Vec::new(),
+            equipment::EquipmentGeometry {
                 version: 1,
                 bodies: vec![equipment::EquipmentBox {
                     piece_id: "other-tom".into(),
@@ -565,8 +832,8 @@ mod tests {
                 mechanisms: Vec::new(),
                 unresolved_piece_ids: Vec::new(),
             },
-        };
-        assert!(hand_clearance(&profile, 0, &hand, &ctx, None) < 0.);
+        );
+        assert!(tool_clearance(&profile, 0, &hand, &ctx, None) < 0.);
         ctx.geometry.bodies.clear();
         ctx.geometry.supports.push(equipment::EquipmentCapsule {
             piece_id: "stand".into(),
@@ -575,10 +842,10 @@ mod tests {
             end: [0.1, 1., -0.08],
             radius: 0.01,
         });
-        assert!(hand_clearance(&profile, 0, &hand, &ctx, None) < 0.);
+        assert!(tool_clearance(&profile, 0, &hand, &ctx, None) < 0.);
         ctx.geometry.supports[0].start[1] = 0.5;
         ctx.geometry.supports[0].end[1] = 0.5;
-        assert!(hand_clearance(&profile, 0, &hand, &ctx, None) > 0.);
+        assert!(tool_clearance(&profile, 0, &hand, &ctx, None) > 0.);
     }
     #[test]
     fn surface_contact_requires_the_intended_physical_piece() {
@@ -605,9 +872,9 @@ mod tests {
         let mut unrelated = hat.clone();
         unrelated.id = "unrelated-tom".into();
         unrelated.instrument = Instrument::TomHigh;
-        let mut ctx = EquipmentContext {
-            kit: vec![hat.clone(), open, unrelated],
-            geometry: equipment::EquipmentGeometry {
+        let mut ctx = EquipmentContext::new(
+            vec![hat.clone(), open, unrelated],
+            equipment::EquipmentGeometry {
                 version: 1,
                 bodies: vec![equipment::EquipmentBox {
                     piece_id: hat.id.clone(),
@@ -621,7 +888,7 @@ mod tests {
                 mechanisms: vec![],
                 unresolved_piece_ids: vec![],
             },
-        };
+        );
         assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("main-hat")) > 0.002);
         // A cue has no drum target; a different target at the same coordinates
         // must not acquire this body's terminal-contact exception either.
@@ -675,10 +942,8 @@ mod tests {
         };
         profile.hand_frames = Some([frame.clone(), frame]);
         let kit = default_kit();
-        let ctx = EquipmentContext {
-            geometry: equipment::kit_geometry(&kit),
-            kit,
-        };
+        let geometry = equipment::kit_geometry(&kit);
+        let ctx = EquipmentContext::new(kit, geometry);
         let mut non_neutral = 0;
         for (id, limb, impact, pitch) in [
             ("snare", 0, true, 0.0),

@@ -309,6 +309,10 @@ independent concepts; an open note does not prove which part of the stick was us
 
 [equipment_motion.rs](../../crates/drum-engine/src/equipment_motion.rs) checks arm
 capsules, the measured/fallback hand volume, and the stick from its butt to its tip.
+`assess_hand` keeps physical-tool and measured-body results separate: the whole
+stick/equipment result is a hard candidate condition; arm/hand/equipment and
+stick/body envelopes are advisory costs and warnings. A large sleeve cannot veto
+an otherwise valid tool contact. The raw combined query is retained for inspection.
 The executable [shared stick profile](../../shared/stick-profile.json) owns both
 rendering and queries. The butt extends 105 mm behind the grip; the terminal
 radius is 0, 3, 4 and 6 mm at 0, 8, 25 and 70 mm back from the contact marker,
@@ -329,7 +333,10 @@ as described below. The intended surface permits tangent contact without a free-
 other obstacles retain the full maximum-radius capsule and 2 mm safety margin.
 The terminal exception remains explicit: it does not prove tangent contact of a
 rounded tip, actual rim/bell clearance, or exact triangle contact along the shaft.
-Unrelated bodies, hardware and pedal boxes retain their full envelopes.
+Unrelated bodies with an authored radial profile use that curved upper surface,
+with the full 6 mm shaft radius and no terminal exemption. Flat heads retain their
+full body boxes, including the rim; unknown bodies, hardware and pedal boxes also
+retain their full envelopes. World surfaces are cached per equipment context.
 
 [radial_clearance.rs](../../crates/drum-engine/src/radial_clearance.rs) queries a
 tapered shaft against the authored cymbal profile in its rigid local frame. It
@@ -350,7 +357,8 @@ or certify triangle, skin, clothing or continuous motion clearance.
 
 Fitting and score assignment share one neutral-torso feasibility query. It checks
 impact, 55 mm preparation and 110 mm recovery probes with the same bounded pitch
-and elbow candidates, body proxies and complete-tool equipment query. Distinct
+and elbow candidates, anatomical limits and complete-tool equipment query.
+Measured body proxies rank candidates but do not veto reach. Distinct
 playing regions are checked separately: snare centre/rim and ride bell/bow/edge
 cannot inherit each other's reach result. A static witness does not certify the
 route between contacts. Optional torso turns must preserve the actual selected
@@ -371,18 +379,33 @@ An incompatible fill therefore does not discard valid anchors elsewhere in the
 song. `CONTACT_PITCH_LIMIT` reports unsupported impact witnesses from their first
 source time; it does not certify the retained trajectory as clear. If no reachable
 pitch path exists, the previous diagnosed track is retained. Torso preservation
-checks the same fixed-pitch anatomy/body/equipment witnesses at the correction
-samples, reducing yaw where it would destroy an existing safe neutral candidate.
+checks the same fixed-pitch anatomical/tool-equipment witnesses at correction
+samples, reducing yaw where it would destroy an existing valid neutral candidate.
+Measured-body overlap remains advisory in both paths.
 A candidate elbow still needs the later joint temporal planner; interpolation and
 skin/clothing remain separately inspected.
 
-The correction track uses 30 Hz plus exact impact times, with at most 16,000
-samples. Lift stays in 0–0.20 m and pitch offsets in ±0.60 rad; adjacent corrections
-are limited to 1.2 m/s and 2 rad/s before linear interpolation. These limits bound
-the added correction, not the velocity of the complete musical stroke. Source
-impact time wins over an almost-equal floating-point grid time. The bounded track
-is included in the [prepared Worker transfer](engine-contract.md#preparation-and-worker-boundary),
-so installation does not repeat its search.
+The correction track retains its mandatory 30 Hz grid and exact hand impacts.
+Up to three refinement passes inspect interval midpoints, adding failed samples
+when the interval is at least 1/240 s long, within the same 16,000-sample total.
+Lift stays in 0–0.20 m and pitch offsets in ±0.60 rad; adjacent corrections are
+limited to 1.2 m/s and 2 rad/s before linear interpolation. These limits bound the
+added correction, not the velocity of the complete musical stroke. Source impact
+time wins over an almost-equal grid time. The [prepared Worker transfer](engine-contract.md#preparation-and-worker-boundary)
+preserves mandatory times and bounded extra controls, so installation does not repeat search.
+
+After torso planning and before elbow coordination,
+[tool_pair_path.rs](../../crates/drum-engine/src/tool_pair_path.rs) jointly repairs
+both tools through the existing pitch/lift track. It inspects each control and the
+quarter, half and three-quarter points between controls. At a failure it tries
+16 pitch/lift delta pairs per hand, for at most four passes and 250,000
+changed-region sample evaluations. Minimal rate-limited envelopes retain the same
+amplitude/rate limits, exact targets and zero lift at impacts. A candidate must
+improve the inspected result without turning a previously valid anatomical,
+equipment or tool-pair sample into a failure. This introduces no new transfer field.
+Elbow swivel alone cannot move a target-oriented shaft centreline; the later joint
+elbow planner remains necessary for anatomical coordination. Either bounded search
+can finish with residual diagnostics; refined samples are not a continuous-path certificate.
 
 ## Explicit stick-to-stick count-in
 
@@ -396,16 +419,46 @@ Each cue reserves both hands for 0.22 s before and after its original time.
 Overlapping accepted cues share an approach/recovery phrase. An actual hand-played
 hit, including an unassigned one, takes priority in this window. Nonduplicate cue
 times closer than 0.12 s are diagnosed rather than forcing a faster gesture.
-Without a feasible common body/equipment contact candidate, the cue remains in the
+Without a feasible common anatomical/tool-equipment contact candidate, the cue remains in the
 source and receives `COUNT_IN_GESTURE_UNAVAILABLE`.
 
-Contact is intentional only when both tips actually meet within 2 mm. Only the
-terminal 40 mm of both sticks receives that exception: each remaining shaft is
-still checked against the other complete stick, and arm/body/opposite-hand checks
-continue. The entire cue interval is not exempt. Throughout a cue phrase there is no intended
-drum surface, so equipment contact receives no playing-surface exception. Cue start/contact/end times enter
-the same bounded control timeline even when a body cannot perform the gesture.
-Evaluation and prepared-worker restoration use absolute song time.
+Opposing stick inclines are derived from the actual terminal taper and measured
+horizontal opening between the hands. The cue contact point and time stay fixed.
+Preparation checks 40 approach/rebound phases against actual tool geometry.
+Underlying equipment corrections blend out at cue contact and back in on exit,
+so a correction cannot displace the intentional contact.
+
+Inter-stick checks use both complete butt-to-tip profiles from the shared rendered
+taper, including during count-in. Conservative capsule bounds subdivide uncertain
+terminal bands within a finite budget; an unresolved bound does not become a pass.
+The thinner terminal geometry introduces no new contact exception.
+
+Contact is intentional only when the tips meet within 2 mm and each lies within
+2 mm of the cue contact point. Only the terminal 40 mm of both sticks receives
+that exception: each remaining shaft still requires 2 mm from the other complete
+stick. During the close approach/rebound, tool-pair clearance may be below the
+ordinary 2 mm margin but must remain nonnegative; penetration is never allowed.
+Arm/body/opposite-hand measurements remain advisory. Equipment retains its 2 mm
+margin throughout the cue, with no intended drum surface or playing-surface
+exception. Cue start/contact/end times enter the same bounded timeline even when
+a body cannot perform the gesture. Evaluation and prepared-worker restoration use
+absolute song time.
+
+## Inspection categories
+
+`inspect_pose_at` retains `equipmentClearanceMeters`, the combined minimum across
+arms, hands and tools. Its optional `toolEquipmentClearanceMeters` reports only the
+complete physical sticks against equipment; `toolPairClearanceMeters` reports
+complete stick pairs. Whole-tool checks must be present, finite and nonnegative for
+a sampled tool-clearance pass. Missing optional fields are unmeasured, not a pass.
+Advisory body overlap can coexist with a valid tool sample, and a clear body proxy
+cannot hide a stick intersecting a tom or another stick.
+
+`TOOL_EQUIPMENT_PATH_CLEARANCE` and `TOOL_PAIR_PATH_CLEARANCE` distinguish residual
+physical-tool intersections from the retained combined `EQUIPMENT_PATH_CLEARANCE`
+and advisory `BODY_PATH_CLEARANCE`. Bounded motion search may still report failures
+after static calibration succeeds. The [engine contract](engine-contract.md) owns
+inspection/review fields; none is a continuous triangle-level collision proof.
 
 ## Evidence and next constraints
 

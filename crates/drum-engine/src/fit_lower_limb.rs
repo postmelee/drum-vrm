@@ -1,6 +1,7 @@
-//! Seated lower-limb envelopes are part of layout feasibility. Static hand
-//! reach cannot certify a floor tom or stand that intersects the player's leg.
-//! These are measured/fallback capsules, not a skinned-mesh collision proof.
+//! Seated structural leg cores constrain layout independently of clothing.
+//! Measured skin/garment envelopes remain available for advisory inspection;
+//! they are not a reason to relocate an otherwise playable fixed kit. Neither
+//! proxy is a skinned-mesh collision proof.
 use crate::{
     clearance, equipment,
     model::{Instrument, KitPiece, Vec3},
@@ -36,10 +37,26 @@ struct Samples {
     boxes: Vec<(equipment::EquipmentBox, bool, f64, &'static str)>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EnvelopeScope {
+    Structural,
+    Measured,
+}
+
+#[cfg(test)]
 fn samples(
     profile: &RigProfile,
     kit: &[KitPiece],
     limb: usize,
+) -> Result<Samples, UnreachableProbe> {
+    samples_for(profile, kit, limb, EnvelopeScope::Measured)
+}
+
+fn samples_for(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    limb: usize,
+    scope: EnvelopeScope,
 ) -> Result<Samples, UnreachableProbe> {
     let instrument = if limb == 2 {
         Instrument::PedalHat
@@ -48,17 +65,14 @@ fn samples(
     };
     let pedal = kit.iter().find(|p| p.instrument == instrument);
     let [upper, lower] = profile.lengths[limb];
-    let measured_legs = profile
-        .body_geometry
-        .as_ref()
-        .and_then(|b| b.leg_boxes.as_ref());
-    let measured_feet = profile
-        .body_geometry
-        .as_ref()
-        .and_then(|b| b.foot_boxes.as_ref());
-    let radii = profile
-        .body_geometry
-        .as_ref()
+    let measured_body = (scope == EnvelopeScope::Measured)
+        .then_some(profile.body_geometry.as_ref())
+        .flatten();
+    let measured_legs = measured_body.and_then(|b| b.leg_boxes.as_ref());
+    let measured_feet = measured_body.and_then(|b| b.foot_boxes.as_ref());
+    // Structural radii always use bone lengths. A legacy measured radius must
+    // not turn costume bulk into a hard constraint when boxes are absent.
+    let radii = measured_body
         .and_then(|b| measured_legs.is_none().then_some(b.leg_radii).flatten())
         .map_or(
             [
@@ -67,9 +81,7 @@ fn samples(
             ],
             |r| r[limb - 2],
         );
-    let foot_radius = profile
-        .body_geometry
-        .as_ref()
+    let foot_radius = measured_body
         .and_then(|b| measured_feet.is_none().then_some(b.foot_radii).flatten())
         .map_or(0.04, |r| r[limb - 2]);
     let mut segments = Vec::with_capacity(9);
@@ -429,23 +441,45 @@ pub(super) fn diagnostics(
     geometry: &equipment::EquipmentGeometry,
 ) -> Vec<LowerLimbDiagnostic> {
     let mut out = Vec::new();
-    visit_failures(profile, kit, geometry, |failure| {
+    visit_failures(profile, kit, geometry, EnvelopeScope::Measured, |failure| {
         out.push(failure.diagnostic())
     });
     out
 }
 
-/// Stable diagnostics identify the physical obstacle and side. Every support
-/// remains included, including supports belonging to the contacted instrument.
+/// Full measured-envelope inspection, including costume volume. These stable
+/// diagnostics are advisory; use structural_violations for layout acceptance.
+/// Every support remains included, even for the contacted instrument.
 pub(super) fn violations(
     profile: &RigProfile,
     kit: &[KitPiece],
     geometry: &equipment::EquipmentGeometry,
 ) -> Vec<String> {
     let mut out = BTreeSet::new();
-    visit_failures(profile, kit, geometry, |failure| {
+    visit_failures(profile, kit, geometry, EnvelopeScope::Measured, |failure| {
         out.insert(failure.code());
     });
+    out.into_iter().collect()
+}
+
+/// Hard layout constraints: real pedal reach and length-derived leg/foot cores.
+/// Profile measurements and sole offsets are retained; only mesh-envelope
+/// collision acceptance is separated from this structural check.
+pub(super) fn structural_violations(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    geometry: &equipment::EquipmentGeometry,
+) -> Vec<String> {
+    let mut out = BTreeSet::new();
+    visit_failures(
+        profile,
+        kit,
+        geometry,
+        EnvelopeScope::Structural,
+        |failure| {
+            out.insert(failure.code());
+        },
+    );
     out.into_iter().collect()
 }
 
@@ -453,6 +487,7 @@ fn visit_failures(
     profile: &RigProfile,
     kit: &[KitPiece],
     geometry: &equipment::EquipmentGeometry,
+    scope: EnvelopeScope,
     mut emit: impl FnMut(ProbeFailure<'_>),
 ) {
     for limb in 2..4 {
@@ -465,7 +500,7 @@ fn visit_failures(
                     Instrument::Kick
                 }
         });
-        let segments = match samples(profile, kit, limb) {
+        let segments = match samples_for(profile, kit, limb, scope) {
             Ok(samples) => samples,
             Err(_probe) => {
                 emit(ProbeFailure {
@@ -658,6 +693,8 @@ mod tests {
             kind: "body",
         });
         assert!(violations(&profile, &kit, &geometry).contains(&"right-leg-clearance:floor".into()));
+        assert!(structural_violations(&profile, &kit, &geometry)
+            .contains(&"right-leg-clearance:floor".into()));
         geometry.bodies[0].center[0] += 1.;
         assert!(violations(&profile, &kit, &geometry).is_empty());
         geometry.supports.push(equipment::EquipmentCapsule {
@@ -668,7 +705,65 @@ mod tests {
             radius: 0.012,
         });
         assert!(violations(&profile, &kit, &geometry).contains(&"right-leg-clearance:floor".into()));
+        assert!(structural_violations(&profile, &kit, &geometry)
+            .contains(&"right-leg-clearance:floor".into()));
     }
+    #[test]
+    fn costume_envelopes_remain_advisory_without_changing_real_pedal_geometry() {
+        let (profile, kit, mut geometry) = fixture();
+        let shin = samples_for(&profile, &kit, 3, EnvelopeScope::Structural)
+            .unwrap()
+            .capsules[1];
+        let side_point = add(
+            std::array::from_fn(|i| (shin.start[i] + shin.end[i]) * 0.5),
+            [0.18, 0., 0.],
+        );
+        geometry.supports.push(equipment::EquipmentCapsule {
+            piece_id: "costume-only-obstacle".into(),
+            role: "floorLeg",
+            start: side_point,
+            end: add(side_point, [0., 0.01, 0.]),
+            radius: 0.005,
+        });
+        assert!(structural_violations(&profile, &kit, &geometry).is_empty());
+        let baseline = samples_for(&profile, &kit, 3, EnvelopeScope::Structural).unwrap();
+        for with_boxes in [false, true] {
+            let mut dressed = profile.clone();
+            let mut body = serde_json::json!({
+                "version": 1, "source": "mesh-estimate", "sampleCount": 100,
+                "torso": {"center": [0., 1., 0.], "halfExtents": [0.1, 0.2, 0.1]},
+                "armRadii": [[0.03, 0.02], [0.03, 0.02]],
+                "handRadii": [0.03, 0.03],
+                "legRadii": [[0.25, 0.25], [0.25, 0.25]],
+                "footRadii": [0.25, 0.25]
+            });
+            if with_boxes {
+                let limb_box = serde_json::json!({
+                    "center": [0., 0.2, 0.], "halfExtents": [0.3, 0.3, 0.3]
+                });
+                body["legBoxes"] = serde_json::json!([
+                    [limb_box.clone(), limb_box.clone()],
+                    [limb_box.clone(), limb_box.clone()]
+                ]);
+                body["footBoxes"] = serde_json::json!([limb_box.clone(), limb_box]);
+            }
+            dressed.body_geometry = Some(serde_json::from_value(body).unwrap());
+            dressed.validate().unwrap();
+            let before = serde_json::to_string(&dressed).unwrap();
+            assert!(structural_violations(&dressed, &kit, &geometry).is_empty());
+            assert!(!violations(&dressed, &kit, &geometry).is_empty());
+            assert!(!diagnostics(&dressed, &kit, &geometry).is_empty());
+            let structural = samples_for(&dressed, &kit, 3, EnvelopeScope::Structural).unwrap();
+            assert!(structural.boxes.is_empty());
+            for (actual, expected) in structural.capsules.iter().zip(&baseline.capsules) {
+                assert_eq!(actual.start, expected.start);
+                assert_eq!(actual.end, expected.end);
+                assert_eq!(actual.radius, expected.radius);
+            }
+            assert_eq!(serde_json::to_string(&dressed).unwrap(), before);
+        }
+    }
+
     #[test]
     fn detailed_failures_match_stable_codes_and_locate_the_shin_obstacle() {
         let (profile, kit, mut geometry) = fixture();
@@ -870,6 +965,8 @@ mod tests {
         }
         profile.lengths[3] = [0.04; 2];
         assert!(violations(&profile, &kit, &geometry).contains(&"right-leg-unreachable".into()));
+        assert!(structural_violations(&profile, &kit, &geometry)
+            .contains(&"right-leg-unreachable".into()));
         let details = diagnostics(&profile, &kit, &geometry);
         let unreachable = details
             .iter()

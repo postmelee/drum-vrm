@@ -17,6 +17,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 import * as wasm from '../src/wasm/drum_engine.js';
 import { motionReviewLandmarks } from './lib/review-landmarks.mjs';
+import { KINEMATIC_HALF_WINDOW_SECONDS, motionValidity, summarizeMotionSamples } from './lib/review-motion-metrics.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
@@ -53,6 +54,7 @@ const environment = {
   sourceTreeHash: jsonHash(sourceFiles), sourceFiles,
   wasmHash: hash(binary), scriptHash: hash(fs.readFileSync(fileURLToPath(import.meta.url))),
   landmarkHelperHash: hash(fs.readFileSync('scripts/lib/review-landmarks.mjs')),
+  motionMetricsHelperHash: hash(fs.readFileSync('scripts/lib/review-motion-metrics.mjs')),
 };
 write('environment.json', environment);
 
@@ -191,7 +193,9 @@ if (mode === 'fit') {
         rig = new vrm.VRMHumanoidRigAdapter(await geometryModel(bytes), `review-${id}`);
       }
       try {
-        const kit = structuredClone(nominal), seat = rig.getAutomaticCalibration(kit), profile = rig.setCalibration(seat, kit);
+        // Match startup: the native rig has an authored reference seat; imported
+        // models derive theirs from semantic measurements before fitting.
+        const kit = structuredClone(nominal), seat = id === 'native' ? rig.getCalibration() : rig.getAutomaticCalibration(kit), profile = rig.setCalibration(seat, kit);
         const input = { id, modelHash, provenanceFile, seat, profile, kit };
         write(`${id}-input.json`, input);
         if (mode === 'inputs') { summary.push({ id, inputHash: jsonHash(input), modelHash, seat }); continue; }
@@ -249,6 +253,25 @@ if (mode === 'fit') {
             for (const index of review.reviewOrder(sequenceTimes.length)) shuffled[index] = run.evaluate_rig_at(sequenceTimes[index]);
             const sequence = review.summarizePoseReview(sequenceTimes, ordered, shuffled);
             sequence.proxy = review.summarizeProxyReview(sequenceTimes, sequenceTimes.map(time => JSON.parse(run.inspect_pose_at(time))));
+            // Reuse the existing observation grid; derivatives add only t±h
+            // evaluations, not another complete skin/shader render. Keep the
+            // independent reverse/shuffled evaluations above uncached.
+            const poses = new Map(sequenceTimes.map((time, index) => [time, ordered[index]]));
+            const poseAt = time => {
+              if (!poses.has(time)) poses.set(time, run.evaluate_rig_at(time));
+              return poses.get(time);
+            };
+            const motionSamples = sequenceTimes.map(time => {
+              const pose = poseAt(time); rig.applyPose(pose);
+              return { time, pose, markers: rig.getContactSamples(),
+                before: poseAt(time - KINEMATIC_HALF_WINDOW_SECONDS), after: poseAt(time + KINEMATIC_HALF_WINDOW_SECONDS) };
+            });
+            const { kinematics, posture } = summarizeMotionSamples(motionSamples);
+            const validity = motionValidity(plan);
+            const phaseReview = landmarks.map(landmark => ({ ...landmark, halfWindowSeconds: .08,
+              ...summarizeMotionSamples(motionSamples.filter(sample => Math.abs(sample.time - landmark.time) <= .08 + 1e-9)),
+              diagnostics: (plan.diagnostics ?? []).filter(diagnostic => Number.isFinite(diagnostic.time) && Math.abs(diagnostic.time - landmark.time) <= .08 + 1e-9),
+            }));
             const planned = (plan.contactEvents ?? []).filter(event => event.status === 'planned' && event.toolPart !== 'beater');
             const impactMeasurements = [], missingImpactMarkers = [];
             for (const event of planned) {
@@ -270,7 +293,8 @@ if (mode === 'fit') {
               layoutRoundTripMaxDifference: maxNumericDifference(applied, plan.kit), layoutAfterSeekUnchanged: JSON.stringify(JSON.parse(run.plan_json()).kit) === beforeSeek,
               sourcePreserved: JSON.stringify(plan.sourceEvents) === JSON.stringify(study.source.sourceEvents) && JSON.stringify(study.source) === sourceBefore,
               poseDeterministic, markerDifference, planDeterministic, posesFinite: samples.every(sample => sample.pose.every(Number.isFinite)),
-              diagnostics: plan.diagnostics, landmarks, samples, sequence, impactMeasurements, missingImpactMarkers,
+              diagnostics: plan.diagnostics, landmarks, samples, sequence, motionValidity: validity, kinematics, posture, phaseReview,
+              impactMeasurements, missingImpactMarkers,
               markerContactMaximumErrorMeters, actualContactsPassed,
               observationScope: 'Sampled engine proxies and actual adapter markers; skin/clothing requires separate rendered review.' };
             result.studies.push(record);
@@ -286,16 +310,22 @@ if (mode === 'fit') {
         // Note assignment is reported separately: stable layout is not proof
         // that a given motion/score is fully playable, or collision free.
         result.motionCoveragePassed = result.studies.every(study => study.unassigned.length === 0);
-        result.passed = result.layoutPassed && result.motionCoveragePassed;
+        result.motionValidityPassed = result.studies.every(study => study.motionValidity.passed
+          && study.kinematics.observations > 0 && study.kinematics.invalidObservations === 0);
+        result.sampledToolPathsPassed = result.studies.every(study => study.sequence.proxy.toolSamples === study.sequence.samples
+          && study.sequence.proxy.toolIntersectingSamples === 0
+          && study.sequence.proxy.toolEquipmentMinimumMeters >= 0 && study.sequence.proxy.toolPairMinimumMeters >= 0);
+        result.passed = result.layoutPassed && result.motionCoveragePassed && result.motionValidityPassed && result.sampledToolPathsPassed;
         result.verificationScope = 'numeric-layout-motion-and-adapter-markers';
         result.renderedReview = { status: 'not-performed-by-this-script', requiredViews: ['front', 'top', 'left', 'right'],
           scope: 'Actual textured skin/clothing and instrument visibility at the recorded semantic landmarks.' };
         write(`${id}-review.json`, result);
         summary.push({ id, passed: result.passed, layoutPassed: result.layoutPassed, motionCoveragePassed: result.motionCoveragePassed,
+          motionValidityPassed: result.motionValidityPassed, sampledToolPathsPassed:result.sampledToolPathsPassed,
           fitComplete: result.fit.complete, layoutViolations: result.fit.layoutViolations,
           fittedSeat, seatOffset: result.fit.seatOffset, appliedFitIdempotent: result.appliedFitIdempotent,
           equipmentUnresolved: result.equipment.unresolvedPieceIds, scale: result.fit.scale, fitMs: Math.round(result.fitMs), repeatFitMs: Math.round(result.repeatFitMs),
-          studies: result.studies.map(({ id, prepareMs, unassigned, layoutRoundTripMaxDifference, sequence, markerContactMaximumErrorMeters, actualContactsPassed }) => ({ id, prepareMs: Math.round(prepareMs), unassigned: unassigned.length, layoutRoundTripMaxDifference, sequence, markerContactMaximumErrorMeters, actualContactsPassed })) });
+          studies: result.studies.map(({ id, prepareMs, unassigned, layoutRoundTripMaxDifference, sequence, motionValidity, kinematics, posture, phaseReview, markerContactMaximumErrorMeters, actualContactsPassed }) => ({ id, prepareMs: Math.round(prepareMs), unassigned: unassigned.length, layoutRoundTripMaxDifference, sequence, motionValidity, kinematics, posture, phaseReview, markerContactMaximumErrorMeters, actualContactsPassed })) });
         if (!result.passed) process.exitCode = 1;
       } finally { rig.dispose(); }
     }

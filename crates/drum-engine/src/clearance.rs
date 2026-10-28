@@ -3,6 +3,8 @@ use crate::model::Vec3;
 use crate::motion::{add, distance, sub};
 use crate::rig::{HandSolution, RigProfile};
 use serde::Serialize;
+#[path = "tool_pair.rs"]
+mod tool_pair;
 fn dot(a: Vec3, b: Vec3) -> f64 {
     a.iter().zip(b).map(|(a, b)| a * b).sum()
 }
@@ -252,10 +254,35 @@ pub fn pair_clearance(
         cross,
     }
 }
+/// A bounded visual preference, never a reach/contact veto. The 25 mm scale
+/// makes ordinary proxy overlaps distinguishable without letting large clothing
+/// volumes dominate anatomical comfort or buy a physical tool intersection.
+pub fn body_penalty(clearance: f64) -> f64 {
+    let depth = (crate::posture::MARGIN - clearance).max(0.0);
+    0.04 * depth / (0.025 + depth)
+}
+/// Physical tool pairs use complete butt-to-tip segments. Raw body inspection
+/// above retains its historical arm/cross/wrist-to-tip measurements separately.
+pub fn tool_pair_clearance(profile: &RigProfile, left: &HandSolution, right: &HandSolution) -> f64 {
+    tool_pair_clearance_with_trim(profile, left, right, [0.; 2])
+}
+pub(crate) fn tool_pair_clearance_with_trim(
+    profile: &RigProfile,
+    left: &HandSolution,
+    right: &HandSolution,
+    trim: [f64; 2],
+) -> f64 {
+    tool_pair::clearance(
+        crate::equipment_motion::stick_segment(profile, 0, left),
+        crate::equipment_motion::stick_segment(profile, 1, right),
+        trim,
+    )
+}
+
 pub fn hand_cost(profile: &RigProfile, limb: usize, target: Vec3) -> f64 {
-    profile.solve_hand(limb, target, 0.0).map_or(0.0, |s| {
-        (-hand_clearance(profile, limb, &s)).max(0.0) * 80.0
-    })
+    profile
+        .solve_hand(limb, target, 0.0)
+        .map_or(0.0, |s| body_penalty(hand_clearance(profile, limb, &s)))
 }
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -310,6 +337,33 @@ pub fn inspect(profile: &RigProfile, pose: &[f32]) -> PoseInspection {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn whole_tool_pair_keeps_butt_collisions_hard() {
+        let mut p = RigProfile::primitive();
+        p.grip_offsets[0] = [0.; 3];
+        p.grip_offsets[1] = [0.; 3];
+        let left = HandSolution {
+            middle: [0., 1., -0.2],
+            end: [0., 1., 0.],
+            tip: [0., 1., 0.5],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        let right = HandSolution {
+            middle: [-0.2, 1., -0.1],
+            end: [-0.1, 1., -0.05],
+            tip: [0.1, 1., -0.05],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        // Wrist-to-tip display metrics cannot see this crossing behind the grip.
+        assert!(pair_clearance(&p, &left, &right).sticks > 0.);
+        assert!(tool_pair_clearance(&p, &left, &right) < 0.);
+        assert_eq!(body_penalty(1.), 0.);
+        assert!(body_penalty(-0.01) < body_penalty(-0.1));
+        assert!(body_penalty(-1000.) < 0.04);
+    }
+
     #[test]
     fn segment_crossing_and_parallel_distances() {
         assert!(segment_distance([-1., 0., 0.], [1., 0., 0.], [0., -1., 0.], [0., 1., 0.]) < 1e-10);

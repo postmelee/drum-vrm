@@ -528,7 +528,11 @@ fn final_distant_crash_recovers_gradually_then_settles_over_the_snare() {
         .find(|piece| piece.id == "snare")
         .unwrap()
         .position;
-    assert!(crate::motion::distance(settled, [ready[0], ready[1] + 0.035, ready[2]]) < 1e-6);
+    assert!((settled[1] - ready[1] - 0.035).abs() < 1e-6);
+    // Recover above the snare into the left hand's own ready corridor,
+    // leaving the shared contact column available to an alternating hand.
+    assert!(settled[0] < ready[0]);
+    assert!(((settled[0] - ready[0]).hypot(settled[2] - ready[2]) - 0.035).abs() < 1e-6);
 }
 
 #[test]

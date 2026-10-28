@@ -32,6 +32,8 @@ pub struct KitFitProposal {
     pub unreachable_piece_ids: Vec<String>,
     pub clearance_piece_ids: Vec<String>,
     pub layout_violations: Vec<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub advisory_layout_violations: Vec<String>,
     pub complete: bool,
     pub piece_adjustments: Vec<PieceAdjustment>,
     pub search_candidates: usize,
@@ -200,6 +202,53 @@ fn equipment_posture_fits(
         })
     })
 }
+
+/// Keep the canonical two-crash pair usable while greedily placing its members.
+/// A lone crash may be played with either hand. For layout search, however, a
+/// same-side impact/ready witness prevents locking a close crash that only the
+/// opposite hand can reach. Score assignment remains free to use either hand.
+/// This is a fallback search preference, not a new unchanged-kit certificate.
+fn crash_role_search_fits(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    index: usize,
+    ctx: &crate::equipment_motion::EquipmentContext,
+) -> bool {
+    if profile.hand_frames.is_none() || kit[index].instrument != Instrument::Crash {
+        return true;
+    }
+    // Match the two semantic crashes audited by posture::required_pairs.
+    let crashes: Vec<_> = kit
+        .iter()
+        .enumerate()
+        .filter(|(_, piece)| piece.instrument == Instrument::Crash)
+        .map(|(i, _)| i)
+        .take(2)
+        .collect();
+    if crashes.len() != 2 || !crashes.contains(&index) {
+        return true;
+    }
+    let right = crate::motion::sub(profile.roots[1], profile.roots[0]);
+    let separation = crate::motion::sub(kit[crashes[1]].position, kit[crashes[0]].position);
+    let side = right[0] * separation[0] + right[2] * separation[2];
+    if side.abs() < 1e-9 {
+        return true;
+    }
+    let limb = usize::from((index == crashes[0]) != (side > 0.));
+    piece_targets(profile, &kit[index]).iter().all(|&target| {
+        [0., 0.035].into_iter().all(|lift| {
+            crate::contact_feasibility::candidate(
+                profile,
+                limb,
+                [target[0], target[1] + lift, target[2]],
+                0.,
+                Some(ctx),
+                Some(&kit[index].id),
+            )
+            .is_some()
+        })
+    })
+}
 /// Static equipment, playable head approaches and all supports use the same
 /// numeric geometry that the renderer and temporal inspector consume.
 fn piece_clear(index: usize, kit: &[KitPiece]) -> bool {
@@ -230,17 +279,21 @@ fn snare_reference(profile: &RigProfile) -> Vec3 {
         + crate::motion::distance(profile.tip_offsets[1], [0.0; 3]))
         * 0.5;
     let shoulder_forward = (profile.roots[0][2] + profile.roots[1][2]) * 0.5;
-    let body_forward = profile
-        .body_geometry
-        .as_ref()
-        .map_or(shoulder_forward, |b| {
-            b.torso.center[2] + b.torso.half_extents[2]
-        });
+    // Semantic adapters already construct a relaxed, bent-arm reference from
+    // measured segment lengths and the actual grip/tool transform. Reusing its
+    // depth avoids deriving a nearly extended reach from forearm + stick length,
+    // or pushing a kit away merely because a costume extends the torso envelope.
+    // This is only a repair seed; fixed equipment/seat candidates are tried first
+    // and every eventual placement still passes the complete physical guards.
+    let depth = if profile.hand_frames.is_some() {
+        (profile.rest_tips[0][2] + profile.rest_tips[1][2]) * 0.5
+    } else {
+        shoulder_forward + lower * 0.95 + tool * 0.95
+    };
     [
         (profile.roots[0][0] + profile.roots[1][0]) * 0.5 - 0.08 * (upper + lower),
         (profile.roots[0][1] + profile.roots[1][1]) * 0.5 - upper * 0.8 - 0.08,
-        (shoulder_forward + lower * 0.95 + tool * 0.95)
-            .max(body_forward + lower * 0.5 + tool * 0.6),
+        depth,
     ]
 }
 fn snare_ready_fits_cached(profile: &RigProfile, piece: &KitPiece, cache: &FitCache) -> bool {
@@ -277,6 +330,12 @@ fn missed(profile: &RigProfile, kit: &[KitPiece], posture: bool) -> Vec<String> 
                     !hands_satisfied(piece, |limb| {
                         if posture {
                             hand_posture_fits(profile, limb, target)
+                        } else if profile.hand_frames.is_some() && limb < 2 {
+                            // This is only a broad-phase rejection. A default
+                            // hand orientation is not the reach envelope of the
+                            // target-oriented wrist solver. Final certification
+                            // still requires the shared anatomical/tool witness.
+                            profile.may_reach_contact(limb, target)
                         } else {
                             crate::equipment_motion::PITCH_OFFSETS
                                 .iter()
@@ -331,6 +390,7 @@ fn proposal(
         unreachable_piece_ids,
         clearance_piece_ids,
         layout_violations,
+        advisory_layout_violations: Vec::new(),
         piece_adjustments: Vec::new(),
         search_candidates: 0,
         search_limit_reached: false,
@@ -371,10 +431,69 @@ fn transform(kit: &[KitPiece], scale: f64, translation: Vec3) -> Vec<KitPiece> {
 fn shift_cost(translation: Vec3) -> f64 {
     translation.iter().map(|v| v * v).sum()
 }
+
+fn seat_offsets(profile: &RigProfile) -> Vec<Vec3> {
+    let mut offsets = vec![[0.; 3]];
+    if profile.hand_frames.is_some() {
+        offsets.clear();
+        for dy in [0., -0.06, 0.06, -0.12, 0.12] {
+            for dz in [0., 0.08, -0.08, 0.16, 0.24] {
+                offsets.push([0., dy, dz]);
+            }
+        }
+        offsets.sort_by(|a, b| shift_cost(*a).total_cmp(&shift_cost(*b)));
+    }
+    offsets.retain(|offset| {
+        (0.3..=1.2).contains(&(profile.pelvis[1] + offset[1]))
+            && (profile.pelvis[2] + offset[2]).abs() <= 0.5
+    });
+    offsets
+}
+
+/// Exhaust the existing bounded seating choices against the unchanged kit
+/// before moving any instrument. A valid fixed setup must not lose to an
+/// earlier greedy per-piece repair. Every accepted seat uses the same final
+/// certificate as the layout fallback; no reach or clearance gate is skipped.
+fn fixed_layout_fit(
+    profile: &RigProfile,
+    kit: &[KitPiece],
+    offsets: &[Vec3],
+    cache: &FitCache,
+) -> Option<KitFitProposal> {
+    let measured: Vec<_> = kit
+        .iter()
+        .map(|piece| {
+            let mut next = piece.clone();
+            next.geometry = Some(crate::equipment::local_geometry(piece));
+            next
+        })
+        .collect();
+    for &offset in offsets {
+        // Preserve the zero-work unchanged certificate and account for every
+        // additional seat in the existing request-wide search budget.
+        if offset != [0.; 3] && !cache.candidate() {
+            break;
+        }
+        let moved = fit_profile::candidate(profile, offset, &measured);
+        if !fit_profile::feet_fit(&moved, &measured) {
+            continue;
+        }
+        let mut result = proposal(&moved, measured.clone(), 1., [0.; 3]);
+        if !result.unreachable_piece_ids.is_empty() {
+            continue;
+        }
+        certify(&moved, &mut result);
+        if result.complete {
+            result.seat_offset = offset;
+            return Some(result);
+        }
+    }
+    None
+}
 /// Prefer the largest kit, then the smallest common translation, with a bounded
 /// search. A completed proposal is idempotent; incomplete results stay explicit.
 /// `complete` means designated hands pass sampled contact/preparation guards,
-/// measured/default rigid body proxies and every generated support remain clear,
+/// complete sticks, structural leg cores and every generated support remain clear,
 /// and drumhead approach regions are accessible. It does not certify whole
 /// motion paths or skinned meshes; those require separate temporal inspection.
 fn uniform_fit(
@@ -747,12 +866,10 @@ fn place_rack_group(
         {
             continue;
         }
-        let ctx = crate::equipment_motion::EquipmentContext {
-            geometry: crate::equipment::kit_geometry(&fixed),
-            kit: fixed,
-        };
+        let geometry = crate::equipment::kit_geometry(&fixed);
+        let ctx = crate::equipment_motion::EquipmentContext::new(fixed, geometry);
         if !ctx.geometry.unresolved_piece_ids.is_empty()
-            || !lower_limb::violations(profile, &ctx.kit, &ctx.geometry).is_empty()
+            || !lower_limb::structural_violations(profile, &ctx.kit, &ctx.geometry).is_empty()
             || !ctx
                 .kit
                 .iter()
@@ -799,7 +916,7 @@ fn choose_leg_clear_stand_phase(
     };
     let kit = fixed(candidate);
     let geometry = crate::equipment::kit_geometry(&kit);
-    let failures = lower_limb::violations(profile, &kit, &geometry);
+    let failures = lower_limb::structural_violations(profile, &kit, &geometry);
     if failures.is_empty() {
         return true;
     }
@@ -819,7 +936,7 @@ fn choose_leg_clear_stand_phase(
     invariant_geometry
         .supports
         .retain(|support| support.piece_id != candidate[index].id);
-    if !lower_limb::violations(profile, &kit, &invariant_geometry).is_empty() {
+    if !lower_limb::structural_violations(profile, &kit, &invariant_geometry).is_empty() {
         return false;
     }
     let original = candidate[index].stand_rotation;
@@ -832,7 +949,7 @@ fn choose_leg_clear_stand_phase(
         let kit = fixed(candidate);
         let geometry = crate::equipment::kit_geometry(&kit);
         if geometry.unresolved_piece_ids.is_empty()
-            && lower_limb::violations(profile, &kit, &geometry).is_empty()
+            && lower_limb::structural_violations(profile, &kit, &geometry).is_empty()
         {
             return true;
         }
@@ -907,12 +1024,11 @@ fn repair_posture_order(
                         return None;
                     }
                     let hat = kit[index].clone();
-                    let ctx = crate::equipment_motion::EquipmentContext {
-                        geometry: crate::equipment::kit_geometry(&kit),
-                        kit,
-                    };
+                    let geometry = crate::equipment::kit_geometry(&kit);
+                    let ctx = crate::equipment_motion::EquipmentContext::new(kit, geometry);
                     (ctx.geometry.unresolved_piece_ids.is_empty()
-                        && lower_limb::violations(profile, &ctx.kit, &ctx.geometry).is_empty()
+                        && lower_limb::structural_violations(profile, &ctx.kit, &ctx.geometry)
+                            .is_empty()
                         && equipment_posture_fits(profile, &hat, &ctx))
                     .then_some(hat)
                 })
@@ -1042,11 +1158,9 @@ fn repair_posture_order(
                 return false;
             }
             let geometry = crate::equipment::kit_geometry(&fixed);
-            let ctx = crate::equipment_motion::EquipmentContext {
-                kit: fixed.clone(),
-                geometry,
-            };
+            let ctx = crate::equipment_motion::EquipmentContext::new(fixed.clone(), geometry);
             ctx.geometry.unresolved_piece_ids.is_empty()
+                && crash_role_search_fits(profile, candidate, index, &ctx)
                 && equipment_posture_fits(profile, &candidate[index], &ctx)
                 && fixed
                     .iter()
@@ -1069,10 +1183,9 @@ fn repair_posture_order(
                             }
                             let mut pair_kit = fixed.clone();
                             pair_kit.push(hat.clone());
-                            let pair_ctx = crate::equipment_motion::EquipmentContext {
-                                geometry: crate::equipment::kit_geometry(&pair_kit),
-                                kit: pair_kit,
-                            };
+                            let geometry = crate::equipment::kit_geometry(&pair_kit);
+                            let pair_ctx =
+                                crate::equipment_motion::EquipmentContext::new(pair_kit, geometry);
                             pair_ctx.geometry.unresolved_piece_ids.is_empty()
                                 && equipment_posture_fits(profile, &candidate[index], &pair_ctx)
                                 && equipment_posture_fits(profile, hat, &pair_ctx)
@@ -1171,8 +1284,8 @@ fn repair_posture_order(
             }
         }
         if result.kit[index].instrument == Instrument::Snare {
-            // Resolve the narrow feasible corridor of a measured hand/sleeve
-            // around the body reference before falling back to the coarse kit
+            // Resolve the narrow feasible tool corridor around the measured
+            // relaxed reference before falling back to the coarse kit
             // grid. Resolution scales with the arm, not an avatar identity.
             let step = ((profile.lengths[0][0] + profile.lengths[1][0]) * 0.05).clamp(0.015, 0.03);
             for x in -5..=5 {
@@ -1295,11 +1408,13 @@ fn certify(profile: &RigProfile, result: &mut KitFitProposal) {
     add_equipment_misses(profile, result);
     result.clearance_piece_ids = kit_clearance_ids(&result.kit);
     result.layout_violations = layout::violations(profile, &result.kit);
-    result.layout_violations.extend(lower_limb::violations(
-        profile,
-        &result.kit,
-        &crate::equipment::kit_geometry(&result.kit),
-    ));
+    result
+        .layout_violations
+        .extend(lower_limb::structural_violations(
+            profile,
+            &result.kit,
+            &crate::equipment::kit_geometry(&result.kit),
+        ));
     result.complete = result.layout_violations.is_empty()
         && result.unreachable_piece_ids.is_empty()
         && result.clearance_piece_ids.is_empty()
@@ -1307,10 +1422,10 @@ fn certify(profile: &RigProfile, result: &mut KitFitProposal) {
 }
 
 fn add_equipment_misses(profile: &RigProfile, result: &mut KitFitProposal) {
-    let ctx = crate::equipment_motion::EquipmentContext {
-        kit: result.kit.clone(),
-        geometry: crate::equipment::kit_geometry(&result.kit),
-    };
+    let ctx = crate::equipment_motion::EquipmentContext::new(
+        result.kit.clone(),
+        crate::equipment::kit_geometry(&result.kit),
+    );
     for piece in &result.kit {
         if !equipment_posture_fits(profile, piece, &ctx)
             && !result.unreachable_piece_ids.contains(&piece.id)
@@ -1327,19 +1442,14 @@ pub fn fit_kit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
     }
     let cache = FitCache::default();
     let original_profile = fit_profile::candidate(profile, [0.; 3], kit);
+    let offsets = seat_offsets(profile);
+    let fixed = fixed_layout_fit(profile, kit, &offsets, &cache);
     cache.limit.set(12_000);
-    let mut result = uniform_fit(&original_profile, kit, &cache, true)?;
+    let mut result = match fixed {
+        Some(result) => result,
+        None => uniform_fit(&original_profile, kit, &cache, true)?,
+    };
     if !result.complete {
-        let mut offsets = vec![[0.; 3]];
-        if profile.hand_frames.is_some() {
-            offsets.clear();
-            for dy in [0., -0.06, 0.06, -0.12, 0.12] {
-                for dz in [0., 0.08, -0.08, 0.16, 0.24] {
-                    offsets.push([0., dy, dz]);
-                }
-            }
-            offsets.sort_by(|a, b| shift_cost(*a).total_cmp(&shift_cost(*b)));
-        }
         cache.refine.set(true);
         // Prefer small seat changes with the nominal kit, while reserving at
         // least 50k of the 80k request budget for real compact-family coverage.
@@ -1392,6 +1502,17 @@ pub fn fit_kit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
     }
     let fitted_profile = fit_profile::candidate(profile, result.seat_offset, &result.kit);
     certify(&fitted_profile, &mut result);
+    // Inspect costume envelopes once for the returned setup. They remain useful
+    // diagnostics without forcing a relocation or repeating costly mesh-proxy
+    // checks for every candidate in the bounded mechanical search.
+    result.advisory_layout_violations = lower_limb::violations(
+        &fitted_profile,
+        &result.kit,
+        &crate::equipment::kit_geometry(&result.kit),
+    )
+    .into_iter()
+    .filter(|violation| !result.layout_violations.contains(violation))
+    .collect();
     result.capabilities = Some(crate::posture::audit(&fitted_profile, &result.kit));
     Ok(cache.finish(result))
 }

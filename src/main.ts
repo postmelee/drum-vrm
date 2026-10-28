@@ -12,7 +12,7 @@ import {msg, raw, bindText, boundText, bindAttribute, bindStaticTranslations, jo
 import {diagnosticTitle, engineMessage} from './engine-messages';
 import './style.css';
 import { studioTemplate } from './studio-template';
-import { prepareAutomaticFit, fittedCalibration } from './automatic-fit';
+import { prepareAutomaticFit, fittedCalibration, layoutViolationMessage } from './automatic-fit';
 import { DrumTimeline, createTimelineNotes } from './timeline';
 import { arrangementOf, nearestNoteGroup, noteSources, withArrangementEdit, type Arrangement } from './arrangement';
 import { DrumScene, type CameraView } from './scene';
@@ -69,7 +69,7 @@ let fitProposal: KitFitProposal | null = null;
 // Explicit manual/restored layout; automatic fits never feed their output back here.
 let fitBaseline = structuredClone(defaultKit);
 let preFitSetup: { seat: HumanoidCalibration; kit: KitPiece[] } | null = null;
-let fitState = msg("Default layout · not fitted to this character", "기본 배치 · 체형별 배치 보정 전");
+let fitState = msg("Reference layout", "기준 배치");
 let poseReview: PoseReview | null = null;
 let reviewRunning = false;
 let reviewGeneration = 0;
@@ -238,7 +238,7 @@ function showFitResult(result: Awaited<ReturnType<typeof prepareAutomaticFit>>) 
   fitProposal=result.proposal;fitState=result.applied?msg("Automatic body fit applied", "체형 자동 맞춤 적용"):msg("Automatic fit needs attention", "자동 맞춤 확인 필요");
   bindText(get('calibration-message'), ''); // The summary stays here; full fit evidence lives in Analysis.
   refreshFitState();
-  bindText(get('fit-details'), result.message);
+  bindText(get('fit-details'), joinMessages([result.message,...(result.proposal.advisoryLayoutViolations?.length?[msg('Advisory measured-body overlaps: {0}', '측정한 신체 영역 겹침 참고: {0}',joinMessages(result.proposal.advisoryLayoutViolations.map(layoutViolationMessage)))]:[])]));
   if(result.applied){message(result.message);notify(result.message);}
   else message(msg("Automatic fitting could not meet the constraints. See Character → Manual adjustment or Analysis.", "자동 맞춤 조건을 만족하지 못했습니다. 캐릭터의 수동 보정 또는 분석을 확인하세요."),true);
 }
@@ -336,9 +336,9 @@ function showModelInfo(info: VRMInspection | null, preset?: CharacterPreset) {
     metadata.append(sources);
   }
 }
-async function adoptRig(adapter: HumanoidRigAdapter) {
+async function adoptRig(adapter: HumanoidRigAdapter, initialSeat = adapter.getAutomaticCalibration(fitBaseline)) {
   const oldKit=scene.getKitLayout(),palmOrientation=scene.getCalibration().palmOrientation;
-  const seat={...adapter.getAutomaticCalibration(fitBaseline),palmOrientation};
+  const seat={...initialSeat,palmOrientation};
   const profile=adapter.setCalibration(seat,fitBaseline);
   const result=await prepareAutomaticFit(profile,fitBaseline,oldKit,fitInBackground);
   const finalSeat=result.applied?fittedCalibration(seat,result):{...adapter.getAutomaticCalibration(oldKit),palmOrientation};
@@ -424,7 +424,7 @@ get('character-cancel').onclick=()=>characterDownload?.abort();
 async function resetCharacter(){
   if(busy||exporting||modelBusy)return;audio?.pause();modelBusy=true;controls();
   const adapter=new NativeHumanoidRigAdapter();let adopted=false;
-  try{await adoptRig(adapter);adopted=true;committedCharacter='native';currentFBX=undefined;sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));showModelInfo(null);bindText(get('character-message'), msg("Default skeleton", "기본 스켈레톤"));setCharacterDisplay('skeleton');}
+  try{await adoptRig(adapter,adapter.getCalibration());adopted=true;committedCharacter='native';currentFBX=undefined;sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));showModelInfo(null);bindText(get('character-message'), msg("Default skeleton", "기본 스켈레톤"));setCharacterDisplay('skeleton');}
   catch(error){if(!adopted)adapter.dispose();bindText(get('character-message'), uiError(error));}
   finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
 }
@@ -862,6 +862,10 @@ function currentReviewMeasurement() {
   const contacts=scene.getRigContactSamples(),pose=engine.evaluate(songTime),proxy=engine.inspectPose(songTime);
   bindText(get('review-measurement'), msg("Song {0} s · {1}{2}", "곡 {0}초 · {1}{2}", songTime.toFixed(3), joinMessages(contacts.map(sample=>msg("{0} {1} mm", "{0} {1} mm", [msg("L stick", "L 스틱"),msg("R stick", "R 스틱"),msg("L foot", "L 발"),msg("R foot", "R 발")][sample.limb], (sample.errorMeters*1000).toFixed(2)))), proxy?msg(" · proxy clearance: torso {0} cm / arms {1} cm / sticks {2} cm{3}{4}{5} (negative values indicate possible intersections)", " · 근사 간격: 몸통 {0} cm / 양팔 {1} cm / 스틱 {2} cm{3}{4}{5} (음수는 침범 후보)", (proxy.torsoClearanceMeters*100).toFixed(1), (proxy.armClearanceMeters*100).toFixed(1), (proxy.stickClearanceMeters*100).toFixed(1), proxy.equipmentClearanceMeters!==undefined?msg(" / equipment {0} cm", " / 장비 {0} cm", (proxy.equipmentClearanceMeters*100).toFixed(1)):'', proxy.crossClearanceMeters!==undefined?msg(' / arm–stick {0} cm',' / 팔–스틱 {0} cm',(proxy.crossClearanceMeters*100).toFixed(1)):'', proxy.intentionalStickContact?msg(" · count-in tip contact", " · 카운트인 끝 접촉"):'') : ''));
   bindText(get('review-posture'), joinMessages(contacts.filter(sample=>sample.limb<2).map(sample=>msg('{0}: upper arm {1}° · elbow {2}° · wrist {3}°', '{0}: 상완 {1}° · 팔꿈치 {2}° · 손목 {3}°', sample.limb===0?msg('Left','왼쪽'):msg('Right','오른쪽'), sample.upperArmElevationDegrees?.toFixed(0)??'—', sample.elbowInteriorDegrees?.toFixed(0)??'—', sample.wristSwingDegrees?.toFixed(0)??'—'))));
+  if(proxy?.toolEquipmentClearanceMeters!==undefined&&proxy.toolPairClearanceMeters!==undefined)bindText(get('review-measurement'),joinMessages([
+    boundText(get('review-measurement')),
+    msg('Whole sticks: equipment {0} mm / other stick {1} mm. Body overlaps are advisory.', '스틱 전체: 악기 {0} mm / 반대 스틱 {1} mm. 신체 겹침은 참고 경고입니다.',(proxy.toolEquipmentClearanceMeters*1000).toFixed(1),(proxy.toolPairClearanceMeters*1000).toFixed(1))
+  ]));
   const impacts=scene.getImpactMeasurements();
   bindText(get('review-impact'), impacts.length ? msg('Impact marker → planned surface: {0}', '타격 기준점 → 계획 표면: {0}', joinMessages(impacts.map(impact=>msg('{0} / {1} {2} mm', '{0} / {1} {2} mm', raw(impact.pieceId??'count-in'), {stickTip:msg('stick tip','스틱 끝'),sole:msg('pedal / sole','페달 · 발바닥'),beater:msg('beater','비터')}[impact.toolPart], (impact.errorMeters*1000).toFixed(2))))) : msg('Use Previous / Next hit to measure a planned impact.', '계획 타격을 계측하려면 이전 / 다음 타격으로 이동하세요.'));
   return { songTime, outputTime, contacts, impacts, proxy, pose:pose?Array.from(pose):null, sampledReview:poseReview };
@@ -901,6 +905,10 @@ get('review-scan').onclick=async()=>{
     poseReview=summarizePoseReview(times,ordered,shuffled);
     if(inspections.length)poseReview.proxy=summarizeProxyReview(times,inspections);
     bindText(get('review-status'), msg("{0} times reviewed · seek-order difference {1} · {2} invalid values{3}. Checks pose reproducibility and proxy geometry, not skin or clothing collisions.", "{0}개 시각 검수 · 탐색 순서 차이 {1} · 유효하지 않은 값 {2}개{3}. 자세 재현성·근사 영역 검사이며 피부·옷 충돌 검사는 아닙니다.", poseReview.samples.toLocaleString(), poseReview.maxOrderDifference.toExponential(2), poseReview.nonfiniteValues, poseReview.proxy?msg(" · {0} samples with possible proxy intersections{1}", " · 근사 영역 침범 후보 {0}개 표본{1}", poseReview.proxy.intersectingSamples, poseReview.proxy.firstIntersectionSeconds===null?'':msg(" (first at {0} s)", " (처음 {0}초)", poseReview.proxy.firstIntersectionSeconds.toFixed(3))):''));
+    if(poseReview.proxy?.toolSamples!==undefined)bindText(get('review-status'),joinMessages([
+      boundText(get('review-status')),
+      msg('Whole-stick overlaps: {0} / {1} samples{2}', '스틱 전체 겹침: {0} / {1}개 표본{2}',poseReview.proxy.toolIntersectingSamples,poseReview.proxy.toolSamples,poseReview.proxy.firstToolIntersectionSeconds==null?'':msg(' (first at {0} s)',' (처음 {0}초)',poseReview.proxy.firstToolIntersectionSeconds.toFixed(3)))
+    ]));
   }catch(error){if(generation===reviewGeneration)bindText(get('review-status'), uiError(error));}
   finally{if(generation===reviewGeneration){reviewRunning=false;busy=false;status(msg("Paused", "일시정지"));controls();updateFrame(restoreTime);}}
 };
@@ -1078,10 +1086,14 @@ function tick(){if(disposed)return;if(!exporting){const time=audio?.currentTime?
 controls();timeline.resize();setCharacterDisplay('skeleton');
 async function initializeStudio() {
   modelBusy=true;controls();
-  try{await scene.whenEquipmentReady();await engine.setSetup(scene.getRigProfile(),scene.getKitLayout());}
+  try{
+    await scene.whenEquipmentReady();
+    await engine.setSetup(scene.getRigProfile(),scene.getKitLayout());
+    await refreshIdlePose();
+    refreshCalibration();refreshFitState();
+  }
   catch(error){message(uiError(error),true);return;}
   finally{modelBusy=false;controls();}
-  await autoFitCurrent();
 }
 void initializeStudio();
 window.addEventListener('beforeunload',()=>{disposed=true;demoController?.abort();engine.dispose();synthesis.cancel();audio?.dispose();scene.dispose();timeline.dispose();resizeObserver.disconnect();clearTimeout(toastTimer);if(downloadUrl)URL.revokeObjectURL(downloadUrl);});

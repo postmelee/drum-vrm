@@ -291,7 +291,15 @@ impl RigProfile {
             // Pedals are desired kit contacts, so user seat calibration can
             // legitimately make a foot unreachable. Motion clamps the leg IK
             // and reports that condition instead of rejecting the whole rig.
-            if limb < 2 && !self.reachable(limb, self.rest_tips[limb]) {
+            let rest_wrist = sub(self.rest_tips[limb], self.offset(limb, q));
+            let rest_distance = distance(self.roots[limb], rest_wrist);
+            let [upper, lower] = self.lengths[limb];
+            // Validate the measured calibration in its authored orientation;
+            // a different target-oriented approach is not its source rest pose.
+            if limb < 2
+                && (rest_distance < (upper - lower).abs() + 1e-5
+                    || rest_distance > upper + lower - 1e-4)
+            {
                 return Err(format!(
                     "리그 손발 {limb}의 준비 자세가 도달 범위를 벗어납니다."
                 ));
@@ -334,29 +342,33 @@ impl RigProfile {
         self.reachable_at_pitch(limb, tip, 0.)
     }
 
-    /// Exact annulus of the same pitched compound link used by the hand solve.
-    /// Feasibility searches may compare several pitches; a committed pose must
-    /// be checked with its actual pitch rather than the existence of another.
+    /// Conservative triangle envelope for early search pruning only. A positive
+    /// result is not a posture/contact witness: wrist rotation, joint limits and
+    /// whole-tool clearance are checked by the shared hand solver afterward.
+    pub fn may_reach_contact(&self, limb: usize, tip: Vec3) -> bool {
+        if limb >= 4 || tip.iter().any(|value| !value.is_finite()) {
+            return false;
+        }
+        let d = distance(self.roots[limb], tip);
+        let offset = distance(self.offset(limb, self.contact_rotations[limb]), [0.; 3]);
+        let [a, b] = self.lengths[limb];
+        d <= a + b + offset && d >= ((a - b).abs() - offset).max(0.)
+    }
+
+    pub fn wrist_deviation(&self, limb: usize, hand: &HandSolution) -> f64 {
+        hand_solver::wrist_deviation(self, limb, hand)
+    }
+
+    /// Exact default-swivel solve at the requested pitch. Other swivel witnesses
+    /// must be checked from their actual HandSolution, not borrowed from this one.
     pub fn reachable_at_pitch(&self, limb: usize, tip: Vec3, pitch: f64) -> bool {
         if limb >= 4 || !pitch.is_finite() || tip.iter().any(|value| !value.is_finite()) {
             return false;
         }
-        let rotation = pitch_rotation(self.contact_rotations[limb], pitch);
-        if limb < 2 {
-            if let Some(frames) = &self.hand_frames {
-                let lower = self.lengths[limb][1];
-                let compound = add(
-                    frames[limb].forearm.map(|v| v * lower),
-                    self.offset(limb, rotation),
-                );
-                let length = distance(compound, [0.0; 3]);
-                let upper = self.lengths[limb][0];
-                let d = distance(self.roots[limb], tip);
-                return length >= 1e-6
-                    && d >= (upper - length).abs() + 1e-5
-                    && d <= upper + length - 1e-4;
-            }
+        if let Some(hand) = self.solve_hand(limb, tip, pitch) {
+            return hand.reachable;
         }
+        let rotation = pitch_rotation(self.contact_rotations[limb], pitch);
         let d = distance(self.roots[limb], sub(tip, self.offset(limb, rotation)));
         let [a, b] = self.lengths[limb];
         d >= (a - b).abs() + 1e-5 && d <= a + b - 1e-4
