@@ -3,11 +3,20 @@ use crate::model::*;
 use crate::rig::{pitch_rotation, RigProfile, RIG_POSE_FLOATS};
 use std::f64::consts::PI;
 
+#[cfg(test)]
+#[path = "motion_inspection_tests.rs"]
+mod inspection_tests;
 #[path = "prepared.rs"]
 mod prepared;
+#[path = "ready_pose.rs"]
+mod ready_pose;
 #[path = "sticking.rs"]
 mod sticking;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v10";
+#[path = "tool_pair_path.rs"]
+mod tool_pair_path;
+#[path = "motion_transfer.rs"]
+mod transfer;
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v11";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -47,6 +56,21 @@ fn lerp(a: Vec3, b: Vec3, t: f64) -> Vec3 {
 fn smooth(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+
+fn pose_hands(pose: &[f32]) -> [crate::rig::HandSolution; 2] {
+    std::array::from_fn(|limb| {
+        let at = limb * 12;
+        let q = 57 + limb * 4;
+        let p = |i: usize| [pose[i] as f64, pose[i + 1] as f64, pose[i + 2] as f64];
+        crate::rig::HandSolution {
+            middle: p(at + 3),
+            end: p(at + 6),
+            tip: p(at + 9),
+            rotation: std::array::from_fn(|i| pose[q + i] as f64),
+            reachable: true,
+        }
+    })
 }
 
 pub fn rest_tip(limb: usize) -> Vec3 {
@@ -96,7 +120,18 @@ fn profile_contact_reachable(
     limb: usize,
     hit: &Hit,
     equipment: Option<&crate::equipment_motion::EquipmentContext>,
+    kit: &[KitPiece],
 ) -> bool {
+    if limb >= 2 {
+        if let Some(piece) = kit.iter().find(|piece| piece.id == hit.piece_id) {
+            let rotation =
+                crate::equipment::pedal_rotation(piece, profile.contact_rotations[limb], 0.);
+            let ankle = sub(hit.target, profile.offset(limb, rotation));
+            let d = distance(profile.roots[limb], ankle);
+            let [a, b] = profile.lengths[limb];
+            return d >= (a - b).abs() + 1e-5 && d <= a + b - 1e-4;
+        }
+    }
     if limb < 2 && equipment.is_some() && profile.hand_frames.is_some() {
         crate::contact_feasibility::hand_probe_fits(
             profile,
@@ -254,7 +289,15 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
                     .or_insert_with(|| {
                         let valid = profile.map_or_else(
                             || reachable(limb, hit.target),
-                            |p| profile_contact_reachable(p, limb, hit, equipment.as_deref()),
+                            |p| {
+                                profile_contact_reachable(
+                                    p,
+                                    limb,
+                                    hit,
+                                    equipment.as_deref(),
+                                    &plan.kit,
+                                )
+                            },
                         );
                         let cost = if valid && limb < 2 {
                             profile.map_or(0.0, |p| {
@@ -545,6 +588,7 @@ pub struct Motion {
     equipment: Option<std::sync::Arc<crate::equipment_motion::EquipmentContext>>,
     equipment_path: Vec<crate::equipment_motion::PathSample>,
     count_in: crate::count_in::CountInTrack,
+    ready_poses: ready_pose::ReadyPoses,
 }
 
 impl Motion {
@@ -573,6 +617,8 @@ impl Motion {
                     | "HAND_OVERRIDE_INFEASIBLE"
                     | "BODY_PATH_CLEARANCE"
                     | "EQUIPMENT_PATH_CLEARANCE"
+                    | "TOOL_EQUIPMENT_PATH_CLEARANCE"
+                    | "TOOL_PAIR_PATH_CLEARANCE"
                     | "EQUIPMENT_LAYOUT_CLEARANCE"
                     | "COUNT_IN_GESTURE_UNAVAILABLE"
                     | "POSTURE_LIMIT"
@@ -593,7 +639,17 @@ impl Motion {
             {
                 return Err("페달 타격과 키트의 고정 접촉 위치가 일치하지 않습니다.".into());
             }
-            if !profile.reachable(limb, anchor) {
+            let rotation = plan
+                .kit
+                .iter()
+                .find(|piece| piece.instrument == instrument)
+                .map_or(profile.contact_rotations[limb], |piece| {
+                    crate::equipment::pedal_rotation(piece, profile.contact_rotations[limb], 0.)
+                });
+            let ankle = sub(anchor, profile.offset(limb, rotation));
+            let [upper, lower] = profile.lengths[limb];
+            let reach = distance(profile.roots[limb], ankle);
+            if reach < (upper - lower).abs() + 1e-5 || reach > upper + lower - 1e-4 {
                 plan.diagnostics.push(Diagnostic::new(
                     "RIG_UNREACHABLE_PEDAL",
                     format!(
@@ -666,6 +722,7 @@ impl Motion {
                                             limb,
                                             hit,
                                             equipment.as_deref(),
+                                            &plan.kit,
                                         )
                                     })
                             },
@@ -689,6 +746,8 @@ impl Motion {
                 limbs[limb].push(index);
             }
         }
+        let ready_poses =
+            ready_pose::ReadyPoses::for_plan(&plan, &limbs, profile.as_ref(), equipment.as_deref());
         let cue_profile = profile.clone().unwrap_or_else(RigProfile::primitive);
         let count_in = crate::count_in::CountInTrack::prepare(&plan, &cue_profile);
         crate::contact::append_count_in_events(&mut plan, &count_in.cues);
@@ -701,6 +760,7 @@ impl Motion {
             equipment,
             equipment_path: Vec::new(),
             count_in,
+            ready_poses,
         };
         if let Some((body_turns, hand_swivels, equipment_path)) = tracks {
             motion.body_turns = body_turns;
@@ -765,6 +825,7 @@ impl Motion {
                 );
             }
         }
+        motion.prepare_tool_pair_path();
         if let Some(profile) = &motion.profile {
             if profile.hand_frames.is_some() {
                 let make_input = |time| {
@@ -778,6 +839,7 @@ impl Motion {
                         intended_pieces: std::array::from_fn(|limb| {
                             motion.contact_piece_at(limb, time).map(str::to_owned)
                         }),
+                        close_tool_approach: motion.count_in.is_active(time),
                         intended_stick_contact: motion
                             .count_in
                             .sample(time, samples.map(|s| s.0), samples.map(|s| -s.1))
@@ -803,6 +865,7 @@ impl Motion {
             .diagnostics
             .extend(motion.count_in.diagnostics.clone());
         motion.inspect_equipment_path();
+        motion.inspect_posture_path();
         // Assignment/reach success does not certify collision-free motion.
         // Aggregate remaining actual impact-pose proxy failures without changing
         // source notes or flooding the plan with one warning per mesh segment.
@@ -816,24 +879,11 @@ impl Motion {
                     .map(|h| h.time)
                     .collect();
                 times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
-                let (mut failures, mut worst, mut posture_failures) = (0usize, 0.0f64, 0usize);
+                let (mut failures, mut worst) = (0usize, 0.0f64);
                 for time in times {
                     let pose = motion.evaluate_rig(time);
                     let p = profile.turned(crate::body_motion::at(&motion.body_turns, time));
                     let check = crate::clearance::inspect(&p, &pose);
-                    if (0..2).any(|limb| {
-                        let point = |at: usize| std::array::from_fn(|i| pose[at + i] as f64);
-                        let hand = crate::rig::HandSolution {
-                            middle: point(limb * 12 + 3),
-                            end: point(limb * 12 + 6),
-                            tip: point(limb * 12 + 9),
-                            rotation: std::array::from_fn(|i| pose[57 + limb * 4 + i] as f64),
-                            reachable: true,
-                        };
-                        !crate::posture::anatomical(&p, limb, hand.tip, &hand)
-                    }) {
-                        posture_failures += 1;
-                    }
                     let minimum = check
                         .torso_clearance_meters
                         .min(check.arm_clearance_meters)
@@ -847,41 +897,94 @@ impl Motion {
                 if failures > 0 {
                     motion.plan.diagnostics.push(Diagnostic::new("BODY_PATH_CLEARANCE",format!("타격 시각 {failures}곳에서 신체·스틱 대리 형상 겹침이 남았습니다(최대 {:.1} mm). 배치 완료와 별도로 연주 경로를 확인하세요.",worst*1000.0)));
                 }
-                if posture_failures > 0 {
-                    motion.plan.diagnostics.push(Diagnostic::new("POSTURE_LIMIT", format!("{posture_failures} hand-impact poses exceed the common posture limits. Contact timing is preserved; adjust the layout and inspect the arms.")));
-                }
             }
         }
         Ok(motion)
     }
 
-    fn pose_equipment_clearance(&self, time: f64, pose: &[f32]) -> Option<f64> {
+    fn pose_equipment_clearance(
+        &self,
+        time: f64,
+        pose: &[f32],
+    ) -> Option<crate::equipment_motion::HandClearance> {
         let ctx = self.equipment.as_ref()?;
         let profile = self
             .profile
             .as_ref()?
             .turned(crate::body_motion::at(&self.body_turns, time));
-        let mut minimum = f64::INFINITY;
-        for limb in 0..2 {
-            let offset = limb * 12;
-            let rotation = 57 + limb * 4;
-            let point = |at: usize| [pose[at] as f64, pose[at + 1] as f64, pose[at + 2] as f64];
-            let hand = crate::rig::HandSolution {
-                middle: point(offset + 3),
-                end: point(offset + 6),
-                tip: point(offset + 9),
-                rotation: std::array::from_fn(|i| pose[rotation + i] as f64),
-                reachable: true,
-            };
-            minimum = minimum.min(crate::equipment_motion::hand_clearance(
+        let mut minimum = crate::equipment_motion::HandClearance {
+            tool: f64::INFINITY,
+            physical_tool: f64::INFINITY,
+            body: f64::INFINITY,
+        };
+        for (limb, hand) in pose_hands(pose).iter().enumerate() {
+            let clear = crate::equipment_motion::assess_hand(
                 &profile,
                 limb,
-                &hand,
+                hand,
                 ctx,
                 self.contact_piece_at(limb, time),
-            ));
+            );
+            minimum.tool = minimum.tool.min(clear.tool);
+            minimum.physical_tool = minimum.physical_tool.min(clear.physical_tool);
+            minimum.body = minimum.body.min(clear.body);
         }
         Some(minimum)
+    }
+    fn pose_tool_pair_clearance(&self, time: f64, pose: &[f32]) -> Option<f64> {
+        let profile = self
+            .profile
+            .as_ref()?
+            .turned(crate::body_motion::at(&self.body_turns, time));
+        let hands = pose_hands(pose);
+        let samples = [self.stroke_at(0, time), self.stroke_at(1, time)];
+        let intended = self
+            .count_in
+            .sample(time, samples.map(|s| s.0), samples.map(|s| -s.1))
+            .intended_stick_contact;
+        Some(crate::count_in::contact_tool_clearance(
+            &profile, &hands[0], &hands[1], intended,
+        ))
+    }
+    /// Inspect the final evaluated poses at the route's interior checks as well
+    /// as cue/hand controls. With no equipment track, hand controls still retain
+    /// the posture checks, including every assigned hand-impact time.
+    fn inspection_times(&self) -> Vec<f64> {
+        let mut times = tool_pair_path::check_times(&self.equipment_path);
+        times.extend(crate::count_in::control_times_for_plan(&self.plan));
+        times.extend(self.hand_swivels.iter().map(|sample| sample.time));
+        times.extend(
+            self.plan
+                .hits
+                .iter()
+                .filter_map(|hit| hit.limb.filter(|limb| *limb < 2).map(|_| hit.time)),
+        );
+        times.sort_by(f64::total_cmp);
+        times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        times
+    }
+    fn inspect_posture_path(&mut self) {
+        let Some(profile) = self.profile.as_ref().filter(|p| p.hand_frames.is_some()) else {
+            return;
+        };
+        let (mut failures, mut first) = (0usize, None);
+        for time in self.inspection_times() {
+            let turned = profile.turned(crate::body_motion::at(&self.body_turns, time));
+            let hands = pose_hands(&self.evaluate_rig(time));
+            if hands
+                .iter()
+                .enumerate()
+                .any(|(limb, hand)| !crate::posture::anatomical(&turned, limb, hand.tip, hand))
+            {
+                failures += 1;
+                first.get_or_insert(time.max(0.));
+            }
+        }
+        if failures > 0 {
+            let mut diagnostic = Diagnostic::new("POSTURE_LIMIT", format!("{failures} sampled hand poses exceed the common posture limits during preparation, contact, recovery or rest. Original contact times are preserved; inspect the marked interval."));
+            diagnostic.time = first;
+            self.plan.diagnostics.push(diagnostic);
+        }
     }
     fn inspect_equipment_path(&mut self) {
         let Some(ctx) = &self.equipment else {
@@ -890,19 +993,52 @@ impl Motion {
         if !ctx.geometry.unresolved_piece_ids.is_empty() {
             self.plan.diagnostics.push(Diagnostic::new("EQUIPMENT_LAYOUT_CLEARANCE",format!("악기·받침대 배치 확인 필요: {}. 표시된 배치는 충돌 없음이 확인되지 않았습니다.",ctx.geometry.unresolved_piece_ids.join(", "))));
         }
-        let mut times: Vec<_> = self.equipment_path.iter().map(|s| s.time).collect();
-        times.extend(crate::count_in::control_times_for_plan(&self.plan));
-        times.sort_by(f64::total_cmp);
-        times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
+        let times = self.inspection_times();
         let (mut failures, mut worst, mut first) = (0, 0.0f64, None);
+        let (mut tool_failures, mut tool_worst, mut tool_first) = (0, 0.0f64, None);
+        let (mut pair_failures, mut pair_worst, mut pair_first) = (0, 0.0f64, None);
         for time in times {
             let pose = self.evaluate_rig(time);
             if let Some(clear) = self.pose_equipment_clearance(time, &pose) {
-                if clear < -0.00001 {
+                if clear.minimum() < -0.00001 {
                     failures += 1;
-                    worst = worst.max(-clear);
+                    worst = worst.max(-clear.minimum());
                     first.get_or_insert(time.max(0.));
                 }
+                if clear.physical_tool < -0.00001 {
+                    tool_failures += 1;
+                    tool_worst = tool_worst.max(-clear.physical_tool);
+                    tool_first.get_or_insert(time.max(0.));
+                }
+            }
+            if let Some(clear) = self.pose_tool_pair_clearance(time, &pose) {
+                if clear < -0.00001 {
+                    pair_failures += 1;
+                    pair_worst = pair_worst.max(-clear);
+                    pair_first.get_or_insert(time.max(0.));
+                }
+            }
+        }
+        for (code, count, worst, first, obstacle) in [
+            (
+                "TOOL_EQUIPMENT_PATH_CLEARANCE",
+                tool_failures,
+                tool_worst,
+                tool_first,
+                "drum equipment",
+            ),
+            (
+                "TOOL_PAIR_PATH_CLEARANCE",
+                pair_failures,
+                pair_worst,
+                pair_first,
+                "the other stick",
+            ),
+        ] {
+            if count > 0 {
+                let mut d = Diagnostic::new(code, format!("{count} sampled whole-stick paths intersect {obstacle} (minimum signed proxy clearance {:.1} mm). Original contact times are preserved; inspect the marked interval.", -worst * 1000.));
+                d.time = first;
+                self.plan.diagnostics.push(d);
             }
         }
         if failures > 0 {
@@ -916,8 +1052,7 @@ impl Motion {
             return Ok(());
         };
         let times = prepared::equipment_times(&self.plan)?;
-        let mut track = Vec::with_capacity(times.len());
-        for time in times {
+        let make_sample = |time| {
             let mut lift = [0.; 2];
             let mut pitch = [0.; 2];
             for limb in 0..2 {
@@ -935,33 +1070,139 @@ impl Motion {
                     self.contact_piece_at(limb, time),
                 );
             }
-            track.push(crate::equipment_motion::PathSample { time, lift, pitch });
-        }
-        crate::equipment_motion::limit_rates(
-            &mut track,
-            &std::array::from_fn(|limb| {
-                self.limbs[limb]
-                    .iter()
-                    .map(|id| self.plan.hits[*id].time)
-                    .collect()
-            }),
-        );
-        for limb in 0..2 {
-            let hits: Vec<_> = self.limbs[limb]
+            crate::equipment_motion::PathSample { time, lift, pitch }
+        };
+        let impacts = std::array::from_fn(|limb| {
+            self.limbs[limb]
+                .iter()
+                .map(|id| self.plan.hits[*id].time)
+                .collect()
+        });
+        let hits: [Vec<_>; 2] = std::array::from_fn(|limb| {
+            self.limbs[limb]
                 .iter()
                 .map(|&i| &self.plan.hits[i])
-                .collect();
-            let unsupported = crate::contact_feasibility::preserve_impact_pitches(
-                &mut track, profile, ctx, &hits, limb,
-            );
-            if let Some(&time) = unsupported.first() {
-                let mut diagnostic = Diagnostic::new("CONTACT_PITCH_LIMIT", format!("{} impact pitches have no safe posture/equipment witness within the bounded pitch-rate schedule. Original contact times are preserved; inspect the marked interval.", unsupported.len()));
+                .collect()
+        });
+        let mut proposed: Vec<_> = times.into_iter().map(make_sample).collect();
+        let mut track;
+        let mut unsupported = [Vec::new(), Vec::new()];
+        // A safe knot does not certify the interpolated shaft. Refine only
+        // failing interiors, retaining exact source times and the same rate,
+        // geometry and total sample budgets. This is bounded sampled validation,
+        // not a continuous collision certificate.
+        for refinement in 0..=3 {
+            track = proposed.clone();
+            crate::equipment_motion::limit_rates(&mut track, &impacts);
+            for limb in 0..2 {
+                unsupported[limb] = crate::contact_feasibility::preserve_impact_pitches(
+                    &mut track,
+                    profile,
+                    ctx,
+                    &hits[limb],
+                    limb,
+                );
+            }
+            if refinement == 3 {
+                self.equipment_path = track;
+                break;
+            }
+            let mut additional = Vec::new();
+            for window in track.windows(2) {
+                if window[1].time - window[0].time < 1.0 / 240.0 {
+                    continue;
+                }
+                let time = (window[0].time + window[1].time) * 0.5;
+                let unsafe_interpolation = (0..2).any(|limb| {
+                    let (mut tip, pitch) = self.raw_stroke_at(limb, time);
+                    let (lift, offset) = crate::equipment_motion::sample(&track, time, limb);
+                    tip[1] += lift;
+                    crate::contact_feasibility::at_pitch(
+                        profile,
+                        limb,
+                        tip,
+                        -pitch + offset,
+                        Some(ctx),
+                        self.contact_piece_at(limb, time),
+                    )
+                    .is_none()
+                });
+                if unsafe_interpolation {
+                    additional.push(time);
+                }
+            }
+            if additional.is_empty() {
+                self.equipment_path = track;
+                break;
+            }
+            let available = prepared::MAX_EQUIPMENT_SAMPLES.saturating_sub(proposed.len());
+            if available == 0 {
+                self.equipment_path = track;
+                break;
+            }
+            proposed.extend(additional.into_iter().take(available).map(make_sample));
+            proposed.sort_by(|a, b| a.time.total_cmp(&b.time));
+        }
+        for times in unsupported {
+            if let Some(&time) = times.first() {
+                let mut diagnostic = Diagnostic::new("CONTACT_PITCH_LIMIT", format!("{} impact pitches have no safe posture/equipment witness within the bounded pitch-rate schedule. Original contact times are preserved; inspect the marked interval.", times.len()));
                 diagnostic.time = Some(time);
                 self.plan.diagnostics.push(diagnostic);
             }
         }
-        self.equipment_path = track;
         Ok(())
+    }
+    fn prepare_tool_pair_path(&mut self) {
+        let (Some(profile), Some(ctx)) = (&self.profile, &self.equipment) else {
+            return;
+        };
+        if profile.hand_frames.is_none() || self.equipment_path.is_empty() {
+            return;
+        }
+        let times = tool_pair_path::check_times(&self.equipment_path);
+        let inputs: Vec<_> = times
+            .into_iter()
+            .map(|time| {
+                let samples = [self.stroke_at(0, time), self.stroke_at(1, time)];
+                let weight = self.count_in.base_weight(time);
+                let mut tips = samples.map(|s| s.0);
+                let mut pitches = samples.map(|s| -s.1);
+                for limb in 0..2 {
+                    let (lift, pitch) =
+                        crate::equipment_motion::sample(&self.equipment_path, time, limb);
+                    tips[limb][1] -= lift * weight;
+                    pitches[limb] -= pitch * weight;
+                }
+                tool_pair_path::Input {
+                    time,
+                    profile: profile.turned(crate::body_motion::at(&self.body_turns, time)),
+                    tips,
+                    pitches,
+                    equipment: ctx.clone(),
+                    weight,
+                    intended: std::array::from_fn(|limb| {
+                        self.contact_piece_at(limb, time).map(str::to_owned)
+                    }),
+                    close_tool_approach: self.count_in.is_active(time),
+                    intentional_contact: self
+                        .count_in
+                        .sample(time, samples.map(|s| s.0), samples.map(|s| -s.1))
+                        .intended_stick_contact,
+                }
+            })
+            .collect();
+        let locks: Vec<_> = self
+            .equipment_path
+            .iter()
+            .map(|sample| {
+                std::array::from_fn(|limb| {
+                    self.limbs[limb]
+                        .binary_search_by(|id| self.plan.hits[*id].time.total_cmp(&sample.time))
+                        .is_ok()
+                })
+            })
+            .collect();
+        tool_pair_path::route(&mut self.equipment_path, &inputs, &locks);
     }
     fn stroke_at(&self, limb: usize, time: f64) -> (Vec3, f64) {
         if limb >= 2 {
@@ -997,73 +1238,61 @@ impl Motion {
         let mut rest_piece = None;
         let rest = self.profile.as_ref().map_or_else(
             || rest_tip(limb),
-            |p| {
-                let home = if limb == 0 { "snare" } else { "hihat" };
-                let same_piece = previous.zip(next).filter(|(a, b)| a.piece_id == b.piece_id);
-                let target = same_piece.map(|(hit, _)| hit.target).or_else(|| {
-                    self.plan
-                        .kit
-                        .iter()
-                        .find(|piece| piece.id == home)
-                        .map(|piece| {
-                            crate::contact::target(
-                                piece,
-                                if limb == 0 { "center" } else { "closed" },
-                                std::array::from_fn(|axis| {
-                                    (p.roots[0][axis] + p.roots[1][axis]) * 0.5
-                                }),
-                            )
-                        })
-                });
+            |profile| {
                 if limb < 2 {
-                    if let Some(target) = target {
-                        let ready = add(target, [0.0, 0.035, 0.0]);
-                        let intended = same_piece.map_or(home, |(hit, _)| hit.piece_id.as_str());
-                        let reachable = if p.hand_frames.is_some() && self.equipment.is_some() {
-                            crate::contact_feasibility::candidate(
-                                p,
-                                limb,
-                                ready,
-                                0.,
-                                self.equipment.as_deref(),
-                                Some(intended),
-                            )
-                            .is_some()
-                        } else {
-                            p.reachable(limb, ready)
-                        };
-                        if reachable {
-                            rest_piece =
-                                Some(same_piece.map_or(home, |(hit, _)| hit.piece_id.as_str()));
-                            return ready;
+                    let home = if limb == 0 { "snare" } else { "hihat" };
+                    let same_piece = previous.zip(next).filter(|(a, b)| a.piece_id == b.piece_id);
+                    let ready = same_piece.map_or_else(
+                        || self.ready_poses.home(limb),
+                        |(hit, _)| self.ready_poses.repeated(limb, hit),
+                    );
+                    if let Some(ready) = ready {
+                        rest_piece =
+                            Some(same_piece.map_or(home, |(hit, _)| hit.piece_id.as_str()));
+                        return ready;
+                    }
+                }
+                profile.rest_tips[limb]
+            },
+        );
+        let transfer =
+            |a: Vec3, b: Vec3, phase: f64, lift: f64, same_target: bool, duration: f64| {
+                let weight = smooth(phase.clamp(0.0, 1.0));
+                let mut tip = lerp(a, b, weight);
+                tip[1] += if limb < 2 {
+                    transfer::lift(
+                        a,
+                        b,
+                        phase,
+                        lift,
+                        duration,
+                        same_target,
+                        self.equipment
+                            .as_ref()
+                            .map_or(&[], |ctx| ctx.geometry.bodies.as_slice()),
+                    )
+                } else {
+                    lift
+                };
+                if limb < 2 {
+                    if let Some(profile) = &self.profile {
+                        // Straight chords across the kit can fold a long forearm/tool
+                        // toward the chest. Preserve interpolated shoulder distance
+                        // while moving around the front of the body instead. Apply
+                        // this after the lift: an upward preparation must not fold
+                        // the effective forearm/tool link back toward the shoulder.
+                        let root = profile.roots[limb];
+                        let radius =
+                            distance(root, a) * (1.0 - weight) + distance(root, b) * weight;
+                        let direction = sub(tip, root);
+                        let actual = distance(tip, root);
+                        if actual > 1e-6 && radius > actual {
+                            tip = add(root, mul(direction, radius / actual));
                         }
                     }
                 }
-                p.rest_tips[limb]
-            },
-        );
-        let transfer = |a: Vec3, b: Vec3, phase: f64, lift: f64| {
-            let weight = smooth(phase.clamp(0.0, 1.0));
-            let mut tip = lerp(a, b, weight);
-            tip[1] += lift;
-            if limb < 2 {
-                if let Some(profile) = &self.profile {
-                    // Straight chords across the kit can fold a long forearm/tool
-                    // toward the chest. Preserve interpolated shoulder distance
-                    // while moving around the front of the body instead. Apply
-                    // this after the lift: an upward preparation must not fold
-                    // the effective forearm/tool link back toward the shoulder.
-                    let root = profile.roots[limb];
-                    let radius = distance(root, a) * (1.0 - weight) + distance(root, b) * weight;
-                    let direction = sub(tip, root);
-                    let actual = distance(tip, root);
-                    if actual > 1e-6 && radius > actual {
-                        tip = add(root, mul(direction, radius / actual));
-                    }
-                }
-            }
-            tip
-        };
+                tip
+            };
         let foot = limb >= 2;
         let max_height = if foot { 0.045 } else { 0.11 };
         let stroke_pitch = |velocity: u8, interval: f64| {
@@ -1096,7 +1325,25 @@ impl Motion {
                     * (0.35 + 0.65 * next.velocity as f64 / 127.0)
                     * ((next.time - prev.time) / 0.15).min(1.0);
                 let envelope = sticking::stroke_envelope(phase, prev.velocity, next.velocity);
-                let tip = transfer(prev.target, next.target, phase, envelope * height);
+                let mut tip = transfer(
+                    prev.target,
+                    next.target,
+                    phase,
+                    envelope * height,
+                    prev.piece_id == next.piece_id,
+                    next.time - prev.time,
+                );
+                if !foot && distance(prev.target, next.target) < 1e-9 {
+                    if let Some(profile) = &self.profile {
+                        let other = 1 - limb;
+                        let side = sub(profile.roots[limb], profile.roots[other]);
+                        let width = side[0].hypot(side[2]).max(1e-9);
+                        // Rebound follows the hand's own approach lane while the
+                        // opposite hand can enter the shared contact point.
+                        tip[0] += side[0] / width * envelope * height * 0.6;
+                        tip[2] += side[2] / width * envelope * height * 0.6;
+                    }
+                }
                 (
                     tip,
                     envelope * stroke_pitch(next.velocity, next.time - prev.time),
@@ -1117,6 +1364,8 @@ impl Motion {
                         (PI * phase).sin()
                             * max_height
                             * (0.35 + 0.65 * next.velocity as f64 / 127.0),
+                        rest_piece == Some(next.piece_id.as_str()),
+                        preparation,
                     ),
                     (PI * phase).sin() * stroke_pitch(next.velocity, preparation),
                     if phase < 0.5 {
@@ -1134,6 +1383,8 @@ impl Motion {
                         rest,
                         phase,
                         (PI * phase).sin() * max_height * 0.22,
+                        rest_piece == Some(prev.piece_id.as_str()),
+                        recovery,
                     ),
                     (PI * phase).sin() * stroke_pitch(prev.velocity, recovery) * 0.35,
                     if phase < 0.5 {
@@ -1199,11 +1450,19 @@ impl Motion {
             .turned(yaw);
         let mut result = serde_json::to_value(crate::clearance::inspect(&profile, &pose))
             .expect("finite inspection");
+        if let Some(clear) = self.pose_equipment_clearance(song_time, &pose) {
+            if clear.minimum().is_finite() {
+                result["equipmentClearanceMeters"] = serde_json::json!(clear.minimum());
+            }
+            if clear.physical_tool.is_finite() {
+                result["toolEquipmentClearanceMeters"] = serde_json::json!(clear.physical_tool);
+            }
+        }
         if let Some(clear) = self
-            .pose_equipment_clearance(song_time, &pose)
+            .pose_tool_pair_clearance(song_time, &pose)
             .filter(|v| v.is_finite())
         {
-            result["equipmentClearanceMeters"] = serde_json::json!(clear);
+            result["toolPairClearanceMeters"] = serde_json::json!(clear);
         }
         let samples = [self.stroke_at(0, song_time), self.stroke_at(1, song_time)];
         let intended = self
@@ -1212,18 +1471,7 @@ impl Motion {
             .intended_stick_contact;
         result["intentionalStickContact"] = serde_json::json!(intended);
         if intended {
-            let hands: [crate::rig::HandSolution; 2] = std::array::from_fn(|limb| {
-                let at = limb * 12;
-                let q = 57 + limb * 4;
-                let p = |i: usize| [pose[i] as f64, pose[i + 1] as f64, pose[i + 2] as f64];
-                crate::rig::HandSolution {
-                    middle: p(at + 3),
-                    end: p(at + 6),
-                    tip: p(at + 9),
-                    rotation: std::array::from_fn(|i| pose[q + i] as f64),
-                    reachable: true,
-                }
-            });
+            let hands = pose_hands(&pose);
             let pair =
                 crate::count_in::contact_pair_clearance(&profile, &hands[0], &hands[1], true);
             result["stickClearanceMeters"] = serde_json::json!(pair.sticks);
@@ -1276,14 +1524,30 @@ impl Motion {
                         continue;
                     }
                 }
-                *rotation = pitch_rotation(
-                    profile.contact_rotations[limb],
-                    if limb < 2 {
-                        -pitch
-                    } else {
-                        self.pedal_pitch_at(limb, time)
-                    },
-                );
+                let pedal = self
+                    .plan
+                    .kit
+                    .iter()
+                    .find(|piece| piece.id == if limb == 2 { "pedalHat" } else { "kick" });
+                let tool_pitch = if limb < 2 {
+                    -pitch
+                } else {
+                    self.pedal_pitch_at(limb, time)
+                };
+                *rotation = if limb >= 2 {
+                    pedal.map_or_else(
+                        || pitch_rotation(profile.contact_rotations[limb], tool_pitch),
+                        |piece| {
+                            crate::equipment::pedal_rotation(
+                                piece,
+                                profile.contact_rotations[limb],
+                                tool_pitch,
+                            )
+                        },
+                    )
+                } else {
+                    pitch_rotation(profile.contact_rotations[limb], tool_pitch)
+                };
                 let offset = profile.offset(limb, *rotation);
                 let root = profile.roots[limb];
                 let desired_end = if limb < 2 {

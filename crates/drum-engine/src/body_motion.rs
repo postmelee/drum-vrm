@@ -195,7 +195,9 @@ mod tests {
     fn facing_curve_keeps_outer_reach_contacts_at_and_between_sample_knots() {
         for (with_frames, tick, target) in [
             (false, 0u8, [-1.079, 1.26, 0.2]),
-            (true, 30u8, [-1.384, 1.35, -0.1]),
+            // Near the outer wrist annulus with the target-oriented shaft
+            // inclination; the former compound-link boundary is not a pose.
+            (true, 30u8, [-1.374, 1.35, -0.1]),
         ] {
             let track = [tick, 0x90, 38, 100, 120, 0xff, 0x2f, 0];
             let mut midi = b"MThd\0\0\0\x06\0\0\0\x01\x01\xe0MTrk".to_vec();

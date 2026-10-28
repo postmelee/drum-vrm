@@ -94,25 +94,23 @@ pub fn contact_pair_clearance(
     if !intended || distance(left.tip, right.tip) > CONTACT_TOLERANCE {
         return pair;
     }
-    let hands = [left, right];
-    let full: [(Vec3, Vec3); 2] =
-        std::array::from_fn(|limb| equipment_motion::stick_segment(profile, limb, hands[limb]));
-    let segments: [(Vec3, Vec3); 2] = std::array::from_fn(|limb| {
-        let (butt, tip) = equipment_motion::stick_segment(profile, limb, hands[limb]);
-        let length = distance(butt, tip).max(1e-9);
-        (
-            butt,
-            add(
-                tip,
-                mul(sub(butt, tip), TIP_CONTACT_REGION.min(length) / length),
-            ),
-        )
-    });
-    pair.sticks =
-        clearance::segment_distance(segments[0].0, segments[0].1, full[1].0, full[1].1).min(
-            clearance::segment_distance(full[0].0, full[0].1, segments[1].0, segments[1].1),
-        ) - 0.012;
+    pair.sticks = contact_tool_clearance(profile, left, right, intended);
     pair
+}
+/// Only an explicit close tip-to-tip cue exempts the small terminal regions;
+/// body proxy overlaps never exempt the remaining shafts.
+pub fn contact_tool_clearance(
+    profile: &RigProfile,
+    left: &HandSolution,
+    right: &HandSolution,
+    intended: bool,
+) -> f64 {
+    if !intended || distance(left.tip, right.tip) > CONTACT_TOLERANCE {
+        return clearance::tool_pair_clearance(profile, left, right);
+    }
+    clearance::tool_pair_clearance_with_trim(profile, left, right, [TIP_CONTACT_REGION, 0.]).min(
+        clearance::tool_pair_clearance_with_trim(profile, left, right, [0., TIP_CONTACT_REGION]),
+    )
 }
 
 fn witness(
@@ -126,21 +124,49 @@ fn witness(
         posture::hand_candidates(profile, i, tips[i], pitches[i])
             .filter(|hand| {
                 equipment.is_none_or(|ctx| {
-                    equipment_motion::hand_clearance(profile, i, hand, ctx, None) >= posture::MARGIN
+                    equipment_motion::tool_clearance(profile, i, hand, ctx, None) >= posture::MARGIN
                 })
             })
             .collect()
     });
     candidates[0].iter().any(|left| {
         candidates[1].iter().any(|right| {
-            let clear = if contact {
-                contact_pair_clearance(profile, left, right, true).minimum()
-            } else {
-                clearance::pair_clearance(profile, left, right).minimum()
-            };
-            clear >= posture::MARGIN
+            let clear = contact_tool_clearance(profile, left, right, contact);
+            // A deliberate approach can be closer than the free-space margin;
+            // penetration still fails. At contact the untrimmed shafts retain
+            // the ordinary margin outside the already-declared tip region.
+            clear >= if contact { posture::MARGIN } else { 0. }
         })
     })
+}
+
+/// The finite terminal cone needs an angular opening, not only coincident tips.
+/// Retain the measured horizontal V and add only its missing vertical opening.
+fn cue_pitches(profile: &RigProfile, contact: Vec3, pitch: f64) -> Option<[f64; 2]> {
+    let cone_angle = 2.
+        * crate::stick_geometry::profile()
+            .terminal
+            .iter()
+            .filter(|p| p[0] > 0.)
+            .map(|p| (p[1] / p[0]).atan())
+            .fold(0_f64, f64::max)
+        + (posture::MARGIN / TIP_CONTACT_REGION).atan();
+    let directions = profile.roots[..2]
+        .iter()
+        .map(|root| {
+            let v = sub(contact, *root);
+            let n = v[0].hypot(v[2]).max(1e-9);
+            [v[0] / n, 0., v[2] / n]
+        })
+        .collect::<Vec<_>>();
+    let horizontal = directions[0][0] * directions[1][0] + directions[0][2] * directions[1][2];
+    let base = profile.solve_hand_with_swivel(0, contact, pitch, 0.)?;
+    let axis = crate::rig::rotate(base.rotation, profile.tip_offsets[0]);
+    let incline = (-axis[1] / distance(axis, [0.; 3])).clamp(-1., 1.).asin();
+    let cosine = (2. * cone_angle.cos() - (horizontal - 1.) * (2. * incline).cos())
+        / (horizontal + 1.).max(1e-9);
+    let half_angle = 0.5 * cosine.clamp(-1., 1.).acos();
+    Some([pitch - half_angle, pitch + half_angle])
 }
 
 impl CountInTrack {
@@ -207,7 +233,9 @@ impl CountInTrack {
                     [0.0, -arm * down, 0.0],
                 );
                 for pitch in [0.0, -0.15, 0.15, -0.30] {
-                    let pitches = [pitch; 2];
+                    let Some(pitches) = cue_pitches(profile, contact, pitch) else {
+                        continue;
+                    };
                     let opening = [
                         add(mul(right, -0.045), [0.0, 0.045, 0.0]),
                         add(mul(right, 0.045), [0.0, 0.045, 0.0]),
@@ -217,7 +245,8 @@ impl CountInTrack {
                     }
                     // Preparation/rebound witnesses are sampled estimates, not
                     // a proof of skin or continuous swept-volume clearance.
-                    if [0.4, 0.7, 1.0].iter().all(|&phase| {
+                    if (1..=40).all(|step| {
+                        let phase = step as f64 / 40.;
                         witness(
                             profile,
                             equipment.as_deref(),
@@ -283,6 +312,22 @@ impl CountInTrack {
             .get(at)
             .is_some_and(|p| time > p.start && time < p.end)
     }
+    /// The remaining contribution of the musical/ready path during cue entry
+    /// and exit. A full cue has zero weight, so planning that underlying path
+    /// cannot move its exact tip-to-tip contact.
+    pub fn base_weight(&self, time: f64) -> f64 {
+        if !time.is_finite() {
+            return 1.;
+        }
+        let at = self.phrases.partition_point(|p| p.end < time);
+        self.phrases
+            .get(at)
+            .filter(|p| time > p.start && time < p.end)
+            .map_or(1., |p| {
+                1. - smooth((time - p.start) / (WINDOW * 0.5))
+                    .min(smooth((p.end - time) / (WINDOW * 0.5)))
+            })
+    }
     pub fn sample(&self, time: f64, tips: [Vec3; 2], pitches: [f64; 2]) -> CountInSample {
         let mut sample = CountInSample {
             tips,
@@ -301,8 +346,7 @@ impl CountInTrack {
         else {
             return sample;
         };
-        let blend = smooth((time - phrase.start) / (WINDOW * 0.5))
-            .min(smooth((phrase.end - time) / (WINDOW * 0.5)));
+        let blend = 1. - self.base_weight(time);
         let next = phrase.times.partition_point(|t| *t < time);
         let previous = next.checked_sub(1).map(|i| phrase.times[i]);
         let following = phrase.times.get(next).copied();
@@ -381,6 +425,61 @@ mod tests {
             });
         }
         plan
+    }
+    #[test]
+    fn tapered_cue_is_clear_through_dense_approach_and_rebound() {
+        let p = profile();
+        let plan = plan();
+        let track = CountInTrack::prepare(&plan, &p);
+        assert_eq!(track.cues.len(), 3);
+        assert!(track.pitches[0] < track.pitches[1]);
+        let ready = track.opening.map(|v| add(track.contact, v));
+        // Include the entry, every near-contact sample, and final exit. This
+        // catches cone overlap concealed by an exact point-tip contact check.
+        for step in 0..=1200 {
+            let time = 0.72 + step as f64 * 0.001;
+            let sample = track.sample(time, ready, track.pitches);
+            let hands: [HandSolution; 2] = std::array::from_fn(|limb| {
+                posture::hand_candidates(&p, limb, sample.tips[limb], sample.pitches[limb])
+                    .next()
+                    .expect("cue stays within authored anatomical workspace")
+            });
+            let gap =
+                contact_tool_clearance(&p, &hands[0], &hands[1], sample.intended_stick_contact);
+            assert!(gap >= -1e-9, "time={time} gap={gap}");
+        }
+    }
+    #[test]
+    fn cue_base_weight_matches_entry_exit_without_moving_cue_contacts() {
+        let p = profile();
+        let track = CountInTrack::prepare(&plan(), &p);
+        assert!(!track.cues.is_empty());
+        let tips = [p.rest_tips[0], p.rest_tips[1]];
+        let offset = [[0.01, 0.025, -0.01], [-0.02, 0.03, 0.01]];
+        let pitch_delta = [0.1, -0.2];
+        for time in [0.7, 0.8, 0.85, 0.95, 1.0, 1.1, 1.7, 1.82, 1.9] {
+            let a = track.sample(time, tips, [0.; 2]);
+            let b = track.sample(
+                time,
+                std::array::from_fn(|i| add(tips[i], offset[i])),
+                pitch_delta,
+            );
+            let weight = track.base_weight(time);
+            for limb in 0..2 {
+                assert!(
+                    distance(sub(b.tips[limb], a.tips[limb]), mul(offset[limb], weight)) < 1e-12
+                );
+                assert!(
+                    (b.pitches[limb] - a.pitches[limb] - pitch_delta[limb] * weight).abs() < 1e-12
+                );
+            }
+        }
+        for cue in &track.cues {
+            assert_eq!(track.base_weight(cue.time), 0.);
+            let sample = track.sample(cue.time, tips, pitch_delta);
+            assert_eq!(sample.tips, [cue.contact_point; 2]);
+            assert!(sample.intended_stick_contact);
+        }
     }
     #[test]
     fn explicit_cues_contact_without_mutating_source_or_creating_hits() {

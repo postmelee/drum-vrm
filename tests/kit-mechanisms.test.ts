@@ -8,10 +8,35 @@ import { createPieceModel, disposeModel, resolvePieceVisual } from '../src/model
 import { measureInstrumentGeometry } from '../src/instrument-body';
 import { DEFAULT_KIT } from '../src/scene';
 import type { Hit } from '../src/types';
+import { pedalToolRotation } from '../src/pedal-frame';
 
 beforeAll(() => initSync({ module: readFileSync(new URL('../src/wasm/drum_engine_bg.wasm', import.meta.url)) }));
 
 describe('deterministic instrument mechanisms', () => {
+  it('keeps the yawed rendered footboard top under the shared sole contact through seek',()=>{
+    const kit=structuredClone(DEFAULT_KIT), pedal=kit.find(piece=>piece.id==='pedalHat')!;
+    pedal.pedalForward=[-.6,0,.8];
+    const geometry=solveKitGeometry(kit), hardware=new KitHardwareLayer();hardware.setGeometry(kit,geometry);
+    const mechanism=new KitMechanismLayer(hardware.root,[],geometry);
+    const frame=geometry.mechanisms!.find(frame=>frame.kind==='hihat')!;
+    const board=hardware.root.getObjectByName('pedalContactSurface')!;
+    const pivot=hardware.root.getObjectByName('hihat/FootboardPivot')!;
+    const soleInBoard=new THREE.Vector3(0,.012,.02), hinge=new THREE.Vector3(...frame.pivot);
+    const expected=[];
+    for (const pitch of [0,-.18,-.09,0]) {
+      const q=pedalToolRotation(pedal,[0,0,0,1],pitch), pose=new Float32Array(77);pose.set(q.toArray(),65);
+      expect(pedalPitchFromPose(pose,2)).toBeCloseTo(pitch,7);
+      mechanism.apply(0,0,pose); hardware.root.updateMatrixWorld(true);
+      const actual=hardware.root.worldToLocal(board.localToWorld(soleInBoard.clone()));
+      const target=hinge.clone().add(new THREE.Vector3(0,.012,.13).applyQuaternion(q));
+      expect(actual.distanceTo(target)).toBeLessThan(1e-8);
+      expect(pivot.quaternion.angleTo(q)).toBeLessThan(1e-7);
+      expected.push(actual.toArray());
+    }
+    expect(expected[3]).toEqual(expected[0]);
+    expect(new THREE.Vector3(...expected[0]).distanceTo(new THREE.Vector3(...pedal.position))).toBeLessThan(1e-8);
+    hardware.dispose();
+  });
   it('hits at immutable kick times with continuous preparation/recovery and seek-order independence', () => {
     const times = [1, 1.12, 2], queries = [.3,.94,1,1.04,1.12,1.3,2,3];
     const expected = queries.map(time => kickMechanismAmount(times,time));

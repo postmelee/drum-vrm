@@ -6,14 +6,38 @@ Fit the performer and kit by adjusting the seat and instrument contacts, then cu
 
 ## Fit a character to the kit
 
-1. Load a VRM 1.0 character through **Character**, or use the built-in skeleton. See the [model guide](models.md) for formats and limits. Both use measured bone lengths and the same solver; the app does not select a different animation implementation by avatar name.
-2. New characters automatically prepare a pedal-aware seat and a body-fit kit candidate. A complete candidate is applied and the current MIDI is replanned. The completion message describes fitting, not guaranteed skin/clothing clearance. Inspect persistent warnings in **Analysis**.
+1. Load a supported VRM or humanoid FBX character through **Character**, or use the built-in skeleton. See the [model guide](models.md) for formats and limits. Both use measured bone lengths and the same solver; the app does not select a different animation implementation by avatar name.
+2. New characters first try their measured posture and seat against the unchanged reference kit. Only when that cannot meet the structural, anatomical and stick-contact conditions does fitting try bounded layout or drum-shell changes. A complete candidate is applied and the current MIDI is replanned. Body/clothing overlap is an advisory warning, not an automatic reason to rearrange the kit. Inspect it in **Analysis** and in the rendered view; completion does not guarantee natural motion or skin clearance.
 3. **Automatic fit** repeats fitting; **Undo fit** restores the preceding setup. **Manual adjustment** exposes seat height **30–120 cm**, forward/back **−50–50 cm**, palm direction and default-layout reset. Positive forward moves the seated body toward the kit. **Auto-adjust seat only** changes the seat only. Reopening a saved project restores its recorded setup without automatic fitting.
 4. Open **Drums**, select a component in the view or selector, and adjust its **X/Y/Z contact position** under **Manual layout / contacts** in centimetres. X is side-to-side (**−200–200 cm**, positive toward the player’s right), Y is height and Z is forward/back (**−50–250 cm**, positive forward). Closed/open hi-hat share the cymbal position. The hi-hat pedal is adjusted separately. Kick's contact is the foot pedal, not the kick drum's front head. Pedal contact height is limited to **4–20 cm** for the current shared hardware; other target heights allow **2–250 cm**. Press **Apply target** to use the edited position.
-5. Inspect both feet at rest, then play the same MIDI and check the sticks at contact. Adjust seat and targets together until the important contacts are reachable. Seat position alone may not fit an avatar with very different arm and leg proportions.
+5. Inspect both feet at rest, then play the same MIDI and check the sticks at contact. Adjust the seat first while keeping the kit arrangement. Move targets only if necessary; seat position alone may not fit very different arm and leg proportions. The app preserves bone lengths and does not scale the character to make it fit.
 6. Read the updated reach diagnostics. Unreachable hits keep their original audio and timing; the app does not lengthen bones or move notes to hide the problem. An unreachable pedal is reported even when the MIDI contains no pedal note. Revisit arbitrary times to inspect the calibrated pose.
 
+The built-in skeleton starts in the authored reference setup without waiting for a layout search. Imported characters still run the measured fitting steps above.
+
 Changes apply to the current session. Use [project save/open](projects.md) to preserve a setup across reloads; there is no autosave. A local review JSON records settings and measurements for troubleshooting and is separate from a reopenable project. Preparation, character loading and video export may temporarily disable calibration controls to keep the current operation consistent.
+
+## Compare and keep a fitted layout
+
+After loading a character, close the settings panel and select **Top**, **Front**,
+**Left side**, **Right side** and **Player** above the scene. Left/right are the performer's
+sides. Top and side views keep their direction; **Stage** permits free orbit.
+Each view selection frames the current equipment without changing its placement.
+
+Check the two rack toms together ahead of the snare, the floor tom on the right,
+and the hi-hat's pedal linkage. Some overhead cymbal overlap is expected; use the
+side views to inspect height and stick access. Compare the three public models
+with the same drum preset. A completed fit is not a whole-motion collision pass.
+
+**Drums → Hardware layout** switches between a floor tom on **Floor tom · three legs** and
+**Suspended floor tom · ride stand** mounting. This is independent of the kit's appearance.
+The suspended version removes the floor legs and uses a bounded clamp/rod
+assembly on the ride stand; fitting can reject a setup that cannot support that
+connection. Return to Floor tom · three legs to compare the default arrangement.
+
+Loading another MIDI/demo, preparing it again, or seeking retains the accepted
+kit and seat. Character/physical-equipment changes and explicit fitting/manual
+adjustments may change them. Save a project to keep the setup across reloads.
 
 ## Try a demo score
 
@@ -32,7 +56,7 @@ The MIDI is included with permission for this project's public distribution, sep
 
 ## Inspect a problem passage
 
-In **Analysis → Pose and synchronization review**, enter an exact song time or move to the previous/next hit. **Inspect pose** shows actual tool/foot marker error and the engine's approximate torso/arm/stick clearance; a negative clearance is a possible proxy intersection, not a measured skin penetration.
+In **Analysis → Pose and synchronization review**, enter an exact song time or move to the previous/next hit. **Inspect pose** shows actual tool/foot marker error and the engine's approximate torso/arm/stick clearance; a negative measured-body clearance flags a possible proxy intersection, not measured skin penetration or failure of a physical-stick check. Body, clothing and arm warnings are advisory; whole-stick/equipment, stick/stick and structural leg/equipment checks remain separate constraints.
 
 **Review song** compares poses evaluated in time order and in a reproducibly shuffled order, using a 30 fps grid plus exact impacts and samples 60 ms before/after. It reports the maximum pose difference and sampled proxy intersections. Sampling cannot prove clearance between every pair of samples. Use the first reported time and several camera views to inspect visible behavior.
 
@@ -42,15 +66,15 @@ In **Analysis → Pose and synchronization review**, enter an exact song time or
 
 ## Feet and hands
 
-Feet start on the calibrated kick and hi-hat pedal contacts. During a hit, the ankle stays in place and the foot makes a small toe-up preparation before pressing back to the contact. The same time-based evaluation is used for playback, seeking and video output. This simple ankle-only motion does not reproduce heel-up, heel-toe or double-pedal technique, and it is not a mechanical pedal simulation.
+Feet follow the calibrated footboards around their rear hinges; the legs solve to those moving sole contacts. The kick beater and hi-hat upper cymbal follow the shared time-based mechanism. Playback, seeking and video output use the same evaluation. This is repeatable kinematics, not a complete heel-up, heel-toe, pedal-force or double-pedal model. See the [equipment contract](../specs/architecture/equipment-contact.md).
 
-In Character → Manual adjustment, **Palm direction** selects **Up** (the default), **Inward / thumbs up**, or **Down**. The setting applies to both hands and is retained while changing the seat or importing another character in this session. It pauses playback, recalibrates the grip and invalidates an older video download.
+In Character → Manual adjustment, **Palm direction** selects **Natural / oblique** (the default), **Up**, **Inward / thumbs up**, or **Down**. The setting applies to both hands and is retained while changing the seat or importing another character in this session. It pauses playback, recalibrates the grip and invalidates an older video download.
 
 The grip uses a diagonal hand-local stick socket and available finger bones. The solver follows each target with a neutral hand/forearm relationship and uses forearm roll for palm orientation. Hands normally wait above snare/hi-hat, or over the same piece between repetitions. Velocity affects lift and wrist motion; fast snare passages can use both available hands. These are common procedural rules, not complete push-pull, anatomical limits or collision avoidance.
 
 These are palm orientations, **not complete traditional-grip styles**: traditional grip uses a different underhand left-hand finger arrangement and an overhand right hand. Matched grips commonly use downward or inward-facing palms; see [Yamaha’s grip guide](https://hub.yamaha.com/music-educators/instruments/perc/a-guide-to-proper-stick-grips/). Models without finger bones still load, with reduced grip detail. The contact inspector measures actual stick-tip and foot-socket transforms; it does not measure every skin or shoe vertex. Check the visible grip with your model, especially thick gloves, large hands or unusual shoes.
 
-For a short open-hi-hat/foot-close pattern, the explicit interpretation option drives a small left-foot opening/closing motion. It does not infer intent automatically or animate a physical cymbal gap. See [MIDI interpretation](../specs/architecture/midi-interpretation.md) for the option and retained source evidence.
+For a short open-hi-hat/foot-close pattern, the explicit interpretation option drives a small left-foot opening/closing motion. It does not infer intent automatically. The upper cymbal moves only when the selected model provides a compatible moving part. See [MIDI interpretation](../specs/architecture/midi-interpretation.md) for the option and retained source evidence.
 
 The planner prefers **right-hand hi-hat and left-hand snare**, but may choose another hand to handle reach or timing. A current preference and skeletal proxy clearance checks do not guarantee that the arms always cross naturally or that skin stays clear.
 

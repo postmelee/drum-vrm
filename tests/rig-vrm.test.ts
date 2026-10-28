@@ -3,6 +3,7 @@ import { Bone, BufferGeometry, Float32BufferAttribute, Group, MeshBasicMaterial,
 import { VRM, VRMFirstPerson, VRMHumanoid, VRMNodeConstraintManager, VRMRotationConstraint, type VRMHumanBoneName, type VRMHumanBones } from '@pixiv/three-vrm';
 import { createRestRigPose } from '../src/rig-humanoid';
 import { VRMHumanoidRigAdapter } from '../src/rig-vrm';
+import { DEFAULT_KIT } from '../src/kit-default';
 
 /** Authored bone-only fixture. No downloaded model, texture, skin, or motion. */
 function generatedVRM(proportion = 1, withFingers = false) {
@@ -59,7 +60,9 @@ function matrices(rig: VRMHumanoidRigAdapter): number[] {
 describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
   it.each([.86, 1.12])('fits a diagonal grip from measured %s finger geometry with arbitrary raw rest bases', proportion => {
     const {vrm} = generatedVRM(proportion, true), rig = new VRMHumanoidRigAdapter(vrm, `generated-fingers-${proportion}`);
-    const profile = rig.getProfile(), pose = createRestRigPose(profile);
+    // Reconstruct the constructor's accepted layout, including its yawed
+    // hi-hat pedal. Omitting the kit explicitly requests the legacy +Z frame.
+    const profile = rig.getProfile(), pose = createRestRigPose(profile, DEFAULT_KIT);
     expect(Math.hypot(...profile.gripOffsets[0])).toBeGreaterThan(.03 * proportion);
     expect(profile.gripOffsets[0][0]).toBeCloseTo(-profile.gripOffsets[1][0], 6);
     for (const side of ['left', 'right'] as const) {
@@ -73,7 +76,7 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
       expect(vrm.humanoid.getNormalizedBoneNode(`${side}ThumbMetacarpal`)!.quaternion.angleTo(new Quaternion())).toBeGreaterThan(.01);
     }
     const before = matrices(rig), calibration = rig.getCalibration(), moved = rig.setCalibration({seatHeight: .55, seatForward: .12});
-    rig.applyPose(createRestRigPose(moved)); expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
+    rig.applyPose(createRestRigPose(moved, DEFAULT_KIT)); expect(rig.getContactSamples().every(sample => sample.errorMeters < 1e-6)).toBe(true);
     rig.setCalibration(calibration); rig.applyPose(pose); expect(matrices(rig)).toEqual(before);
     expect(rig.getProfile().lengths).toEqual(profile.lengths); rig.dispose();
   });

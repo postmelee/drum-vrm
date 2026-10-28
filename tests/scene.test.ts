@@ -9,6 +9,7 @@ import { NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { applyHitResponse, bindHitResponse, createHitResponseTrack } from '../src/hit-response';
 import { pieceInstrument, type KitPiece, type Hit, type Vec3 } from '../src/types';
 import { KitHardwareLayer } from '../src/kit-hardware';
+import { kitHardwarePreset } from '../src/kit-layout-presets';
 
 beforeAll(() => initSync({ module: readFileSync(new URL('../src/wasm/drum_engine_bg.wasm', import.meta.url)) }));
 
@@ -274,6 +275,30 @@ describe('scene performance lifecycle', () => {
 
 
 describe('project drum appearance restoration',()=>{
+  it('restores accepted mount metadata and hardware after an abandoned support change', async () => {
+    const hardware=new KitHardwareLayer(),kitGroup=new Group(),stage=new Group();stage.add(hardware.root,kitGroup);
+    const scene=Object.create(DrumScene.prototype) as DrumScene;
+    Object.assign(scene,{kit:structuredClone(DEFAULT_KIT),plan:null,hardware,kitGroup,scene:stage,libraries:new Map(),
+      preset:'studio',overrides:new Map(),imported:new Map(),proceduralOverrides:new Set(),pieceLoadVersions:new Map(),
+      selected:null,selectionBox:null,songTime:-.5,editorMode:false,exportMode:false,reducedMotion:{matches:false},
+      hitResponse:{enabled:false,strength:0},loadGeneration:0,disposed:false});
+    try {
+      Reflect.get(scene,'rebuildKit').call(scene);await scene.whenEquipmentReady();
+      const saved=scene.getKitLayout(),appearance=saved.filter(piece=>!['openHat','pedalHat'].includes(piece.id)).map(piece=>({id:piece.id,settings:scene.getPieceVisual(piece.id)}));
+      const geometry=await scene.whenEquipmentReady(),rollback=await scene.prepareProjectAppearance('studio',appearance,new Map());
+      scene.setKitHardwarePreset('suspended-floor');
+      expect(kitHardwarePreset(scene.getKitLayout())).toBe('suspended-floor');
+      // Restore before the candidate worker necessarily resolves: late geometry
+      // must not replace the accepted hardware after rollback.
+      rollback.apply(saved);await scene.whenEquipmentReady();await Promise.resolve();
+      expect(scene.getKitLayout()).toEqual(saved);expect(kitHardwarePreset(scene.getKitLayout())).toBe('floor-legs');
+      expect(await scene.whenEquipmentReady()).toEqual(geometry);
+      const roles:string[]=[];hardware.root.traverse(node=>{if(node.userData.supportAssembly)roles.push(node.userData.supportAssembly);});
+      expect(roles).toContain('floor-tom-legs');expect(roles).not.toContain('stand-mounted-tom');
+      rollback.dispose();
+    } finally {Reflect.set(scene,'disposed',true);hardware.dispose();disposeModel(kitGroup);}
+  });
+
   it('rejects mismatched saved depth and restores fitted geometry with saved flat and tilted surfaces', async () => {
     const hardware = new KitHardwareLayer(), kitGroup = new Group(), stage = new Group(); stage.add(hardware.root, kitGroup);
     const scene = Object.create(DrumScene.prototype) as DrumScene;
@@ -386,5 +411,78 @@ describe('independent physical crashes', () => {
     scene.resetPieceVisual('crashRight'); expect(scene.getPieceVisual('crashRight').finish).toBe(scene.getPieceVisual('crash').finish);
     await scene.whenEquipmentReady(); Reflect.set(scene,'disposed',true);
     hardware.dispose(); disposeModel(kitGroup); disposeModel(source);
+  });
+});
+
+describe('fixed comparison views', () => {
+  it('looks vertically down and along both performer sides with usable portrait framing', async () => {
+    const { frameCameraState } = await import('../src/scene');
+    const { validateProjectView } = await import('../src/project');
+    const bounds = new Box3(new Vector3(-1.05, 0, -.25), new Vector3(1.05, 1.75, 1.5));
+    for (const view of ['top', 'front', 'left', 'right'] as const) {
+      const preset = cameraPresetState(view), direction = preset.target.clone().sub(preset.position).normalize();
+      if (view === 'top') expect(direction.toArray()).toEqual([0, -1, 0]);
+      if (view === 'left') expect(direction.toArray()).toEqual([-1, 0, 0]);
+      if (view === 'right') expect(direction.toArray()).toEqual([1, 0, 0]);
+      if (view !== 'front') expect(preset.enableRotate).toBe(false);
+      for (const aspect of [.55, 1.8]) {
+        const state = frameCameraState(preset, bounds, aspect), camera = new PerspectiveCamera(state.fov, aspect, state.near, 40);
+        camera.position.copy(state.position); camera.up.copy(state.up); camera.lookAt(state.target); camera.updateMatrixWorld(true);
+        for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+          const point = new Vector3(x, y, z).project(camera);
+          expect(Math.abs(point.x)).toBeLessThan(1); expect(Math.abs(point.y)).toBeLessThan(1); expect(point.z).toBeLessThan(1);
+        }
+        expect(validateProjectView({view, position: state.position.toArray(), target: state.target.toArray(), fov: state.fov, near: state.near}).view).toBe(view);
+      }
+    }
+  });
+});
+
+describe('accepted scene setup across score changes', () => {
+  it('derives repeated automatic fit from the same baseline pedals, not the last fitted positions', () => {
+    const rig=new NativeHumanoidRigAdapter(), baseline=structuredClone(DEFAULT_KIT);
+    const scene=Object.create(DrumScene.prototype) as DrumScene;
+    Object.assign(scene,{rig,kit:baseline});
+    const first=scene.getAutomaticCalibration(baseline), moved=structuredClone(baseline);
+    moved.find(piece=>piece.id==='pedalHat')!.position=[-.65,.08,.8];
+    moved.find(piece=>piece.id==='pedalHat')!.pedalForward=[-.6,0,.8];
+    Reflect.set(scene,'kit',moved);rig.setCalibration(first,moved);
+    expect(scene.getAutomaticCalibration()).not.toEqual(first);
+    expect(scene.getAutomaticCalibration(baseline)).toEqual(first);
+    expect(scene.getKitLayout()).toEqual(moved);
+    rig.dispose();
+  });
+  it('binds new score tracks without rebuilding or rescaling accepted equipment during load, replan and seek', async () => {
+    const { createRestRigPose } = await import('../src/rig-humanoid');
+    const rig = new NativeHumanoidRigAdapter(), hardware = new KitHardwareLayer(), kitGroup = new Group(), stage = new Group(), stickTrace = new Group();
+    stage.add(hardware.root, kitGroup, stickTrace);
+    const scene = Object.create(DrumScene.prototype) as DrumScene;
+    Object.assign(scene, {rig, hardware, kitGroup, stickTrace, scene: stage, kit: structuredClone(DEFAULT_KIT), plan: null,
+      preset: 'studio', libraries: new Map(), overrides: new Map(), imported: new Map(), proceduralOverrides: new Set(), pieceLoadVersions: new Map(),
+      selected: null, selectionBox: null, songTime: -.5, editorMode: false, exportMode: false, reducedMotion: {matches: false},
+      hitResponse: {enabled: false, strength: 0}, loadGeneration: 0, disposed: false});
+    try {
+      Reflect.get(scene, 'rebuildKit').call(scene); await scene.whenEquipmentReady();
+      const kit = scene.getKitLayout(), exactKit = JSON.stringify(kit), seat = rig.getCalibration();
+      const objects = [...kitGroup.children], supports = [...hardware.root.children], idle = createRestRigPose(rig.getProfile());
+      const rebuild = vi.fn(() => { throw new Error('Score changes must not rebuild accepted equipment'); });
+      Reflect.set(scene, 'rebuildKit', rebuild);
+      for (const duration of [8, 30, 3]) {
+        // Rust/JSON may reorder fields or differ by one representable bit.
+        const roundTrip = kit.map(piece => {
+          const {radius,position,...rest}=structuredClone(piece);
+          return {position,radius,...rest,instrument:pieceInstrument(piece)};
+        });
+        roundTrip[1].radius += Number.EPSILON;
+        const hit: Hit = {id: 0, time: 1, tick: 960, track: 1, channel: 9, note: 38, velocity: 90, instrument: 'snare', pieceId: 'snare', limb: 0, target: [...kit[1].position]};
+        scene.setPlan({schemaVersion: 2, duration, hits: [hit], diagnostics: [], kit: roundTrip, tempoCount: 1});
+        for (const time of [duration, -.5, 1, 0]) scene.applyPose(idle, time);
+        expect(JSON.stringify(scene.getKitLayout())).toBe(exactKit);
+        expect(rig.getCalibration()).toEqual(seat);
+        expect(kitGroup.children).toEqual(objects); expect(hardware.root.children).toEqual(supports);
+        expect(Reflect.get(scene, 'visuals').find((visual: {id: string}) => visual.id === 'snare').hits).toEqual([hit]);
+      }
+      expect(rebuild).not.toHaveBeenCalled();
+    } finally { Reflect.set(scene, 'disposed', true); hardware.dispose(); disposeModel(kitGroup); rig.dispose(); }
   });
 });

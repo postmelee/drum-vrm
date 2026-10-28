@@ -17,6 +17,7 @@ fn segment_box_checks_middle_parallel_corner_and_degenerate_cases() {
         piece_id: "box".into(),
         center: [0.0; 3],
         half_extents: [0.5; 3],
+        rotation: None,
         kind: "body",
     };
     assert!(
@@ -43,6 +44,7 @@ fn tilted_playing_plane_clips_only_its_own_conservative_top() {
         piece_id: "hat".into(),
         center: [0.0, -0.04, 0.0],
         half_extents: [0.2, 0.10, 0.2],
+        rotation: None,
         kind: "body",
     };
     let n = 0.5_f64.sqrt();
@@ -281,23 +283,20 @@ fn direct_hihat_alignment_and_pedal_contact_share_mechanical_frames() {
         .iter()
         .find(|piece| piece.instrument == Instrument::PedalHat)
         .unwrap();
-    assert!((axis[0] - pedal.position[0]).abs() < 1e-12);
-    assert!((axis[2] - pedal.position[2] - HIHAT_PEDAL_TO_AXIS).abs() < 1e-12);
+    let mast = pedal_frame_point(pedal, [0., 0., HIHAT_PEDAL_TO_AXIS]);
+    assert!((axis[0] - mast[0]).abs() < 1e-12);
+    assert!((axis[2] - mast[2]).abs() < 1e-12);
     assert_eq!(pedal_contact(pedal, 0.0), pedal.position);
     let raised = pedal_contact(pedal, -0.18);
     assert!(raised[1] > pedal.position[1]);
-    let hinge = [
-        pedal.position[0],
-        pedal.position[1] - 0.012,
-        pedal.position[2] - 0.13,
-    ];
+    let hinge = pedal_frame_point(pedal, [0., -0.012, -0.13]);
     assert!((distance(raised, hinge) - distance(pedal.position, hinge)).abs() < 1e-12);
     let original = kit[index].position;
     kit[index].position[0] += 0.05;
     assert!(kit_geometry(&kit)
         .unresolved_piece_ids
         .contains(&kit[index].id));
-    assert_eq!(anchored_hihat_position(&kit[index], &kit), original);
+    assert!(distance(anchored_hihat_position(&kit[index], &kit), original) < 1e-12);
 }
 
 #[test]
@@ -465,6 +464,7 @@ fn rod_box_broad_phase_preserves_exact_clearance_predicate() {
         piece_id: "shell".into(),
         center: [0.1, 0.6, -0.2],
         half_extents: [0.2, 0.14, 0.3],
+        rotation: None,
         kind: "body",
     };
     let piece = &default_kit()[0];
@@ -550,4 +550,106 @@ fn authored_fallback_bell_semantics_survive_compact_fitting_without_guessing_imp
     ride.geometry.as_mut().unwrap().source = "mesh-bounds".into();
     ride.geometry.as_mut().unwrap().surface.radial_profile = None;
     assert!(local_geometry(&ride).surface.radial_profile.is_none());
+}
+
+#[test]
+fn angled_pedal_uses_one_frame_for_mast_hinge_contact_and_boxes() {
+    let mut kit = default_kit();
+    let index = kit.iter().position(|p| p.id == "pedalHat").unwrap();
+    kit[index].pedal_forward = Some(horizontal_direction([0., 0., 0.], [-0.5, 0., 1.]));
+    let hat = kit.iter().position(|p| p.id == "hihat").unwrap();
+    kit[hat].position = anchored_hihat_position(&kit[hat], &kit);
+    let pedal = &kit[index];
+    assert!(valid_piece_geometry(pedal));
+    let geometry = kit_geometry(&kit);
+    let frame = geometry
+        .mechanisms
+        .iter()
+        .find(|m| m.kind == "hihat")
+        .unwrap();
+    assert_eq!(frame.pivot, pedal_frame_point(pedal, [0., -0.012, -0.13]));
+    assert_eq!(pedal_contact(pedal, 0.), pedal.position);
+    let mast = pedal_frame_point(pedal, [0., 0., HIHAT_PEDAL_TO_AXIS]);
+    let physical = body(&kit[hat]).unwrap();
+    assert!((physical.center[0] - mast[0]).abs() < 1e-12);
+    assert!((physical.center[2] - mast[2]).abs() < 1e-12);
+    for pitch in [0., -0.09, -0.18] {
+        let q = pedal_rotation(pedal, [0., 0., 0., 1.], pitch);
+        let expected = add(frame.pivot, crate::rig::rotate(q, [0., 0.012, 0.13]));
+        assert!(distance(expected, pedal_contact(pedal, pitch)) < 1e-12);
+    }
+    let board = geometry
+        .pedals
+        .iter()
+        .find(|b| b.piece_id == "pedalHat" && b.kind == "board")
+        .unwrap();
+    assert_eq!(board.rotation, Some(frame.board_rotation));
+    let local = box_local_vector(board, sub(pedal.position, board.center));
+    assert!((local[1] - board.half_extents[1]).abs() < 1e-12);
+    assert!(local[0].abs() < board.half_extents[0] && local[2].abs() < board.half_extents[2]);
+    for invalid in [[0., 0., 0.], [1., 0., 1.], [0., 1., 0.], [f64::NAN, 0., 1.]] {
+        let mut bad = pedal.clone();
+        bad.pedal_forward = Some(invalid);
+        assert!(!valid_piece_geometry(&bad));
+    }
+    let round_trip: crate::model::KitPiece =
+        serde_json::from_str(&serde_json::to_string(pedal).unwrap()).unwrap();
+    assert_eq!(round_trip.pedal_forward, pedal.pedal_forward);
+    let mut legacy = pedal.clone();
+    legacy.pedal_forward = None;
+    assert_eq!(pedal_board_rotation(&legacy), [0., 0., 0., 1.]);
+    assert_eq!(
+        pedal_frame_point(&legacy, [0., -0.012, -0.13]),
+        add(legacy.position, [0., -0.012, -0.13])
+    );
+    assert_eq!(
+        pedal_rotation(&legacy, [0., 0., 0., 1.], -0.18),
+        crate::rig::pitch_rotation([0., 0., 0., 1.], -0.18)
+    );
+}
+
+#[test]
+fn oriented_box_queries_match_the_same_segment_in_local_coordinates() {
+    let plain = EquipmentBox {
+        piece_id: "pedal".into(),
+        kind: "board",
+        center: [0., 0., 0.],
+        half_extents: [0.05, 0.012, 0.11],
+        rotation: None,
+    };
+    let angle = 0.63_f64;
+    let q = [0., (angle * 0.5).sin(), 0., (angle * 0.5).cos()];
+    let turned = EquipmentBox {
+        rotation: Some(q),
+        center: [-0.4, 0.08, 0.43],
+        ..plain.clone()
+    };
+    for i in -5..=5 {
+        for j in -5..=5 {
+            let a = [i as f64 * 0.03, 0.06, j as f64 * 0.04];
+            let b = [j as f64 * 0.02, -0.04, i as f64 * 0.03];
+            let world = |p| add(turned.center, crate::rig::rotate(q, p));
+            assert!(
+                (segment_box_clearance(a, b, 0.013, &plain)
+                    - segment_box_clearance(world(a), world(b), 0.013, &turned))
+                .abs()
+                    < 1e-12
+            );
+            let rod = capsule(&default_kit()[0], world(a), world(b), 0.013);
+            assert_eq!(
+                rod_box_clear(&rod, &turned),
+                segment_box_clearance(rod.start, rod.end, rod.radius, &turned) >= CLEARANCE
+            );
+        }
+    }
+    let nearby = EquipmentBox {
+        center: add(turned.center, crate::rig::rotate(q, [0.12, 0., 0.])),
+        ..turned.clone()
+    };
+    assert!(boxes_clear(&turned, &nearby));
+    let overlapping = EquipmentBox {
+        center: add(turned.center, crate::rig::rotate(q, [0.08, 0., 0.])),
+        ..turned.clone()
+    };
+    assert!(!boxes_clear(&turned, &overlapping));
 }

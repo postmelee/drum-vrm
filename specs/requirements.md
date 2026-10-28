@@ -26,7 +26,7 @@ which identifies the deployed release separately from development work.
 | INV05 | Keep performance intent separate from a renderer or avatar. Use measured semantic body dimensions, not avatar-name-specific animation branches. |
 | INV06 | Fit seat and targets without stretching bones. Measure actual attached tool contacts; near-zero contact error alone does not prove natural motion or absence of collision. |
 | INV07 | Keep visual instrument appearance and hit feedback separate from musical targets and audio. Deliberate layout changes update related targets together. |
-| INV08 | Process uploaded MIDI, WAV, drum GLB and VRM locally in the browser. Do not commit user files, private models or conversation originals. |
+| INV08 | Process uploaded MIDI, WAV, drum GLB, VRM and FBX/selected textures locally in the browser. Do not commit user files, private models or conversation originals. |
 | INV09 | Report export failures; do not silently turn an audio export into a silent success. A silent video is an explicit choice. |
 | INV10 | Keep source code, research, motion data, weights, models and sound assets under their respective rights. |
 
@@ -38,7 +38,7 @@ hi-hat interpretation, preserving source evidence under the
 planner assigns hits; playback and seeking use the piano roll and either synthesized
 drums or a local WAV aligned to the same export clock.
 
-The shared semantic humanoid path serves the built-in skeleton and imported VRM 0.0/1.0
+The shared semantic humanoid path serves the built-in skeleton and imported VRM 0.0/1.0 and mapped FBX
 characters, with target-dependent neutral wrists and instrument-relative ready poses.
 Seat/contact calibration and explicit static kit fitting can be retained in a
 [local project](architecture/project-format.md), with exact external files relinked. Drum bodies

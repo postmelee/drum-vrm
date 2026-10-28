@@ -15,9 +15,9 @@
     "instrument": "snare",
     "label": "Snare",
     "position": [
-      -0.03,
-      0.72,
-      0.5
+      -0.0756,
+      0.8249999999999997,
+      0.631
     ],
     "radius": 0.1778
   },
@@ -26,9 +26,9 @@
     "instrument": "hihat",
     "label": "Hi-hat",
     "position": [
-      -0.42,
-      0.9,
-      0.4611
+      -0.43620000000000003,
+      1.01,
+      0.35000000000000003
     ],
     "radius": 0.1778
   },
@@ -37,9 +37,9 @@
     "instrument": "openHat",
     "label": "Open hi-hat",
     "position": [
-      -0.42,
-      0.9,
-      0.4611
+      -0.43620000000000003,
+      1.01,
+      0.35000000000000003
     ],
     "radius": 0.1778
   },
@@ -48,20 +48,25 @@
     "instrument": "pedalHat",
     "label": "Hi-hat pedal",
     "position": [
-      -0.42,
+      -0.3465182407942875,
       0.08,
-      0.43
+      0.3591680611939695
     ],
-    "radius": 0.12
+    "radius": 0.12,
+    "pedalForward": [
+      -0.7473479933809376,
+      0,
+      0.6644328233835878
+    ]
   },
   {
     "id": "tomHigh",
     "instrument": "tomHigh",
     "label": "High tom",
     "position": [
-      -0.24,
-      0.95,
-      0.91
+      -0.10999999999999999,
+      1.1,
+      0.985
     ],
     "radius": 0.1524
   },
@@ -70,9 +75,9 @@
     "instrument": "tomMid",
     "label": "Mid tom",
     "position": [
-      0.18,
-      0.93,
-      0.89
+      0.33,
+      1.08,
+      0.955
     ],
     "radius": 0.1651
   },
@@ -81,9 +86,9 @@
     "instrument": "tomLow",
     "label": "Floor tom",
     "position": [
-      0.52,
-      0.72,
-      0.44
+      0.59,
+      0.8,
+      0.48
     ],
     "radius": 0.2032
   },
@@ -92,9 +97,9 @@
     "instrument": "crash",
     "label": "Crash Left",
     "position": [
-      -0.62,
+      -0.55,
       1.16,
-      0.94
+      0.7
     ],
     "radius": 0.2032
   },
@@ -103,9 +108,9 @@
     "instrument": "crash",
     "label": "Crash Right",
     "position": [
-      0.6,
-      1.16,
-      0.94
+      0.5299999999999999,
+      1.55,
+      0.8400000000000001
     ],
     "radius": 0.2286
   },
@@ -114,9 +119,9 @@
     "instrument": "ride",
     "label": "Ride",
     "position": [
-      0.72,
-      0.99,
-      0.84
+      0.75,
+      1.15,
+      0.64
     ],
     "radius": 0.254
   }

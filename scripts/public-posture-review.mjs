@@ -42,8 +42,8 @@ async function geometryModel(bytes) {
 
 const vite = await createServer({ root, configFile: false, server: { middlewareMode: true, hmr: false, ws: false, watch: null }, appType: 'custom' });
 try {
-  const [rigModule, demos, scene, bodies, models, calibration, checkpoints, review, contacts] = await Promise.all([
-    'rig-vrm', 'demo', 'scene', 'instrument-body', 'model-procedural', 'kit-calibration', 'review-checkpoints', 'performance-review', 'contact-events',
+  const [rigModule, demos, scene, bodies, models, calibration, checkpoints, review, contacts, automaticFit] = await Promise.all([
+    'rig-vrm', 'demo', 'scene', 'instrument-body', 'model-procedural', 'kit-calibration', 'review-checkpoints', 'performance-review', 'contact-events', 'automatic-fit',
   ].map(name => vite.ssrLoadModule(`/src/${name}.ts`)));
   const source = JSON.parse(wasm.plan_midi(demos.makePostureDemo(), JSON.stringify({ tracks: [1], channel: 0, mappingProfile: 'logicDkdGm', countInNote75: true })));
   const results = [];
@@ -57,13 +57,21 @@ try {
       const kit = structuredClone(scene.DEFAULT_KIT);
       for (const piece of kit) {
         if (['openHat', 'pedalHat'].includes(piece.id)) continue;
-        piece.geometry = bodies.createMeasuredInstrumentBody(piece, models.resolvePieceVisual('studio', piece.id), 'studio', kit).geometry;
+        const built = bodies.createMeasuredInstrumentBody(piece, models.resolvePieceVisual('studio', piece.id), 'studio', kit);
+        try { piece.geometry = built.geometry; } finally { models.disposeModel(built.root); }
       }
       kit.find(piece => piece.id === 'openHat').geometry = structuredClone(kit.find(piece => piece.id === 'hihat').geometry);
       const seat = rig.getAutomaticCalibration(kit), initialProfile = rig.setCalibration(seat, kit);
       let start = performance.now();
       const fit = JSON.parse(wasm.fit_kit(JSON.stringify(initialProfile), JSON.stringify(kit))), fitMs = performance.now() - start;
-      const layout = fit.complete ? fit.kit : kit, profile = rig.setCalibration(seat, layout);
+      const layout = fit.complete ? fit.kit : kit;
+      const fittedSeat = automaticFit.fittedCalibration(seat, { kit: layout, proposal: fit, applied: fit.complete, message: '' });
+      const candidateProfile = rig.measureCalibration(fittedSeat, layout);
+      const candidateMeasurementRestored = JSON.stringify(rig.getProfile()) === JSON.stringify(initialProfile)
+        && JSON.stringify(rig.getCalibration()) === JSON.stringify(seat);
+      const profile = rig.setCalibration(fittedSeat, layout);
+      const candidateMeasurementMatchesApplied = JSON.stringify(candidateProfile) === JSON.stringify(profile);
+      const boneLengthsPreserved = JSON.stringify(initialProfile.lengths) === JSON.stringify(profile.lengths);
       const equipment = JSON.parse(wasm.kit_geometry(JSON.stringify(layout)));
       start = performance.now();
       run = wasm.Performance.from_json_with_profile(JSON.stringify(calibration.applyKitLayout(source, layout)), JSON.stringify(profile));
@@ -91,6 +99,7 @@ try {
       }
       const sourceFactsPreserved = JSON.stringify(plan.sourceEvents) === JSON.stringify(source.sourceEvents);
       const result = { id, modelHash: provenance.sha256, wasmHash: hash(binary), plannerVersion: plan.plannerVersion, fitMs, prepareMs,
+        seat, fittedSeat, seatOffset: fit.seatOffset, candidateMeasurementRestored, candidateMeasurementMatchesApplied, boneLengthsPreserved,
         profile, kit: layout, plan, fitComplete: fit.complete, scale: fit.scale, searchCandidates: fit.searchCandidates, capabilities: fit.capabilities,
         sequence, impactMeasurements, equipmentUnresolved: equipment.unresolvedPieceIds,
         unassigned: plan.hits.filter(hit => hit.limb === null).length, sourceFactsPreserved, deterministic, diagnostics: plan.diagnostics, samples };
@@ -98,7 +107,8 @@ try {
       results.push({ id, fitComplete: result.fitComplete, scale: fit.scale, fitMs: Math.round(fitMs), prepareMs: Math.round(prepareMs), unassigned: result.unassigned, sourceFactsPreserved, deterministic });
       // This independently authored study is a regression gate, not a claim
       // that an arbitrary full song has no impossible chords or path warnings.
-      if (!fit.complete || equipment.unresolvedPieceIds.length || result.unassigned || !sourceFactsPreserved || !deterministic) process.exitCode = 1;
+      if (!fit.complete || equipment.unresolvedPieceIds.length || result.unassigned || !sourceFactsPreserved || !deterministic
+        || !candidateMeasurementRestored || !candidateMeasurementMatchesApplied || !boneLengthsPreserved) process.exitCode = 1;
     } finally { run?.free(); rig.dispose(); }
   }
   console.table(results);

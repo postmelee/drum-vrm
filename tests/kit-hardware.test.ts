@@ -25,6 +25,23 @@ function snapshot(root: THREE.Object3D) {
 }
 
 describe('shared numeric hardware rendering', () => {
+  it('renders a connected suspended floor tom from the shared mount graph without hidden legs', () => {
+    const kit = structuredClone(DEFAULT_KIT).filter(piece=>piece.id==='tomLow'||piece.id==='ride');
+    const floor=kit.find(piece=>piece.id==='tomLow')!, ride=kit.find(piece=>piece.id==='ride')!;
+    floor.position=[.50,.76,.55];floor.radius=.1651;floor.mount={kind:'standClamp',supportPieceId:'ride'};
+    ride.position=[.72,1.22,.68];
+    const geometry=solveKitGeometry(kit), layer=new KitHardwareLayer();
+    expect(geometry.unresolvedPieceIds).toEqual([]);
+    layer.setGeometry(kit,geometry);
+    const root=layer.root.getObjectByName('Hardware/tomLow')!;
+    expect(root.userData.supportAssembly).toBe('stand-mounted-tom');
+    const segments=geometry.supports.filter(segment=>segment.pieceId==='tomLow');
+    expect(segments.filter(segment=>segment.role==='standClamp')).toHaveLength(1);
+    expect(segments.filter(segment=>segment.role==='tomArm')).toHaveLength(2);
+    expect(segments.some(segment=>segment.role==='floorLeg'||segment.role==='rubberFoot')).toBe(false);
+    for(const segment of segments) expect(root.children.some(child=>child.userData.segment?.role===segment.role)).toBe(true);
+    layer.dispose();
+  });
   it('routes the measured Studio kit and connects its snare basket to the mast', () => {
     const kit = measuredKit(), geometry = solveKitGeometry(kit), hardware = new KitHardwareLayer();
     hardware.setGeometry(kit, geometry);
@@ -93,7 +110,14 @@ describe('shared numeric hardware rendering', () => {
     for (const mesh of pedals) {
       const descriptor = mesh.userData.box, bounds = new THREE.Box3().setFromObject(mesh);
       expect(bounds.getCenter(new THREE.Vector3()).distanceTo(new THREE.Vector3(...descriptor.center))).toBeLessThan(1e-8);
-      bounds.getSize(new THREE.Vector3()).toArray().forEach((value, axis) => expect(value / 2).toBeCloseTo(descriptor.halfExtents[axis], 7));
+      mesh.geometry.computeBoundingBox();
+      mesh.geometry.boundingBox!.getSize(new THREE.Vector3()).toArray().forEach((value, axis) => expect(value / 2).toBeCloseTo(descriptor.halfExtents[axis], 7));
+      const expectedRotation=new THREE.Quaternion(...(descriptor.rotation??[0,0,0,1]));
+      expect(mesh.getWorldQuaternion(new THREE.Quaternion()).angleTo(expectedRotation)).toBeLessThan(1e-7);
+      const expectedBounds=new THREE.Box3();
+      for(const x of [-1,1])for(const y of [-1,1])for(const z of [-1,1])expectedBounds.expandByPoint(new THREE.Vector3(x*descriptor.halfExtents[0],y*descriptor.halfExtents[1],z*descriptor.halfExtents[2]).applyQuaternion(expectedRotation).add(new THREE.Vector3(...descriptor.center)));
+      expect(bounds.min.distanceTo(expectedBounds.min)).toBeLessThan(1e-8);
+      expect(bounds.max.distanceTo(expectedBounds.max)).toBeLessThan(1e-8);
     }
     hardware.dispose();
   });
@@ -123,7 +147,7 @@ describe('shared numeric hardware rendering', () => {
 
   it('keeps every mechanical detail inside its capsule, including joints and double braces', () => {
     const material = new THREE.MeshBasicMaterial();
-    const roles = ['tubeLower', 'tubeMiddle', 'tubeUpper', 'collar', 'memoryLock', 'tripodLeg', 'tripodBrace', 'rubberFoot', 'boom', 'boomTail', 'boomPivot', 'cymbalTilter', 'cymbalSleeve', 'tomPost', 'tomSocket', 'tomYoke', 'tomBall', 'tomArm', 'tomClamp', 'basketNeck', 'basketTilter', 'basketArm', 'basketGrip', 'suspensionBracket', 'floorLeg', 'cymbalFelt', 'pedalLink', 'rod'];
+    const roles = ['tubeLower', 'tubeMiddle', 'tubeUpper', 'collar', 'memoryLock', 'tripodLeg', 'tripodBrace', 'rubberFoot', 'boom', 'boomTail', 'boomPivot', 'cymbalTilter', 'cymbalSleeve', 'tomPost', 'tomSocket', 'tomYoke', 'tomBall', 'mountBall', 'standClamp', 'standLink', 'tomArm', 'tomClamp', 'basketNeck', 'basketTilter', 'basketArm', 'basketGrip', 'suspensionBracket', 'floorLeg', 'cymbalFelt', 'pedalLink', 'rod'];
     for (const role of roles) for (const length of [0, .025, .35]) {
       const part = createHardwarePart({pieceId: 'crash', role, start: [0, 0, 0], end: [0, length, 0], radius: .025}, {chrome: material, dark: material, rubber: material});
       part.updateMatrixWorld(true);

@@ -3,7 +3,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { hitPieceId, pieceInstrument, type Hit, type Instrument, type PieceId, type KitPiece, type KitGeometry, type PerformancePlan, type RigProfile, type Vec3 } from './types';
 import { createRestRigPose, NativeHumanoidRigAdapter, type HumanoidRigAdapter, type RigContactSample } from './rig-humanoid';
-import { validateKitLayout } from './kit-calibration';
+import { sameKitLayout, validateKitLayout } from './kit-calibration';
+import { applyKitHardwarePreset, type KitHardwarePresetId } from './kit-layout-presets';
 import { canonicalPieceId, disposeModel, disposeModelSource, resolvePieceVisual, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings, type PieceModel } from './model-procedural';
 import { loadLocalGLB } from './model-import';
 import { KitMechanismLayer } from './kit-mechanisms';
@@ -20,7 +21,7 @@ import { applyHitResponse, bindHitResponse, createHitResponseTrack, evaluateHitR
 export { KIT_PRESETS, type KitPresetId, type PieceVisualOptions, type PieceVisualSettings } from './model-procedural';
 export type { HitResponseSettings } from './hit-response';
 
-export type CameraView = 'front' | 'stage' | 'top' | 'player';
+export type CameraView = 'front' | 'stage' | 'top' | 'left' | 'right' | 'player';
 export interface SceneViewState { view:CameraView;position:Vec3;target:Vec3;fov:number;near:number; }
 /** primitive-v1 labels have LH at -X. Display +Z-facing anatomy requires LH at +X.
  * This is a renderer-only v1 compatibility basis, never a plan/assignment mutation.
@@ -32,19 +33,35 @@ export function createLegacyDisplayRoot(): THREE.Group {
   root.userData.coordinateConversion = 'primitive-v1-to-display-v1:reflect-x'; return root;
 }
 export interface CameraState {
-  position: THREE.Vector3; target: THREE.Vector3; view: CameraView;
+  position: THREE.Vector3; target: THREE.Vector3; up: THREE.Vector3; view: CameraView;
   fov: number; near: number; minDistance: number; maxDistance: number; maxPolarAngle: number;
   enableRotate: boolean; enablePan: boolean; enableZoom: boolean;
 }
 export function cameraPresetState(view: CameraView): CameraState {
-  const player = view === 'player';
-  const positions: Record<CameraView, Vec3> = { front: [0, 1.95, 4.7], stage: [2.75, 2.4, 3.75], top: [.001, 4.8, .5], player: [0, 1.55, -.30] };
+  const player = view === 'player', fixed = ['top', 'left', 'right'].includes(view);
+  const positions: Record<CameraView, Vec3> = { front: [0, 1.95, 4.7], stage: [2.75, 2.4, 3.75], top: [0, 4.8, .32], left: [4.7, 1.0, .32], right: [-4.7, 1.0, .32], player: [0, 1.55, -.30] };
   return {
-    view, position: new THREE.Vector3(...positions[view]), target: new THREE.Vector3(0, player ? .90 : view === 'top' ? .5 : .72, player ? .70 : .32),
+    view, position: new THREE.Vector3(...positions[view]), target: new THREE.Vector3(0, player ? .90 : ['left', 'right'].includes(view) ? 1.0 : .72, player ? .70 : .32),
+    up: new THREE.Vector3(0, view === 'top' ? 0 : 1, view === 'top' ? 1 : 0),
     fov: player ? 65 : 35, near: player ? .025 : .05, minDistance: player ? .2 : 2, maxDistance: player ? 2 : 8,
-    maxPolarAngle: player ? Math.PI : Math.PI * .49, enableRotate: !player, enablePan: !player, enableZoom: !player,
+    maxPolarAngle: player || fixed ? Math.PI : Math.PI * .49, enableRotate: !player && !fixed, enablePan: !player, enableZoom: !player,
   };
 }
+/** Frame only on an explicit view choice; songs and seeking never move a camera. */
+export function frameCameraState(state: CameraState, bounds: THREE.Box3, aspect: number): CameraState {
+  if (state.view === 'player' || bounds.isEmpty()) return state;
+  const target = bounds.getCenter(new THREE.Vector3()), backward = state.position.clone().sub(state.target).normalize();
+  const right = state.up.clone().cross(backward).normalize(), up = backward.clone().cross(right).normalize();
+  const tanY = Math.tan(THREE.MathUtils.degToRad(state.fov) / 2), tanX = tanY * Math.max(.1, aspect);
+  let distance = 0;
+  for (const x of [bounds.min.x, bounds.max.x]) for (const y of [bounds.min.y, bounds.max.y]) for (const z of [bounds.min.z, bounds.max.z]) {
+    const corner = new THREE.Vector3(x, y, z).sub(target), depth = corner.dot(backward);
+    distance = Math.max(distance, depth + Math.abs(corner.dot(right)) / tanX, depth + Math.abs(corner.dot(up)) / tanY);
+  }
+  distance = Math.max(distance * 1.12, .5);
+  return { ...state, target, position: target.clone().addScaledVector(backward, distance), minDistance: Math.min(state.minDistance, distance * .5), maxDistance: Math.max(state.maxDistance, distance * 1.5) };
+}
+
 const isLibraryPreset = (preset: KitPresetId): preset is 'library' | 'batoski' | 'smoj' => ['library', 'batoski', 'smoj'].includes(preset);
 
 /** All coordinates are metres; +Y is up and the performer faces +Z. */
@@ -283,26 +300,38 @@ export class DrumScene {
     canvas.addEventListener('pointerup', this.pointerUp);
     canvas.addEventListener('pointercancel', this.pointerCancel);
     this.resizeObserver = new ResizeObserver(() => { if (!this.exportMode) this.resize(); });
-    this.resizeObserver.observe(canvas); this.resize();
+    this.resizeObserver.observe(canvas); this.resize(); this.setCamera('stage');
     this.reducedMotion.addEventListener('change', this.motionPreferenceChanged);
   }
 
   setPlan(plan: PerformancePlan): void {
     this.setStickTrace(null);
-    this.rig.calibrate(plan.kit); this.plan = plan; this.kit = plan.kit; this.rebuildKit();
+    this.rig.calibrate(plan.kit); this.plan = plan;
+    if (!sameKitLayout(this.kit, plan.kit)) {
+      this.kit = structuredClone(plan.kit); this.rebuildKit();
+      return;
+    }
+    // A new score changes tracks, not accepted meshes or calibration. Rebuilding
+    // would remeasure float geometry and risk cumulative descriptor/scale drift.
+    for (const visual of this.visuals) {
+      visual.hits = plan.hits.filter(hit => canonicalPieceId(hitPieceId(hit)) === visual.id).sort((a, b) => a.time - b.time);
+      visual.contacts = contactFeedbackEvents(plan, visual.id);
+      visual.responseTrack = createContactResponseTrack(visual.contacts, visual.instrument);
+    }
+    this.mechanisms?.setHits(plan.hits); this.updateHitResponses();
   }
   clearPlan(): void {
     this.setStickTrace(null);
     this.plan = null; this.songTime = -.5;
     for (const visual of this.visuals) { visual.hits = []; visual.contacts = []; visual.responseTrack = createHitResponseTrack([], visual.instrument); }
-    this.lastPose = createRestRigPose(this.rig.getProfile()); this.rig.applyPose(this.lastPose); this.mechanisms?.setHits([]); this.updateHitResponses();
+    this.lastPose = createRestRigPose(this.rig.getProfile(), this.kit); this.rig.applyPose(this.lastPose); this.mechanisms?.setHits([]); this.updateHitResponses();
   }
   setRig(adapter: HumanoidRigAdapter): void {
     if (adapter === this.rig) return;
     // Configure the candidate before transferring ownership. A calibration or
     // pose failure must not dispose the currently displayed character.
     adapter.calibrate(this.kit);
-    const readyPose = !this.plan ? createRestRigPose(adapter.getProfile()) : null;
+    const readyPose = !this.plan ? createRestRigPose(adapter.getProfile(), this.kit) : null;
     if (readyPose) adapter.applyPose(readyPose);
     adapter.root.visible = this.characterVisible && !this.editorMode;
     adapter.setSkeletonVisible(this.skeletonVisible); adapter.setModelVisible(this.modelVisible);
@@ -372,17 +401,18 @@ export class DrumScene {
   setKitLayout(kit: readonly KitPiece[]): void {
     this.kit = validateKitLayout(kit); this.rebuildKit();
   }
+  setKitHardwarePreset(preset: KitHardwarePresetId): void {
+    this.setKitLayout(applyKitHardwarePreset(this.kit, preset));
+  }
   getCalibration() { return this.rig.getCalibration(); }
-  getAutomaticCalibration() { return this.rig.getAutomaticCalibration(this.kit); }
+  getAutomaticCalibration(kit: readonly KitPiece[] = this.kit) { return this.rig.getAutomaticCalibration(kit); }
   /** Measure a candidate without leaving the displayed rig in that calibration. */
   measureCalibration(value: Parameters<HumanoidRigAdapter['setCalibration']>[0], kit: readonly KitPiece[]): RigProfile {
-    const previous=this.rig.getCalibration();
-    try{return this.rig.setCalibration(value,kit);}
-    finally{this.rig.setCalibration(previous,this.kit);}
+    return this.rig.measureCalibration(value, kit);
   }
   setCalibration(value: Parameters<HumanoidRigAdapter['setCalibration']>[0]): RigProfile {
     const profile = this.rig.setCalibration(value, this.kit);
-    if (!this.plan) this.applyReadyPose(createRestRigPose(profile));
+    if (!this.plan) this.applyReadyPose(createRestRigPose(profile, this.kit));
     if (!this.editorMode && this.cameraView === 'player') this.setCamera('player');
     return profile;
   }
@@ -591,7 +621,11 @@ export class DrumScene {
   setCamera(preset: CameraView): void {
     if (this.editorMode) return;
     this.transition = null; this.savedCamera = null;
-    const state = cameraPresetState(preset);
+    const bounds = new THREE.Box3().setFromObject(this.kitGroup);
+    bounds.union(new THREE.Box3().setFromObject(this.hardware.root));
+    const profile = this.rig.getProfile();
+    for (const point of [profile.head, profile.pelvis, ...profile.roots]) bounds.expandByPoint(new THREE.Vector3(...legacyPointToDisplay(point)));
+    const state = frameCameraState(cameraPresetState(preset), bounds, this.camera.aspect);
     if (preset === 'player') state.position.set(...this.rig.getPlayerPosition());
     this.applyCameraState(state); this.rig.setFirstPerson?.(preset === 'player');
     this.controls.enabled = !this.exportMode; this.controls.update();
@@ -601,9 +635,10 @@ export class DrumScene {
     return {view:state.view,position:state.position.toArray(),target:state.target.toArray(),fov:state.fov,near:state.near};
   }
   setViewState(state:SceneViewState):void {
-    if(!['front','stage','top','player'].includes(state.view)||state.position.length!==3||state.target.length!==3||![...state.position,...state.target,state.fov,state.near].every(Number.isFinite)||state.fov<15||state.fov>100||state.near<.005||state.near>.5)throw new Error(msg("Invalid camera settings.", "카메라 설정이 잘못되었습니다."));
+    if(!['front','stage','top','left','right','player'].includes(state.view)||state.position.length!==3||state.target.length!==3||![...state.position,...state.target,state.fov,state.near].every(Number.isFinite)||state.fov<15||state.fov>100||state.near<.005||state.near>.5)throw new Error(msg("Invalid camera settings.", "카메라 설정이 잘못되었습니다."));
     this.transition=null;this.savedCamera=null;
-    this.applyCameraState({...cameraPresetState(state.view),position:new THREE.Vector3(...state.position),target:new THREE.Vector3(...state.target),fov:state.fov,near:state.near});
+    const preset=cameraPresetState(state.view),position=new THREE.Vector3(...state.position),target=new THREE.Vector3(...state.target),distance=position.distanceTo(target);
+    this.applyCameraState({...preset,position,target,fov:state.fov,near:state.near,minDistance:Math.min(preset.minDistance,distance*.5),maxDistance:Math.max(preset.maxDistance,distance*1.5)});
     this.rig.setFirstPerson?.(state.view==='player');this.controls.enabled=!this.exportMode;this.controls.update();
   }
   setBackground(color: string): void { this.scene.background = new THREE.Color(color); }
@@ -624,12 +659,12 @@ export class DrumScene {
   }
 
   private cameraState(): CameraState {
-    return { position: this.camera.position.clone(), target: this.controls.target.clone(), view: this.cameraView, fov: this.camera.fov, near: this.camera.near,
+    return { position: this.camera.position.clone(), target: this.controls.target.clone(), view: this.cameraView, up: this.camera.up.clone(), fov: this.camera.fov, near: this.camera.near,
       minDistance: this.controls.minDistance, maxDistance: this.controls.maxDistance, maxPolarAngle: this.controls.maxPolarAngle,
       enableRotate: this.controls.enableRotate, enablePan: this.controls.enablePan, enableZoom: this.controls.enableZoom };
   }
   private applyCameraState(state: CameraState): void {
-    this.camera.position.copy(state.position); this.controls.target.copy(state.target); this.cameraView = state.view;
+    this.camera.position.copy(state.position); this.camera.up.copy(state.up); this.controls.target.copy(state.target); this.cameraView = state.view;
     this.camera.fov = state.fov; this.camera.near = state.near; this.camera.updateProjectionMatrix();
     this.camera.layers.set(0); this.camera.layers.enable(state.view === 'player' ? 9 : 10);
     for (const key of ['minDistance', 'maxDistance', 'maxPolarAngle', 'enableRotate', 'enablePan', 'enableZoom'] as const) {

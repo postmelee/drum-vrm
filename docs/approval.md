@@ -116,3 +116,26 @@ records tests and the explicitly incomplete full-song motion boundary. Its linke
 PR publication record identifies the exact integrated commit, CI and served
 artifact after manual deployment. No release/tag or randomized strike variation
 is included, and this does not authorize later unrelated deployment.
+
+
+## 2026-10-29 — Common fitting checkpoint Pages approval
+
+After the report for PR #64 at `b837104f21385376adb76c3346353067b75d0eef`
+explicitly retained tool-path/posture failures and withheld publication, the
+owner instructed: “우선 병합하고 Pages에 배포해줘.” This supersedes the earlier
+requirement to finish all motion acceptance before publishing this batch.
+
+The approved scope includes the PR's existing #58 prerequisite and integration
+with the current main branch, preserving its notification UI and MIDI support.
+Routine conflict resolution must preserve both sides' behavior and be verified
+before merging. This is approval for a known-incomplete public testing build,
+not a claim of natural-motion acceptance or authorization for a release/tag.
+[#18](https://github.com/postmelee/drum-vrm/issues/18) and
+[#23](https://github.com/postmelee/drum-vrm/issues/23) remain open.
+
+The [PR #64 publication record](https://github.com/postmelee/drum-vrm/pull/64)
+records the exact integrated commit, workflow, served artifact and browser checks
+after deployment. The [measurement report](verification/common-motion-fit.md)
+retains the original source identities and limitations; later UI integration
+does not rewrite those measured results. This approval does not cover later
+unrelated changes or continuing deployment.

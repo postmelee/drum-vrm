@@ -11,7 +11,7 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 - Upload MIDI, select tracks and channels, and review a piano roll with bars, beats and notes.
 - Automatically compare General MIDI, Logic Drum Kit Designer (GM mode), and Songsterr Downloader mappings on MIDI import, or select one manually, retain source events, and inspect count-in, hi-hat control and unassigned-hit diagnostics.
 - Play, pause, reset and seek with synthesized drums or a local WAV replacement.
-- Choose a reference skeleton, a bundled VRM 1.0 sample from the character dropdown, or your own local VRM; all use the same measured-body motion solver.
+- Choose a reference skeleton, a bundled VRM 1.0 sample from the character dropdown, or your own local VRM or FBX; all use the same measured-body motion solver.
 - Automatically fit the seat and hand-played kit when loading a character; undo or adjust contact points and palm direction manually. Replace drum bodies while keeping shared stands and pedals.
 - Choose Studio, Vintage or Electronic procedural kits, or models by Innerscene, Batoski and smoj.
 - Use a white/black workspace, focused settings and a separate Analysis panel, stage/front/top/player views and optional hit feedback. Task results appear in shared toasts; the toolbar bell reopens session history and unresolved notices.
@@ -24,7 +24,7 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 
 | Version | Availability |
 | --- | --- |
-| Repository / local build | Includes VRM 0.0/1.0 local import and the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. See the separate Pages row for the public build. |
+| Repository / local build | Includes VRM 0.0/1.0 and mapped FBX local import and the MIDI interpretation, phrase planning, body/kit fitting, motion inspection, WAV and local-project features described here. See the separate Pages row for the public build. |
 | [Pages build](https://postmelee.github.io/drum-vrm/) | Manually published, separately from repository changes. [Current batch verification and publication record](docs/verification/detailed-hardware.md) identifies the tested build, deployment and known limits; [previous public batch](docs/verification/character-presets.md#pages-publication) retains its exact commit. |
 | [Tagged v0.2.0](https://github.com/postmelee/drum-vrm/releases/tag/v0.2.0) | Historical release: MIDI playback/export, reference skeleton, procedural/Innerscene kits and static drum GLB replacement. [Original verification](docs/verification/studio-0.2.md). |
 
@@ -37,7 +37,7 @@ The interface defaults to English and remembers your language choice when browse
 1. Open **Files / Audio** and choose a `.mid`/`.midi` file, or expand **Demo**, choose a [demo score](docs/calibration.md#try-a-demo-score), and press **Load**. The initial **Prepare demo** button uses the 12-second Posture study; [review it with the three public characters](docs/models.md#compare-the-same-performance-across-models).
 2. Review tracks, channels and mapping under **MIDI settings**; diagnostics are in **Analysis**. Count-in and short open/close hi-hat interpretation are explicit policies, offered when relevant notes exist; the app does not claim to identify the producing DAW. Press **Apply settings** after changes. New uploads compare all supported mappings by playable-note coverage and prepare with the best candidate. Equivalent ties prefer GM; conflicting ties are marked provisional for review. You can override the choice here. Songsterr Downloader combined/separate named tracks both work; use channel 10 and only the drum tracks. This is a compatibility heuristic, not exporter identification or link importing; see the [mapping limits](specs/architecture/midi-interpretation.md#songsterr-downloader-compatibility).
 3. Press **Play**. Seek on the timeline and use the viewpoint buttons or drag/scroll to adjust the camera. **Player** view locks rotation, panning and zoom; closing drum editing restores the previous view.
-4. Open **Character** and choose a bundled sample from the dropdown, or use **Import VRM…** for your own file. [Model choices and terms](docs/models.md); [seat, contact-point and drum-part fitting](docs/calibration.md).
+4. Open **Character** and choose a bundled sample from the dropdown, or use **Import VRM / FBX…** for your own file. [Model choices and terms](docs/models.md); [seat, contact-point and drum-part fitting](docs/calibration.md).
 5. In **Files / Audio → Performance audio**, [load a WAV and adjust its start offset](docs/export.md). Play and seek to review its synchronization.
 6. [Save a local project](docs/projects.md) to retain settings and explicit note edits. **Export** remains available for video; the selected audio is included unless **Export without audio** is selected.
 
@@ -49,7 +49,7 @@ Drum appearance changes do not change the sound, and the app does not reproduce 
 | --- | --- |
 | MIDI | `.mid` / `.midi`, SMF 0/1 with PPQ timing; 10 MiB; 300 seconds across selected tracks; 512 tracks; 200,000 events; 50,000 selected supported hits. |
 | WAV | PCM or float, mono/stereo; up to 100 MiB and 300 seconds. Start offset ±300 seconds. [Formats and trimming](docs/export.md). |
-| Character | Self-contained VRM 0.0 or 1.0 `.vrm`, up to 50 MiB. [Bone, image and format limits](docs/models.md#supported-files). |
+| Character | Self-contained VRM 0.0/1.0 or rigged binary FBX 7.4/7.5, up to 50 MiB. FBX supports folder import, remaining-bone dropdowns, a 3D preview, local PNG/JPEG suggestions and automatic file settings/matte/unlit appearance. [Bone, image and format limits](docs/models.md#supported-files). |
 | Drum appearance | Self-contained static GLB 2.0 `.glb`, up to 25 MiB; embedded resources, no skinned models. [Preparation and fitting](docs/calibration.md#replace-drum-bodies-while-keeping-hardware). |
 
 Humanoid motion preparation has a separate [6,000-control-time budget](specs/architecture/engine-contract.md#preparation-and-worker-boundary); dense scores may reach it before the MIDI input limits. Setup replanning can be cancelled without losing the current setup.

@@ -1,7 +1,8 @@
 import { msg } from './i18n';
 import { fitThumbToShaft } from './shaft-grip';
 import { createStickGeometry } from './stick-geometry';
-import { DEFAULT_PEDALS } from './kit-default';
+import { DEFAULT_KIT, DEFAULT_PEDALS, NATIVE_REFERENCE_SEAT } from './kit-default';
+import { pedalForwardDirection, pedalToolRotation } from './pedal-frame';
 import * as THREE from 'three';
 import { VRMHumanoid, VRMHumanBoneParentMap, type VRMHumanBoneName, type VRMHumanBones } from '@pixiv/three-vrm';
 import type { RigAdapter, RigCalibration } from './scene';
@@ -32,6 +33,7 @@ export interface HumanoidRigAdapter extends RigAdapter {
   getProfile(): RigProfile;
   getCalibration(): HumanoidCalibration;
   getAutomaticCalibration(kit?: readonly KitPiece[]): HumanoidCalibration;
+  measureCalibration(value: HumanoidCalibration, kit: readonly KitPiece[]): RigProfile;
   setCalibration(value: HumanoidCalibration, kit?: readonly KitPiece[]): RigProfile;
   getContactSamples(): RigContactSample[];
   setSkeletonVisible(visible: boolean): void;
@@ -81,10 +83,12 @@ interface Chain {
 
 /** Derive a bent, reachable rest pose. This is also the initial visual before
  * MIDI preparation; the running renderer consumes Rust's 77-float pose (v3). */
-export function createRestRigPose(profile: RigProfile): Float32Array {
+export function createRestRigPose(profile: RigProfile, kit?: readonly KitPiece[]): Float32Array {
   const pose = new Float32Array(RIG_POSE_FLOATS);
   for (let limb = 0; limb < 4; limb++) {
-    const root = new THREE.Vector3(...profile.roots[limb]), q = new THREE.Quaternion(...profile.contactRotations[limb]);
+    const root = new THREE.Vector3(...profile.roots[limb]);
+    const q = limb < 2 ? new THREE.Quaternion(...profile.contactRotations[limb])
+      : pedalToolRotation(kit?.find(piece => piece.id === (limb === 2 ? 'pedalHat' : 'kick')), profile.contactRotations[limb]);
     const offset = new THREE.Vector3(...profile.gripOffsets[limb]).add(new THREE.Vector3(...profile.tipOffsets[limb])).applyQuaternion(q);
     const tip = new THREE.Vector3(...profile.restTips[limb]), end = tip.clone().sub(offset), direction = end.clone().sub(root);
     const [a, b] = profile.lengths[limb];
@@ -130,6 +134,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
   private readonly baseProfile: RigProfile;
   private readonly baseCalibration: HumanoidCalibration;
   private pedals: [Vec3, Vec3] = pedalTargets();
+  private pedalKit: readonly KitPiece[] = DEFAULT_KIT;
   private readonly fingerPose: { node: THREE.Object3D; rotation: THREE.Quaternion }[] = [];
   private readonly handFrames: HandFrame[];
   private readonly handMounts: THREE.Quaternion[] = [];
@@ -143,8 +148,8 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     Object.values(humanoid.rawHumanBones).forEach(bone => { for (let node: THREE.Object3D | null = bone.node; node; node = node.parent) boneAncestors.add(node); });
     boneAncestors.forEach(node => {
       const values = [node.scale.x, node.scale.y, node.scale.z];
-      if (!values.every(value => Number.isFinite(value) && value > 0)) throw new Error(msg("VRM bone transforms must have finite positive scales.", "유한한 양수 크기의 VRM 본 변환만 지원합니다."));
-      if (Math.max(...values) - Math.min(...values) > Math.max(...values) * 1e-5) throw new Error(msg("Nonuniform bone scales are not supported. Use a VRM with uniform scale.", "축마다 크기가 다른 비균일 본 스케일은 지원하지 않습니다. 균일한 스케일의 VRM을 사용해 주세요."));
+      if (!values.every(value => Number.isFinite(value) && value > 0)) throw new Error(msg("Humanoid bone transforms must have finite positive scales.", "유한한 양수 크기의 휴머노이드 본 변환만 지원합니다."));
+      if (Math.max(...values) - Math.min(...values) > Math.max(...values) * 1e-5) throw new Error(msg("Nonuniform bone scales are not supported. Use a humanoid with uniform scale.", "축마다 크기가 다른 비균일 본 스케일은 지원하지 않습니다. 균일한 스케일의 휴머노이드를 사용해 주세요."));
     });
     humanoid.resetNormalizedPose(); humanoid.normalizedHumanBonesRoot.updateWorldMatrix(true, true);
     const required = (name: VRMHumanBoneName) => {
@@ -211,6 +216,9 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       pelvis: legacyPositionToNative(seat.toArray()), chest: legacyPositionToNative(chest.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
       head: legacyPositionToNative(head.getWorldPosition(new THREE.Vector3()).add(translation).toArray()),
     };
+    // A turned hi-hat foot and its knee share one horizontal reference. The
+    // pole only selects the IK bend plane; lengths, ankle and sole stay fixed.
+    this.profile.bendPoles[2] = pedalForwardDirection(this.pedalKit.find(piece => piece.id === 'pedalHat'));
     // Measure the same prepared grip that will render, not the source's spread
     // fingers. Sync normalized rotations to raw skin bones before sampling.
     this.applyMatchedGrip(); humanoid.update(); source.updateMatrixWorld(true);
@@ -218,6 +226,14 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       required(`${side}Hand`).getWorldQuaternion(new THREE.Quaternion()).multiply(this.handMounts[limb]).toArray())) as [Quat, Quat];
     this.profile.bodyGeometry = measureBodyGeometry(source, humanoid, this.profile,
       world => new THREE.Vector3(...legacyPositionToNative(world.clone().add(translation).toArray())), measurementRotations);
+    // A foot bone is an ankle, not the sole. Use the sampled shoe bottom in the
+    // same neutral tool frame as the collision envelope; its 3 mm inflation is
+    // clearance, not visible sole thickness. Updating the shared grips before
+    // constructing sockets keeps IK, rendered contact and automatic seat height
+    // on the same measured contact. Missing skin keeps the native fallback.
+    this.profile.bodyGeometry.footBoxes?.forEach((box, side) => {
+      grips[side + 2][1] = box.center[1] - box.halfExtents[1] + .003;
+    });
     this.baseProfile = structuredClone(this.profile);
     // All validation above precedes taking ownership of the source scene.
     this.root.name = id; this.root.add(source, this.skeletonOverlay);
@@ -243,18 +259,30 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       }
       this.chains.push({ ...chainData[limb], handToTool, contact, socket, rawRestInverse: restWorld.clone().invert(), stick });
     }
-    this.buildOverlay(); this.applyPose(createRestRigPose(this.profile));
+    this.buildOverlay(); this.applyPose(createRestRigPose(this.profile, this.pedalKit));
   }
 
   getProfile(): RigProfile { return structuredClone(this.profile); }
   getCalibration(): HumanoidCalibration { return { ...this.calibration }; }
+  measureCalibration(value: HumanoidCalibration, kit: readonly KitPiece[]): RigProfile {
+    // Restore the adapter's accepted pedal frame, which may differ from the
+    // scene's pending kit during adoption, fitting or project restoration.
+    const previous = this.getCalibration(), previousKit = this.pedalKit;
+    try { return this.setCalibration(value, kit); }
+    finally { this.setCalibration(previous, previousKit); }
+  }
   getAutomaticCalibration(kit?: readonly KitPiece[]): HumanoidCalibration {
     const pedals = kit ? pedalTargets(kit) : this.pedals;
     let height = .73;
-    const forward = .06;
+    // Common reference seat nearer the conventional rack row. Height is still
+    // derived from both measured legs and pedal contacts; no avatar-name tuning.
+    const forward = .14;
     for (let limb = 2; limb < 4; limb++) {
       const relative = new THREE.Vector3(...this.baseProfile.roots[limb]).sub(new THREE.Vector3(...this.baseProfile.pelvis));
-      const ankle = new THREE.Vector3(...pedals[limb - 2]).sub(new THREE.Vector3(...this.baseProfile.gripOffsets[limb])).sub(new THREE.Vector3(...this.baseProfile.tipOffsets[limb]));
+      const piece = (kit ?? this.pedalKit).find(piece => piece.id === (limb === 2 ? 'pedalHat' : 'kick'));
+      const soleOffset = new THREE.Vector3(...this.baseProfile.gripOffsets[limb]).add(new THREE.Vector3(...this.baseProfile.tipOffsets[limb]))
+        .applyQuaternion(pedalToolRotation(piece, this.baseProfile.contactRotations[limb]));
+      const ankle = new THREE.Vector3(...pedals[limb - 2]).sub(soleOffset);
       const reach = (this.baseProfile.lengths[limb][0] + this.baseProfile.lengths[limb][1]) * .94;
       const horizontalSq = (ankle.x - relative.x) ** 2 + (ankle.z - forward - relative.z) ** 2;
       if (horizontalSq < reach * reach) height = Math.min(height, ankle.y + Math.sqrt(reach * reach - horizontalSq) - relative.y);
@@ -276,6 +304,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     if (profile.bodyGeometry) profile.bodyGeometry.torso.center = translate(profile.bodyGeometry.torso.center);
     profile.pelvis = translate(profile.pelvis); profile.chest = translate(profile.chest); profile.head = translate(profile.head);
     profile.restTips = [translate(profile.restTips[0]), translate(profile.restTips[1]), [...pedals[0]], [...pedals[1]]];
+    profile.bendPoles[2] = pedalForwardDirection((kit ?? this.pedalKit).find(piece => piece.id === 'pedalHat'));
     for (let limb = 0; limb < 2; limb++) {
       const wrist = this.referenceWrists[limb].clone().add(toVector(offset));
       const orientation = this.handOrientation(limb, toVector(profile.roots[limb]), wrist, profile.lengths[limb], toVector(profile.bendPoles[limb]), palmOrientation);
@@ -297,7 +326,9 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       chain.contact.position.copy(toolOffset);
       chain.stick!.position.copy(orientation.grip);
     }
-    Object.assign(this.profile, profile); this.pedals = pedals; this.calibration = { ...value, palmOrientation };
+    Object.assign(this.profile, profile); this.pedals = pedals;
+    if (kit) this.pedalKit = structuredClone(kit);
+    this.calibration = { ...value, palmOrientation };
     return this.getProfile();
   }
   describeRig() { return { id: this.profile.id, joints: Object.keys(this.humanoid.rawHumanBones), poseFloats: RIG_POSE_FLOATS }; }
@@ -528,6 +559,8 @@ export class NativeHumanoidRigAdapter extends NormalizedHumanoidRigAdapter {
     const humanoid = new VRMHumanoid(Object.fromEntries(Object.entries(nodes).map(([name, node]) => [name, { node }])) as unknown as VRMHumanBones);
     source.add(humanoid.normalizedHumanBonesRoot);
     super(humanoid, source, 'humanoid-native-v1'); this.skeleton = new THREE.Skeleton(Object.values(nodes));
+    this.setCalibration(NATIVE_REFERENCE_SEAT, DEFAULT_KIT);
+    this.applyPose(createRestRigPose(this.getProfile(), DEFAULT_KIT));
   }
   override dispose(): void { this.skeleton.dispose(); super.dispose(); }
 }

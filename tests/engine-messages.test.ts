@@ -53,6 +53,12 @@ describe('engine presentation boundary', () => {
     expect(translate(canonical)).toContain('움직일 수 있는 상단 심벌이 없습니다');
     const posture = engineMessage('3 hand-impact poses exceed the common posture limits. Contact timing is preserved; adjust the layout and inspect the arms.');
     expect(translate(posture)).toContain('손 타격 자세 3개');
+    const sampledPosture = engineMessage('3 sampled hand poses exceed the common posture limits during preparation, contact, recovery or rest. Original contact times are preserved; inspect the marked interval.');
+    expect(translate(sampledPosture)).toContain('준비·타격·회수·대기 중 손 자세 표본 3개');
+    const tool=engineMessage('3 sampled whole-stick paths intersect drum equipment (minimum signed proxy clearance -4.2 mm). Original contact times are preserved; inspect the marked interval.');
+    expect(translate(tool)).toContain('스틱 전체 경로 표본 3개');
+    expect(translate(tool)).toContain('4.2 mm');
+    expect(translate(engineMessage('1 sampled whole-stick paths intersect the other stick (minimum signed proxy clearance -2.1 mm). Original contact times are preserved; inspect the marked interval.'))).toContain('반대쪽 스틱');
   });
   it('covers every existing Korean Rust message template', () => {
     const known = new Set(ENGINE_MESSAGE_TEMPLATES.map(([, ko]) => ko));

@@ -20,12 +20,30 @@ pub fn at_pitch(
     equipment: Option<&EquipmentContext>,
     piece: Option<&str>,
 ) -> Option<HandSolution> {
-    posture::hand_candidates(profile, limb, target, pitch).find(|hand| {
+    at_pitch_mode(profile, limb, target, pitch, equipment, piece, true)
+}
+pub(crate) fn at_pitch_mode(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+    refine: bool,
+) -> Option<HandSolution> {
+    let valid = |hand: &HandSolution| {
         equipment.is_none_or(|ctx| {
-            crate::equipment_motion::hand_clearance(profile, limb, hand, ctx, piece)
+            crate::equipment_motion::tool_clearance(profile, limb, hand, ctx, piece)
                 >= posture::MARGIN
         })
-    })
+    };
+    posture::hand_candidates(profile, limb, target, pitch)
+        .find(valid)
+        .or_else(|| {
+            posture::refined_hand_candidates(profile, limb, target, pitch)
+                .take(if refine { 28 } else { 0 })
+                .find(valid)
+        })
 }
 
 pub fn candidate(
@@ -50,6 +68,16 @@ pub fn hand_probe_fits(
     equipment: Option<&EquipmentContext>,
     piece: Option<&str>,
 ) -> bool {
+    hand_probe_mode(profile, limb, target, equipment, piece, true)
+}
+pub(crate) fn hand_probe_mode(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+    refine: bool,
+) -> bool {
     if limb >= 2 {
         return false;
     }
@@ -57,15 +85,18 @@ pub fn hand_probe_fits(
         return profile.reachable(limb, target);
     }
     PROBES.into_iter().all(|(lift, pitch)| {
-        candidate(
-            profile,
-            limb,
-            [target[0], target[1] + lift, target[2]],
-            pitch,
-            equipment,
-            piece,
-        )
-        .is_some()
+        PITCH_OFFSETS.into_iter().any(|delta| {
+            at_pitch_mode(
+                profile,
+                limb,
+                [target[0], target[1] + lift, target[2]],
+                pitch + delta,
+                equipment,
+                piece,
+                refine,
+            )
+            .is_some()
+        })
     })
 }
 
@@ -102,7 +133,7 @@ pub fn preserve_impact_pitches(
     for (i, hit) in hits.iter().enumerate() {
         let mut next = [(usize::MAX, f64::INFINITY); 9];
         for (j, &pitch) in PITCH_OFFSETS.iter().enumerate() {
-            if !profile.reachable_at_pitch(limb, hit.target, pitch) {
+            if !profile.may_reach_contact(limb, hit.target) {
                 continue;
             }
             let witness = at_pitch(
@@ -122,7 +153,7 @@ pub fn preserve_impact_pitches(
                 next[j] = (missing, cost);
                 continue;
             }
-            let limit = 2.0 * (hit.time - hits[i - 1].time) + 1e-9;
+            let limit = crate::equipment_motion::PITCH_RATE * (hit.time - hits[i - 1].time) + 1e-9;
             for (k, &previous) in PITCH_OFFSETS.iter().enumerate() {
                 if !costs[k].1.is_finite() || (pitch - previous).abs() > limit {
                     continue;
@@ -165,12 +196,12 @@ pub fn preserve_impact_pitches(
         upper[i] = pitch;
     }
     for i in 1..track.len() {
-        let step = 2.0 * (track[i].time - track[i - 1].time);
+        let step = crate::equipment_motion::PITCH_RATE * (track[i].time - track[i - 1].time);
         lower[i] = lower[i].max(lower[i - 1] - step);
         upper[i] = upper[i].min(upper[i - 1] + step);
     }
     for i in (0..track.len().saturating_sub(1)).rev() {
-        let step = 2.0 * (track[i + 1].time - track[i].time);
+        let step = crate::equipment_motion::PITCH_RATE * (track[i + 1].time - track[i].time);
         lower[i] = lower[i].max(lower[i + 1] - step);
         upper[i] = upper[i].min(upper[i + 1] + step);
     }
@@ -181,7 +212,7 @@ pub fn preserve_impact_pitches(
         let mut lo = lower[i];
         let mut hi = upper[i].max(lo);
         if i > 0 {
-            let step = 2.0 * (track[i].time - track[i - 1].time);
+            let step = crate::equipment_motion::PITCH_RATE * (track[i].time - track[i - 1].time);
             lo = lo.max(track[i - 1].pitch[limb] - step);
             hi = hi.min(track[i - 1].pitch[limb] + step).max(lo);
         }
@@ -292,9 +323,9 @@ mod tests {
             desired_palm: [0., 1., 0.],
         };
         p.hand_frames = Some([frame.clone(), frame]);
-        let ctx = EquipmentContext {
-            kit: Vec::new(),
-            geometry: crate::equipment::EquipmentGeometry {
+        let ctx = EquipmentContext::new(
+            Vec::new(),
+            crate::equipment::EquipmentGeometry {
                 version: 1,
                 bodies: Vec::new(),
                 supports: Vec::new(),
@@ -302,7 +333,7 @@ mod tests {
                 mechanisms: Vec::new(),
                 unresolved_piece_ids: Vec::new(),
             },
-        };
+        );
         let mut hits: Vec<_> = [0.2, 0.5, 0.8]
             .into_iter()
             .enumerate()

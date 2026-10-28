@@ -6,7 +6,7 @@ For detailed reasoning, see [calibration](calibration.md) and [rig compatibility
 
 ## Semantic body boundary
 
-The built-in skeleton and VRM 0.0/1.0 imports share
+The built-in skeleton, VRM 0.0/1.0 and mapped FBX imports share
 [NormalizedHumanoidRigAdapter](../../src/rig-humanoid.ts). Measure semantic rest joints
 and actual segment lengths; do not branch animation on an avatar's name, model
 filename or creator. Source-specific drum extraction belongs in appearance adapters.
@@ -39,25 +39,53 @@ inspection is a separate boundary from these rendered attachment measurements.
 `RigProfile.bodyGeometry` is an optional version-1 numeric contract. It carries
 `source` (`mesh-estimate` or `skeleton-fallback`), seated engine-world torso
 `center`, shoulder-right/up/forward `halfExtents`, left/right upper/lower
-`armRadii`, `handRadii`, optional `handCenters`/`handCapsules`, and `sampleCount`, all lengths in metres. Hand centers and capsule endpoints are wrist-relative in the tool frame; the solver transforms them with the actual solved wrist and tool rotation. Capsules take precedence over offset spheres. Missing optional hand geometry uses the wrist-centered sphere fallback.
+`armRadii`, `handRadii`, optional `legRadii` (left/right thigh/shin), `footRadii`,
+`legBoxes`/`footBoxes`, `legRestFrames`, `handCenters`/`handCapsules`, and `sampleCount`, all lengths in metres. Hand centers and capsule endpoints are wrist-relative in the tool frame; the solver transforms them with the actual solved wrist and tool rotation. Capsules take precedence over offset spheres. Missing optional hand geometry uses the wrist-centered sphere fallback.
 [body-geometry.ts](../../src/body-geometry.ts) derives it without avatar or material
 name branches; Rust validates it independently. Seat translation moves the center,
 and torso facing rotates it with the same shoulders used by the solver.
 
 The adapter samples at most 12,000 vertices deterministically across skinned
-meshes. A semantic region needs at least 65% of a vertex's valid skin weight;
-extra bones inherit the nearest mapped semantic ancestor. Head/leg regions are
-excluded. At least 24 torso samples within the pelvis-to-shoulder height band are
+meshes, considering only indices in the active draw ranges and visible material groups. Shared but unreferenced attribute vertices do not contribute. A semantic region needs at least 65% of a vertex's valid skin weight;
+extra bones inherit the nearest mapped semantic ancestor. Head/hair are excluded;
+legs and feet are measured separately. At least 24 torso samples within the pelvis-to-shoulder height band are
 needed; otherwise the shoulder/segment-based fallback remains explicit. Torso
 width/depth use the 1st–99th percentile plus 4 mm padding; limb radii use the 98th
 percentile plus 3 mm, bounded to 5–250 mm. Sparse limb regions retain their
-skeletal estimate even when the torso is mesh-derived. Hand vertices are sampled after the normalized grip is applied to raw bones. A deterministic principal-axis capsule uses the 1st–99th percentile along its axis and the 98th-percentile radial distance plus 3 mm. Palm-direction changes transport the descriptor into the new tool frame; they do not remeasure an unrelated open-hand pose.
+skeletal estimate even when another region is mesh-derived. Lower-limb measurements
+are retained even if torso coverage is insufficient. Missing leg radii use 14% of
+thigh length (25–90 mm) and 10% of shin length (20–70 mm); missing foot radii use
+40 mm. Foot width is measured around the ankle-to-toes axis, or a sampled principal
+axis when that segment has insufficient samples. These are explicit proxy defaults,
+not measured shoe dimensions. Hand vertices are sampled after the normalized grip is applied to raw bones. A deterministic principal-axis capsule uses the 1st–99th percentile along its axis and the 98th-percentile radial distance plus 3 mm. Palm-direction changes transport the descriptor into the new tool frame; they do not remeasure an unrelated open-hand pose.
+
+Measured lower limbs additionally provide offset boxes so hanging fabric behind a
+leg does not expand an equal-radius tube in every direction. `legBoxes` pairs
+left/right thigh/shin descriptors, each `{center, halfExtents}`. The origin is the
+proximal joint; local Y points toward the distal joint, X is shoulder-right projected
+perpendicular to Y, and Z is X × Y. `footBoxes` are ankle-relative in the neutral
+tool frame. Every axis uses 1st–99th percentile bounds plus 3 mm. Centers have length
+at most 3 m and half extents are 1–1000 mm. All four leg regions (or both feet) need
+sufficient samples before the corresponding optional field is emitted.
+`legRestFrames` optionally records the four measurement-frame unit quaternions
+in the same side/segment order. The seated frame applies the minimum swing from
+that frame's Y axis to the solved leg direction, then the original frame rotation:
+`Qposed = Qswing(Yrest → Yposed) × Qrest`. This matches the adapter's leg transport
+instead of independently projecting body-right again after bending. Older profiles
+without rest frames retain the projected body-right fallback. Foot boxes use the
+actual tool rotation directly. These measured boxes and radii remain advisory
+inspection data; missing fields retain their explicit radius fallback. Hard
+lower-limb layout acceptance uses separate bone-length-based structural cores,
+with the same real joint lengths and sole/tool transforms. It does not use costume
+width as anatomical thickness or discard measurements to manufacture a pass.
 
 These are sampled **surface envelopes**, not an anatomical body segmentation or
-containment proof. Torso/arm-weighted clothing can enlarge them, excluded outliers
+containment proof. Torso/limb-weighted clothing can enlarge them, excluded outliers
 can fall outside them, and skinning changes with pose. The raw mesh and textures
-stay outside the Rust profile and saved project. Rendering/visual checks remain
-separate from proxy clearance; see [calibration](calibration.md).
+stay outside the Rust profile and saved project. Their overlaps guide visual
+ranking and warnings rather than rejecting an otherwise valid physical-tool pose.
+Rendering/visual checks remain separate; [calibration](calibration.md) defines
+hard structural/tool constraints and the advisory-body policy.
 
 ## Model import
 
@@ -72,8 +100,7 @@ separate from proxy clearance; see [calibration](calibration.md).
 | Drum component | Self-contained static `.glb`, at most 25 MiB; body-only geometry expected |
 
 Only explicit `VRM.specVersion = "0.0"` or `VRMC_vrm.specVersion = "1.0"` is accepted; unknown versions and files containing both extensions are rejected. `.vroid` is an editing
-source, not an imported runtime model. Generic humanoid GLB/FBX mapping is not
-implemented. External resource references are rejected; metadata links are displayed
+source, not an imported runtime model. Generic humanoid GLB mapping is not implemented. FBX uses the separate boundary below. External resource references are rejected; metadata links are displayed
 without automatically fetching them. File metadata and source terms govern asset
 use, independent of the application's MIT license.
 
@@ -89,6 +116,102 @@ The inspection retains original metadata. VRM 0.0 uses `title`, `author`, `refer
 `otherPermissionUrl`, `licenseName` and `otherLicenseUrl`; no VRM 1.0 license defaults
 are applied. Missing/invalid metadata is reported without inventing permissions.
 Original strings and URLs are displayed as text and never executed or fetched.
+
+Before three-vrm converts legacy materials, `vrm-materials.ts` applies UniVRM's
+[documented migration](https://vrm.dev/en/univrm1/migrate_vrm0/feature/) to VRM 0.0
+`VRM/MToon` only: a valid `_MainTex` index becomes `_ShadeTexture` when that
+property is absent. Explicit shade maps (including index 0), colors, UV transforms,
+non-MToon materials and VRM 1.0 are untouched. The parser JSON changes in memory;
+source bytes/hashes remain identical. Invalid main indices are never repaired.
+The migration is idempotent, reported in model details, and shared by local,
+preset and project imports. MToon 1 shading remains in use; `v0CompatShade` is not
+also enabled, avoiding two overlapping compatibility policies.
+
+### FBX import
+
+[fbx-import.ts](../../src/fbx-import.ts), [fbx-config.ts](../../src/fbx-config.ts) and
+[fbx-rig.ts](../../src/fbx-rig.ts) own the binary FBX boundary. The pinned Three.js
+0.186.1 loader handles binary 7.4/7.5 here; ASCII and other versions are rejected.
+No new dependency or third-party model is bundled.
+
+| Resource | Limit / validation |
+| --- | --- |
+| FBX source | 50 MiB; bounded binary record offsets and safe integer IDs |
+| Binary structure | 100,000 records, depth 128, 100,000 properties per record, 256 texture objects and 128 material objects; model-parent cycles and multiple parents rejected |
+| Arrays | 4M entries per array, 16M aggregate entries, 128 MiB aggregate declared expansion; actual deflate output must match each declared size before loader allocation |
+| Loaded scene | 10,000 nodes, 1M mesh position vertices, 128 materials; imported cameras/lights removed |
+| Images | At most 64 selected PNG/JPEG companions totaling 50 MiB; selected and used embedded images share a 64-image / 64M-pixel budget, at most 4096 pixels per side |
+| Unit mapping | Finite metres per source unit in [0.000001, 10], suggested as `UnitScaleFactor / 100` (fallback 0.01); common measured-limb limits still apply |
+| Mapping identity | Known humanoid semantic names to child-index paths (at most 512 characters); no missing required, duplicate or invalid-ancestry assignments |
+
+All selected companion basenames must be distinct after NFC normalization and case
+folding. Referenced images resolve only to explicit local companions or embedded
+PNG/JPEG data; no external fetch is allowed. Repeated image references share a decoded source. Decoded textures and embedded blob
+URLs are disposed on failure/cancel/replacement. Manual base-color assignment is
+by stable material traversal index, uses sRGB and a white diffuse tint, and is
+saved with the original image identity. Original mode preserves other supported Phong/Lambert properties.
+This does not reconstruct authoring-tool toon/node graphs or layered materials.
+
+`fbx.materialMode` accepts `original` (default), `matte` or `unlit`; omission in
+older settings means `original`. Original preserves supported Phong/Lambert
+properties. Matte removes direct specular highlights and environment reflections.
+Unlit displays base color/alpha and vertex colors without lighting, tone mapping
+or fog. Opacity, alpha test, sidedness, depth and blending remain. Switching is
+reversible; variants are shared across meshes and inactive variants are disposed
+on cancellation/replacement. Preview, adoption and project restore apply the same
+choice, also retained in the browser's successful-setting cache.
+
+Explicit `Material/Properties70/SpecularFactor` must be finite in [0, 1]. The
+bounded scanner collects material IDs and mesh connection order; the importer
+multiplies the Phong specular color in linear space once, without confusing
+same-named materials or multiplying shared materials repeatedly. Missing factors
+preserve loader behavior (multiplier 1). Source bytes are unchanged. This is a
+loader correction, not inference of toon graphs or Sketchfab viewer settings;
+there are no avatar-name defaults.
+
+Folder selection collects VRM/FBX models and PNG/JPEG companions recursively,
+ignores unrelated files and asks which model to import when several exist. The
+same aggregate resource limits apply; ZIP extraction is outside this importer.
+Setup exposes unresolved required bones first. Dropdowns exclude used paths and
+incompatible mapped ancestry, preserve the current selection for repair, and
+show name-matching choices before an opt-in list of other eligible bones.
+A separate rest-pose preview marks the selected bone without changing source
+transforms. It owns and disposes its own renderer and controls; the source model
+remains owned by the staged import. Preview failure does not prevent manual setup.
+
+Unique generic material/image-name matches may propose base-color assignments;
+ties and recognized non-color map tokens remain unassigned. Original texture
+bindings and valid saved choices take precedence. Every preview update restores
+original maps/tints before applying current overrides, so clearing a choice is
+reversible. Adoption still validates and applies the explicit resulting config.
+After successful adoption only, browser storage remembers the most recent 10
+setups keyed by FBX SHA-256. Records contain settings and image names, never
+asset bytes. Restored settings pass schema and scene mapping validation; absent
+companions remain unassigned. Storage failure is nonfatal; project files remain
+the portable record. Cancel/failure does not update this cache.
+
+Conventional humanoid, Mixamo, suffix and Japanese bone names are suggestions,
+never model-specific rules. Ambiguous names remain unassigned. Validate the 15
+required bones and optional hierarchy before adopting. The rest head-to-hips and
+right-to-left upper-arm directions establish an orthonormal +Y/+X body basis;
+reject degenerate axes. A positive unit-scale/rotation wrapper is applied before
+`VRMHumanoid` captures rest transforms. Its normalized root remains under an
+identity scene. The shared solver receives only measured semantic geometry,
+retains segment lengths and drives the actual hand/foot sockets.
+
+Unmapped bones keep their local rest transforms and follow ancestors. FBX animation
+clips, MMD/Blender constraints, expressions and secondary-motion physics are not
+played. Head-descendant masking uses the same first-person helper; non-indexed
+triangles receive identity indices without changing UVs, skin weights or order.
+Complex auxiliary rigs can still deform differently from their source tool.
+The existing fit/adoption transaction preserves the active character on cancellation
+or failure. The [project contract](project-format.md) owns saved mappings/relinking.
+
+The UI calls `original` **File settings (automatic)**. The persisted key stays
+unchanged for existing projects/preferences. Automatic honors supported explicit
+file properties and version compatibility; it does not infer a missing website
+shader from avatar names, image filenames or a neighboring GLB. Explicit saved
+matte/unlit choices remain overrides.
 
 ### Bundled character selection
 
@@ -114,10 +237,11 @@ individual provenance records.
 
 - Seat height: 0.30–1.20 m. Forward/back adjustment: −0.50–0.50 m.
 - Automatic seat fitting gives a pedal-aware starting position, not collision-free fitting.
-- Explicit kit fitting adjusts hand-played contact positions/radii together; the kick
-  remains fixed while the direct hi-hat moves as a coupled pedal/mast/cymbal assembly.
-  [Calibration](calibration.md) owns search bounds and
-  the limited meaning of a complete proposal.
+- Fitting first searches posture and bounded seat changes with the kit unchanged.
+  Only if that fails does it adjust hand-played positions/shell radii within bounds;
+  the kick stays fixed and the direct hi-hat moves as a coupled pedal/mast/cymbal
+  assembly. Character scaling is not implemented. [Calibration](calibration.md)
+  owns search bounds and the limited meaning of a complete proposal.
 - Target X is bounded to ±2 m, Y to 0.02–2.50 m and Z to −0.50–2.50 m.
 - Kick and hi-hat pedal height is further bounded to 0.04–0.20 m.
 - Closed and open hi-hat share one movable upper surface; its opening and the
@@ -140,16 +264,19 @@ Symmetric palms-up is not a complete traditional grip. The thumb solver jointly
 minimizes pad-to-shaft distance and distal-axis misalignment with bounded rotations
 about the model's rest joints; it never extends finger bones. Missing optional
 fingers retain reduced grip detail. Optional measured `handFrames` let the common solver
-orient the wrist for each target through a compound forearm/tool link, instead of a
-fixed world rotation. Forearm roll carries palm orientation. This preserves segment
-lengths and the calibrated grip. The bend plane is transported continuously across
-the front workspace, and palm roll is a bounded preference rather than an exact
-constraint. This does not establish anatomical limits or skin clearance. Profiles
-without hand frames retain the previous fixed-orientation path.
-With hand frames, a bounded, precomputed two-arm swivel track adjusts the elbow
-planes while retaining the calibrated hand/tool relationship. It evaluates existing
-contact paths against numeric proxies; its limits and remaining collision scope
-are defined in [calibration](calibration.md).
+orient the shaft toward each target, recover the wrist from the rotated grip/tool
+offset, and solve the real two-bone arm. Four analytic roll refinements reduce wrist
+swing while preserving segment lengths and the calibrated grip. Desired palm direction
+is an initial preference; the shared posture gate limits actual wrist swing to 0.60 rad.
+The bend plane is transported across the front workspace before planned elbow swivel.
+This is not a complete anatomical or skin-clearance model. Profiles without hand frames
+retain the previous fixed-orientation path. [Calibration](calibration.md) owns the numeric rules.
+With hand frames, bounded joint pitch/lift repair adjusts the shared tool path
+before the precomputed two-arm swivel track coordinates elbow planes. Both retain
+the calibrated hand/tool relationship and original contact times. Complete physical
+tool clearance is required; measured body overlap is advisory. Fit and complete hit
+assignment do not certify the resulting motion. [Calibration](calibration.md) and
+[equipment contact](equipment-contact.md) define the limits and remaining collision scope.
 
 Optional `torsoPivot` in the numeric profile is the measured normalized spine
 position, translated with the seat. The evaluator uses it to coordinate shoulder

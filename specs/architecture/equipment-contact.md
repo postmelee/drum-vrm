@@ -64,8 +64,11 @@ new measured geometry without a new measurement transaction.
 ## Layout, hardware and access
 
 The shared result contains `bodies`, `supports`, `pedals`, `mechanisms` and
-`unresolvedPieceIds`. Body boxes and pedal footboard/base boxes use metres; supports
-are finite capsules with endpoints and radii. Closed/open hi-hat aliases share one
+`unresolvedPieceIds`. Boxes use metre-valued world `center` and local `halfExtents`.
+Body boxes are axis-aligned; pedal footboard/base boxes also carry an optional
+xyzw `rotation` (identity when absent). Segment queries transform into that local
+frame, and box separation uses the oriented axes. Supports are finite capsules
+with endpoints and radii. Closed/open hi-hat aliases share one
 body; pedal contacts remain distinct. Own mount attachments and linked hi-hat
 hardware are intentional overlaps, not blanket exclusions for nearby instruments.
 
@@ -98,6 +101,28 @@ unreachable mounts instead of stretching their connectors. Floor-tom brackets
 join three independent legs to the shell. The snare basket retains a connected
 neck and tilter above its tripod.
 
+Snare baskets use a 225 mm tripod radius; boom cymbal and direct hi-hat stands
+use 300 mm. These are shared engineering dimensions. Optional
+`KitPiece.standRotation` fixes the first tripod leg's absolute world-Y phase in
+radians (`−π…π`), with X/Z direction `[sin(phase), cos(phase)]`. It is supported on
+snare, hi-hat, crash and ride stands. If absent, routing selects a bounded phase;
+if present, it may move the stand base within existing limits but cannot silently
+select another phase. This lets fitting test the real tripod adjustment against
+seated legs while preserving the instrument's position. It is not a collision
+exemption. Saved layouts retain the accepted phase.
+
+An optional `mount: {kind: 'standClamp', supportPieceId: 'ride'}` selects a
+suspended floor tom. Only `tomLow` may depend on a distinct ride/crash stand
+without its own mount; absence retains the three floor legs. Dependency order
+routes that host before the tom. A physical clamp, 50 mm socket, ball joint,
+horizontal/vertical L-rod and shell bracket replace the legs. The clamp accepts
+15.9–28.6 mm pipe diameters; the arm is bounded to 25–380 mm horizontally,
+80–300 mm rise and 35 mm receiver insertion. Only the clamp sleeve and short
+socket may overlap their named host's vertical tube. Both the cymbal and tom
+body-centre projections must lie inside the host tripod triangle. Other supports,
+the shell and the rod retain collision checks. A failed route stays unresolved;
+the preset does not hide legs and draw an unchecked connector.
+
 Boom stands use three nested tube diameters, locking collars, memory locks, a
 boom pivot, a straight boom with a rear tail, a separate cymbal tilter, sleeve and
 felt, and double-braced tripod legs with rubber feet. One leg points toward the
@@ -118,7 +143,11 @@ Fixed hardware is merged by material per instrument; the kick beater remains
 separately articulated. Detail therefore does not add a draw call per screw.
 
 The direct hi-hat mast is constrained to the pedal's toe-side axis, 0.12 m ahead
-of the sole anchor. Measured body offsets determine the corresponding hi-hat
+of the sole anchor **along its own horizontal direction**. Hi-hat tripod legs
+rotate with this frame: one leg points toward the toe side, leaving a gap toward
+the heel rather than running a leg through the footboard. The bounded route
+search may rotate the tripod further; body/leg clearance remains a separate test.
+Measured body offsets determine the corresponding hi-hat
 contact anchor. A mismatch above 3 mm remains unresolved; no long lateral linkage
 or implicit remote hi-hat conceals it. Common fitting keeps this relationship.
 
@@ -146,11 +175,24 @@ a transverse axle, a physical contact and normal, and bounded travel. It is a
 kinematic mechanism evaluated at absolute song time, not a frame-integrated
 physics simulation.
 
-- A footboard rotates about `[x, y − 0.012, z − 0.13]` relative to its sole anchor.
+`KitPiece.pedalForward` is an optional horizontal unit vector on `pedalHat`.
+Omitting it preserves the legacy world +Z direction. Values must be finite,
+have `abs(y) ≤ 1e-8` and unit-length error ≤ `1e-6`; a kick cannot carry this
+field because its beater and bass assembly retain their common fixed axis.
+The direction maps semantic local +Z from heel toward mast and local +X to the
+transverse hinge. Automatic placement derives it from the seated left leg and
+mast, without avatar-name rules. Saved layouts preserve it; score changes and
+seeking do not reorient the accepted setup.
+
+- With sole anchor `T` and horizontal yaw `Q`, the footboard hinge is
+  `H = T + Q · [0, −0.012, −0.13]`. At pitch `θ`, the shared sole point is
+  `H + Q · Rx(θ) · [0, 0.012, 0.13]`. `mechanisms.boardRotation` carries `Q`.
   The engine rotates the sole contact about the same hinge and solves the leg
   without changing bone lengths. At zero pitch, the original contact is exact.
   The renderer consumes the semantic foot quaternion rather than inventing a
-  second foot animation.
+  second foot animation. Neutral profile foot rotations remain unchanged;
+  evaluation composes layout yaw once. Automatic seat height, ready pose,
+  contact feasibility, footboard rendering and collision boxes use that frame.
 - The kick's beater sphere has radius 28 mm. At impact its front surface meets the
   batter plane, separately from the footboard contact. Its shaft and sphere share
   a pivot at the pedal axle. A smooth 70 ms approach and 100 ms recovery envelope
@@ -267,6 +309,10 @@ independent concepts; an open note does not prove which part of the stick was us
 
 [equipment_motion.rs](../../crates/drum-engine/src/equipment_motion.rs) checks arm
 capsules, the measured/fallback hand volume, and the stick from its butt to its tip.
+`assess_hand` keeps physical-tool and measured-body results separate: the whole
+stick/equipment result is a hard candidate condition; arm/hand/equipment and
+stick/body envelopes are advisory costs and warnings. A large sleeve cannot veto
+an otherwise valid tool contact. The raw combined query is retained for inspection.
 The executable [shared stick profile](../../shared/stick-profile.json) owns both
 rendering and queries. The butt extends 105 mm behind the grip; the terminal
 radius is 0, 3, 4 and 6 mm at 0, 8, 25 and 70 mm back from the contact marker,
@@ -279,18 +325,40 @@ Only the terminal 20 mm can enter the explicitly intended approximate playing
 surface. The target piece comes from the active stroke/hold branch, never from
 spatial coincidence with an arbitrary nearby surface. Open hi-hat aliases resolve
 only to a closed hi-hat at the same physical anchor and radius. The remaining shaft
-continues to check that same body using the shared taper. For an approach within the
-playing region, that shaft query clips the conservative body by the local surface tangent plane;
-otherwise a rim/bell's highest point in an AABB would fill the entire playable
-area. The intended surface permits tangent contact without a free-space margin;
+continues to check that same body using the shared taper. For an approach within
+a planar playing region, that shaft query clips the conservative body by the
+surface plane; otherwise a rim's highest point in an AABB would fill the entire
+playable area. A declared radial profile instead uses the complete upper surface,
+as described below. The intended surface permits tangent contact without a free-space margin;
 other obstacles retain the full maximum-radius capsule and 2 mm safety margin.
 The terminal exception remains explicit: it does not prove tangent contact of a
 rounded tip, actual rim/bell clearance, or exact triangle contact along the shaft.
-Unrelated bodies, hardware and pedal boxes retain their full envelopes.
+Unrelated bodies with an authored radial profile use that curved upper surface,
+with the full 6 mm shaft radius and no terminal exemption. Flat heads retain their
+full body boxes, including the rim; unknown bodies, hardware and pedal boxes also
+retain their full envelopes. World surfaces are cached per equipment context.
+
+[radial_clearance.rs](../../crates/drum-engine/src/radial_clearance.rs) queries a
+tapered shaft against the authored cymbal profile in its rigid local frame. It
+does not extend the tangent at one bell contact across the bow. For local height
+`h(r)`, outer radius `R` and maximum profile slope magnitude `L`, each shaft
+interval obtains this conservative clearance lower bound:
+
+`max((min(y) − max(h(r))) / sqrt(1 + L²), min(r) − R, box-face bounds) − max(shaft radius)`.
+
+Radial extrema are exact along the segment; maximum profile height includes all
+knots in that radial range. Box-face bounds retain the measured body envelope.
+The centre hole and space under the upper profile are deliberately filled, so
+an underside approach cannot pass as a valid strike. Intervals subdivide only
+within depth 16 and a 256-visit subdivision budget; unresolved bounds never
+become clearance. This may conservatively reject near-tangent paths. The query
+does not infer curvature for planar imports, change arm/hand body-box checks,
+or certify triangle, skin, clothing or continuous motion clearance.
 
 Fitting and score assignment share one neutral-torso feasibility query. It checks
 impact, 55 mm preparation and 110 mm recovery probes with the same bounded pitch
-and elbow candidates, body proxies and complete-tool equipment query. Distinct
+and elbow candidates, anatomical limits and complete-tool equipment query.
+Measured body proxies rank candidates but do not veto reach. Distinct
 playing regions are checked separately: snare centre/rim and ride bell/bow/edge
 cannot inherit each other's reach result. A static witness does not certify the
 route between contacts. Optional torso turns must preserve the actual selected
@@ -311,18 +379,33 @@ An incompatible fill therefore does not discard valid anchors elsewhere in the
 song. `CONTACT_PITCH_LIMIT` reports unsupported impact witnesses from their first
 source time; it does not certify the retained trajectory as clear. If no reachable
 pitch path exists, the previous diagnosed track is retained. Torso preservation
-checks the same fixed-pitch anatomy/body/equipment witnesses at the correction
-samples, reducing yaw where it would destroy an existing safe neutral candidate.
+checks the same fixed-pitch anatomical/tool-equipment witnesses at correction
+samples, reducing yaw where it would destroy an existing valid neutral candidate.
+Measured-body overlap remains advisory in both paths.
 A candidate elbow still needs the later joint temporal planner; interpolation and
 skin/clothing remain separately inspected.
 
-The correction track uses 30 Hz plus exact impact times, with at most 16,000
-samples. Lift stays in 0–0.20 m and pitch offsets in ±0.60 rad; adjacent corrections
-are limited to 1.2 m/s and 2 rad/s before linear interpolation. These limits bound
-the added correction, not the velocity of the complete musical stroke. Source
-impact time wins over an almost-equal floating-point grid time. The bounded track
-is included in the [prepared Worker transfer](engine-contract.md#preparation-and-worker-boundary),
-so installation does not repeat its search.
+The correction track retains its mandatory 30 Hz grid and exact hand impacts.
+Up to three refinement passes inspect interval midpoints, adding failed samples
+when the interval is at least 1/240 s long, within the same 16,000-sample total.
+Lift stays in 0–0.20 m and pitch offsets in ±0.60 rad; adjacent corrections are
+limited to 1.2 m/s and 2 rad/s before linear interpolation. These limits bound the
+added correction, not the velocity of the complete musical stroke. Source impact
+time wins over an almost-equal grid time. The [prepared Worker transfer](engine-contract.md#preparation-and-worker-boundary)
+preserves mandatory times and bounded extra controls, so installation does not repeat search.
+
+After torso planning and before elbow coordination,
+[tool_pair_path.rs](../../crates/drum-engine/src/tool_pair_path.rs) jointly repairs
+both tools through the existing pitch/lift track. It inspects each control and the
+quarter, half and three-quarter points between controls. At a failure it tries
+16 pitch/lift delta pairs per hand, for at most four passes and 250,000
+changed-region sample evaluations. Minimal rate-limited envelopes retain the same
+amplitude/rate limits, exact targets and zero lift at impacts. A candidate must
+improve the inspected result without turning a previously valid anatomical,
+equipment or tool-pair sample into a failure. This introduces no new transfer field.
+Elbow swivel alone cannot move a target-oriented shaft centreline; the later joint
+elbow planner remains necessary for anatomical coordination. Either bounded search
+can finish with residual diagnostics; refined samples are not a continuous-path certificate.
 
 ## Explicit stick-to-stick count-in
 
@@ -336,16 +419,46 @@ Each cue reserves both hands for 0.22 s before and after its original time.
 Overlapping accepted cues share an approach/recovery phrase. An actual hand-played
 hit, including an unassigned one, takes priority in this window. Nonduplicate cue
 times closer than 0.12 s are diagnosed rather than forcing a faster gesture.
-Without a feasible common body/equipment contact candidate, the cue remains in the
+Without a feasible common anatomical/tool-equipment contact candidate, the cue remains in the
 source and receives `COUNT_IN_GESTURE_UNAVAILABLE`.
 
-Contact is intentional only when both tips actually meet within 2 mm. Only the
-terminal 40 mm of both sticks receives that exception: each remaining shaft is
-still checked against the other complete stick, and arm/body/opposite-hand checks
-continue. The entire cue interval is not exempt. Throughout a cue phrase there is no intended
-drum surface, so equipment contact receives no playing-surface exception. Cue start/contact/end times enter
-the same bounded control timeline even when a body cannot perform the gesture.
-Evaluation and prepared-worker restoration use absolute song time.
+Opposing stick inclines are derived from the actual terminal taper and measured
+horizontal opening between the hands. The cue contact point and time stay fixed.
+Preparation checks 40 approach/rebound phases against actual tool geometry.
+Underlying equipment corrections blend out at cue contact and back in on exit,
+so a correction cannot displace the intentional contact.
+
+Inter-stick checks use both complete butt-to-tip profiles from the shared rendered
+taper, including during count-in. Conservative capsule bounds subdivide uncertain
+terminal bands within a finite budget; an unresolved bound does not become a pass.
+The thinner terminal geometry introduces no new contact exception.
+
+Contact is intentional only when the tips meet within 2 mm and each lies within
+2 mm of the cue contact point. Only the terminal 40 mm of both sticks receives
+that exception: each remaining shaft still requires 2 mm from the other complete
+stick. During the close approach/rebound, tool-pair clearance may be below the
+ordinary 2 mm margin but must remain nonnegative; penetration is never allowed.
+Arm/body/opposite-hand measurements remain advisory. Equipment retains its 2 mm
+margin throughout the cue, with no intended drum surface or playing-surface
+exception. Cue start/contact/end times enter the same bounded timeline even when
+a body cannot perform the gesture. Evaluation and prepared-worker restoration use
+absolute song time.
+
+## Inspection categories
+
+`inspect_pose_at` retains `equipmentClearanceMeters`, the combined minimum across
+arms, hands and tools. Its optional `toolEquipmentClearanceMeters` reports only the
+complete physical sticks against equipment; `toolPairClearanceMeters` reports
+complete stick pairs. Whole-tool checks must be present, finite and nonnegative for
+a sampled tool-clearance pass. Missing optional fields are unmeasured, not a pass.
+Advisory body overlap can coexist with a valid tool sample, and a clear body proxy
+cannot hide a stick intersecting a tom or another stick.
+
+`TOOL_EQUIPMENT_PATH_CLEARANCE` and `TOOL_PAIR_PATH_CLEARANCE` distinguish residual
+physical-tool intersections from the retained combined `EQUIPMENT_PATH_CLEARANCE`
+and advisory `BODY_PATH_CLEARANCE`. Bounded motion search may still report failures
+after static calibration succeeds. The [engine contract](engine-contract.md) owns
+inspection/review fields; none is a continuous triangle-level collision proof.
 
 ## Evidence and next constraints
 

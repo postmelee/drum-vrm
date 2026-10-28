@@ -117,3 +117,7 @@ not the current semantic adapter.
 Generic humanoid GLB mapping, controlled body pairs, skin/sole calibration, explicit
 styles and collision-aware natural motion remain separate work. Use those evidence
 boundaries when making compatibility claims; format compliance alone is insufficient.
+
+## Mapped FBX scope
+
+Local binary FBX 7.4/7.5 uses an explicit semantic mapping and unit/facing normalization before the same humanoid solver. Automatic names are suggestions, with ambiguous names left blank. Required ancestry, actual contacts and deterministic evaluation still apply. Auxiliary constraints, authoring-tool toon graphs and embedded animations are outside this path; successful import is not a certificate for arbitrary FBX rigs. See the [FBX import contract](rig-contract.md#fbx-import) and [verification](../../docs/verification/fbx-import.md).
