@@ -158,3 +158,15 @@ these are not claims of those device/assistive checks. Existing rig/project/audi
 regression tests passed, but every model-import failure and hardware combination
 was not repeated interactively. The center changes UI feedback only; it does not
 remove the engine's existing motion diagnostics or improve contact accuracy.
+
+## Narrow toolbar follow-up (2026-10-28)
+
+The English language switch previously wrapped to a full-width third toolbar row.
+The narrow menu now uses a single flex row, compact horizontal padding and a
+horizontal-scroll fallback below its content minimum. Font size and labels stay
+unchanged. Actual production-app iframe checks at 390 CSS px in both languages
+and 450 CSS px in English showed all eight buttons on the same top coordinate;
+menu height was 32 px. Scroll width equalled available width (374 / 434 px), so
+no horizontal scroll was needed at those sizes. Screenshot remains local at
+`/private/tmp/drum-vrm-menu-en.png`. Typecheck, docs and diff checks passed.
+This CSS-only refinement does not change notification lifecycle or engine behavior.

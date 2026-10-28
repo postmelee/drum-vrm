@@ -35,6 +35,10 @@ into long toasts. Colors never substitute for labels.
 
 ## Placement and appearance
 
+At narrow widths the toolbar menu stays on one row in both languages, including
+the language control. Compact horizontal spacing fits the 390 px layout; widths
+below the content minimum scroll horizontally instead of wrapping or clipping controls.
+
 - Desktop: anchor to the upper-right of the **stage content**, 16 px inside its
   top/right edges, below the camera strip. Width 344 px, capped by available width.
   Opening an inspector moves the anchor with the stage, keeping menu controls free.
