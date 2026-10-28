@@ -1,0 +1,26 @@
+.notification-region{position:absolute;inset:16px 16px 16px auto;width:min(344px,calc(100% - 32px));max-height:calc(100% - 32px);z-index:6;pointer-events:none}
+.notification-stack{display:flex;flex-direction:column;gap:8px;max-height:100%;overflow:auto;scrollbar-width:thin;padding:2px}
+.notification-card{position:relative;display:flex;align-items:flex-start;gap:10px;padding:10px 12px 4px;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px #00000012;pointer-events:auto;animation:notification-enter 220ms cubic-bezier(.2,0,0,1) both;overflow-wrap:anywhere}
+.notification-symbol{flex:none;display:flex;margin-top:1px;color:var(--muted)}
+.notification-card[data-kind=warning] .notification-symbol{color:#a76b12}.notification-card[data-kind=error] .notification-symbol{color:#cf4335}
+:root[data-theme=dark] .notification-card[data-kind=warning] .notification-symbol{color:#e6ad53}:root[data-theme=dark] .notification-card[data-kind=error] .notification-symbol{color:#f18176}
+.notification-card[data-kind=progress] .notification-symbol svg{animation:notification-spin 1s linear infinite}
+.notification-body{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:2px;padding-bottom:4px}
+.notification-body strong{font-size:14px;line-height:1.4;font-weight:600}.notification-body p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
+.notification-card button{border:0;background:transparent;padding:0;white-space:normal}.notification-card .notification-action{min-height:32px;display:inline-flex;align-items:center;max-width:100%;margin:0 0 -4px -6px;color:var(--focus);text-align:left}
+.notification-action-label{border-radius:3px;padding:3px 6px;line-height:18px;font-size:12px}
+:root[data-theme=dark] .notification-action{color:color-mix(in srgb,var(--focus) 65%,var(--text))}
+.notification-action:focus-visible{outline:none}.notification-action:focus-visible .notification-action-label{background:var(--active);outline:2px solid var(--focus);outline-offset:2px}
+.notification-action:active .notification-action-label{background:var(--active)}
+.notification-dismiss{flex:none;display:flex;align-items:center;justify-content:center;width:32px;min-height:32px;margin:-6px -8px 0 0;color:var(--muted)}
+@media(hover:hover){.notification-action:hover .notification-action-label{background:var(--active)}.notification-dismiss:hover{color:var(--text)}}
+.notification-leaving{position:absolute;right:2px;left:2px;pointer-events:none;animation:notification-exit 150ms cubic-bezier(.3,0,1,1) both}
+#notifications-toggle{position:relative;display:inline-flex;align-items:center;justify-content:center;min-width:30px}.notification-badge{position:absolute;top:-4px;right:-3px;min-width:15px;border-radius:10px;padding:1px 3px;background:var(--active);color:var(--text);font-size:10px;line-height:13px}
+.notification-history{position:absolute;top:0;right:0;width:100%;max-height:100%;overflow:auto;pointer-events:auto;border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:0 4px 16px #00000018}
+.notification-history header{position:sticky;top:0;background:var(--surface);z-index:1;display:flex;align-items:center;justify-content:space-between;padding:6px 12px;border-bottom:1px solid var(--border)}.notification-history header button{border:0;display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:transparent}.notification-history>p{padding:8px 12px;color:var(--muted)}
+.notification-history .notification-card{border:0;border-bottom:1px solid var(--border);border-radius:0;box-shadow:none;animation:none}.notification-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+@keyframes notification-enter{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}@keyframes notification-exit{to{opacity:0;transform:translateY(-4px)}}@keyframes notification-spin{to{transform:rotate(360deg)}}
+@media(max-width:700px){.notification-region{top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));width:min(344px,calc(100% - 24px));max-height:calc(100% - 24px)}.notification-card{gap:8px;padding:8px 10px 2px}.notification-body{padding-bottom:2px}.notification-card .notification-action{min-height:44px}.notification-dismiss{width:44px;min-height:44px;margin:-6px -8px 0 0}.notification-history header button{width:44px;height:44px}}
+@media(prefers-reduced-motion:reduce){.notification-card{animation:notification-fade 80ms linear both}.notification-leaving{animation:notification-fade 80ms linear reverse both}.notification-card[data-kind=progress] .notification-symbol svg{animation:none}@keyframes notification-fade{from{opacity:0}to{opacity:1}}}
+
+@media(pointer:coarse){.notification-card .notification-action{min-height:44px}.notification-dismiss{width:44px;min-height:44px}.notification-history header button{width:44px;height:44px}}

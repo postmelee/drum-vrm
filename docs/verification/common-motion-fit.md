@@ -244,3 +244,28 @@ Switching back to the native skeleton restored 100% kit scale and the authored
 `final-native-reset-state.txt`. Continuous playback of Seed-san and Twist on
 this rebuilt diagnostic artifact has not been verified. No merge or deployment
 was performed.
+
+## Approved publication integration
+
+On 2026-10-29 the owner explicitly requested merging and publishing this
+known-incomplete checkpoint; see [approval](../approval.md). The candidate
+`b837104f21385376adb76c3346353067b75d0eef` was integrated with main `990c01f`,
+preserving its shared notifications and concise inspectors, and the stacked
+PR #58 FBX/VRM 0.0 import work. This integration changes UI feedback and records;
+it does not change the Rust solver or repair the temporal failures above.
+
+Integration checks passed: 323 web tests (44 files), 9 review-helper tests,
+typecheck/production build, documentation validation (102 files, 956 links,
+23 language pairs) and whitespace checks. A production preview on local port
+5194 started directly in the reference skeleton layout. AvatarSample B loaded
+and fitted automatically, prepared the 53-hit Posture Study with zero unassigned
+hits, and played through to the end. English/Korean switching, FBX/folder import
+controls, notification history and the three retained motion diagnostics were
+checked; the browser reported no console errors. Import controls were checked
+for availability, not a new FBX compatibility certification. Private evidence is
+in `.local/pages-common-fit-20261029/`.
+
+The [PR #64 publication record](https://github.com/postmelee/drum-vrm/pull/64)
+owns the final integrated/merged commit, CI and Pages run, deployed artifact
+identity and public smoke checks. This local verification does not itself
+establish deployment, resolve #18/#23, or authorize a Release/tag.

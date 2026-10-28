@@ -11,6 +11,9 @@ import { reviewCheckpoints } from './review-checkpoints';
 import {msg, raw, bindText, boundText, bindAttribute, bindStaticTranslations, joinMessages, getLocale, setLocale, onLocaleChange} from './i18n';
 import {diagnosticTitle, engineMessage} from './engine-messages';
 import './style.css';
+import { NotificationStore } from './notification-store';
+import { NotificationFeedback } from './notification-feedback';
+import { mountNotifications } from './notifications';
 import { studioTemplate } from './studio-template';
 import { prepareAutomaticFit, fittedCalibration, layoutViolationMessage } from './automatic-fit';
 import { DrumTimeline, createTimelineNotes } from './timeline';
@@ -29,7 +32,7 @@ import { EngineClient } from './engine';
 import { preparePerformanceInSetup } from './preparation';
 import { DrumAudio } from './audio';
 import { importGuidance } from './import-guidance';
-import { automaticImportSelection, automaticMappingMessage, mappingLabel } from './automatic-mapping';
+import { automaticImportSelection, mappingLabel } from './automatic-mapping';
 import { fileReference, missingProjectAssets, parseProject, projectEngineHash, MAX_PROJECT_BYTES, type DrumProject, type ProjectAsset } from './project';
 import { createReviewSnapshot, reviewOrder, reviewTimes, summarizePoseReview, summarizeProxyReview, type PoseReview } from './performance-review';
 import { loadLocalWav, alignWavToPlan, type LocalWav, type WavAlignmentInfo } from './wav';
@@ -52,11 +55,30 @@ setButtonIcon(get('play'), 'play');
 setButtonIcon(get('close-panel'), 'close');
 for (const id of ['upload', 'start-upload']) setButtonIcon(get(id), 'upload', msg('Import MIDI…', 'MIDI 불러오기…'));
 setButtonIcon(get('export'), 'download', msg("Export video", "영상 추출"));
+const notifications = new NotificationStore();
+const disposeNotifications = mountNotifications(notifications, get('stage-view'), get('notifications-toggle'));
+function panelAction(panel: Panel, field?: string) {
+  return { label: panel === 'source' ? (field === 'mapping-profile' ? msg('MIDI settings', 'MIDI 설정') : msg('Files / Audio', '파일 · 오디오')) : panel === 'export' ? msg('View export', '내보내기 보기') : msg('View details', '자세히 보기'), run: () => {
+    openPanel(panel);
+    if (field === 'mapping-profile') get<HTMLDetailsElement>('midi-settings').open = true;
+    const destination = get(field ?? `panel-${panel}`); destination.tabIndex = -1; destination.focus();
+  }};
+}
+const feedback = new NotificationFeedback(notifications, text => ({ label: msg('View details', '자세히 보기'), run: () => {
+  bindText(get('operation-detail'), text); get<HTMLDetailsElement>('operation-details').open = true;
+  openPanel('analysis'); get('operation-detail').focus();
+}}));
+function reportError(error: unknown, field?: string) {
+  if (error instanceof DOMException && error.name === 'AbortError') return;
+  const text = uiError(error);
+  if (field) bindText(get(field), msg('Needs attention · see notifications', '확인 필요 · 알림에서 확인'));
+  feedback.fail(text);
+}
 const stage = get<HTMLCanvasElement>('stage');
 const engine = new EngineClient();
 const synthesis = new SynthesisClient();
 let scene: DrumScene;
-try { scene = new DrumScene(stage); } catch { bindText(get('message'), msg("Unable to start the 3D view. Use a recent browser with WebGL support.", "3D 화면을 시작할 수 없습니다. WebGL을 지원하는 최신 브라우저를 사용해 주세요.")); throw new Error('WebGL unavailable'); }
+try { scene = new DrumScene(stage); } catch { notifications.post('startup', 'error', {title:msg('Unable to start the 3D view', '3D 화면을 시작할 수 없습니다'), detail:msg('Use a browser with WebGL support.', 'WebGL을 지원하는 브라우저를 사용하세요.')}); throw new Error('WebGL unavailable'); }
 const defaultKit = scene.getKitLayout();
 let plan: PerformancePlan | null = null;
 let bytes: Uint8Array | null = null;
@@ -165,12 +187,14 @@ async function refreshIdlePose() {
   }
 }
 function invalidateVideo() {
+  notifications.invalidate('export');
   if(downloadUrl)URL.revokeObjectURL(downloadUrl); downloadUrl=null; get('download').hidden=true;
-  bindText(get('export-note'), msg("Export with the current settings.", "현재 설정으로 추출하세요."));
+  bindText(get('export-note'), '');
 }
 // Review evidence belongs to the committed plan, rig and layout. Replacing any
 // of them clears both stored results and displayed evidence without remeasuring.
 function invalidateReview() {
+  notifications.invalidate('review');
   ++reviewGeneration;poseReview=null;reviewRunning=false;
   scene.setStickTrace(null);
   for(const id of ['review-measurement','review-posture','review-impact'])bindText(get(id),'');
@@ -180,6 +204,11 @@ function invalidateReview() {
   refreshReviewCheckpoints();
 }
 async function applyCalibration(seat: HumanoidCalibration, kit: KitPiece[], feedbackId: string, automatic=false) {
+  if (automatic) return applyCalibrationWork(seat, kit, feedbackId, true);
+  if (busy || exporting || modelBusy) return false;
+  return feedback.run('layout', msg('Applying layout…', '배치 적용 중…'), msg('Layout applied', '배치를 적용했습니다'), panelAction('analysis'), () => applyCalibrationWork(seat, kit, feedbackId));
+}
+async function applyCalibrationWork(seat: HumanoidCalibration, kit: KitPiece[], feedbackId: string, automatic=false) {
   if(busy||exporting||(modelBusy&&!automatic))return false;
   const oldSeat=scene.getCalibration(), oldKit=scene.getKitLayout();
   let applied=false,sceneChanged=false;
@@ -196,11 +225,11 @@ async function applyCalibration(seat: HumanoidCalibration, kit: KitPiece[], feed
     if(!automatic){fitBaseline=structuredClone(kit);preFitSetup=null;}
     fitProposal=null;invalidateReview();fitState=msg("Manual calibration · current layout", "수동 보정 · 현재 배치");refreshFitState();invalidateVideo();
     const unavailable=plan?.hits.filter(h=>h.limb===null).length??0;
-    bindText(get(feedbackId), msg("Calibration applied{0}", "보정 적용 완료{0}", unavailable?msg(" · {0} unassigned hits (see Analysis)", " · 표현하지 못한 타격 {0}개 (분석 확인)", unavailable):''));
+    bindText(get(feedbackId), ''); if(unavailable)feedback.warn(msg('{0} hits need motion review', '타격 {0}개의 동작 확인이 필요합니다', unavailable), panelAction('analysis'));
     applied=true;
   } catch(error) {
     if(sceneChanged){scene.setKitLayout(oldKit);scene.setCalibration(oldSeat);updateFrame(time);}
-    bindText(get(feedbackId), uiError(error));
+    reportError(error, feedbackId);
   }finally{
     staged?.dispose();if(!automatic){modelBusy=false;controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
   }
@@ -226,21 +255,15 @@ function refreshFitState() {
 
   controls();
 }
-let toastTimer: ReturnType<typeof setTimeout> | undefined;
-function notify(text: string) {
-  clearTimeout(toastTimer);bindText(get('toast-message'), text);get('toast').hidden=false;
-  toastTimer=setTimeout(()=>{if(!get('toast').contains(document.activeElement))get('toast').hidden=true;},6000);
-}
-get('toast-dismiss').onclick=()=>{clearTimeout(toastTimer);get('toast').hidden=true;};
+function notify(text: string) { feedback.success(text); }
 for(const button of document.querySelectorAll<HTMLButtonElement>('[data-open-analysis]'))button.onclick=()=>openPanel('analysis');
 get('analysis-source').onclick=()=>{openPanel('source');get<HTMLDetailsElement>('midi-settings').open=true;get<HTMLSelectElement>('mapping-profile').focus();};
 function showFitResult(result: Awaited<ReturnType<typeof prepareAutomaticFit>>) {
   fitProposal=result.proposal;fitState=result.applied?msg("Automatic body fit applied", "체형 자동 맞춤 적용"):msg("Automatic fit needs attention", "자동 맞춤 확인 필요");
-  bindText(get('calibration-message'), ''); // The summary stays here; full fit evidence lives in Analysis.
-  refreshFitState();
+  bindText(get('calibration-message'), result.applied?'':msg('Automatic fit needs attention', '자동 맞춤 확인 필요'));
   bindText(get('fit-details'), joinMessages([result.message,...(result.proposal.advisoryLayoutViolations?.length?[msg('Advisory measured-body overlaps: {0}', '측정한 신체 영역 겹침 참고: {0}',joinMessages(result.proposal.advisoryLayoutViolations.map(layoutViolationMessage)))]:[])]));
-  if(result.applied){message(result.message);notify(result.message);}
-  else message(msg("Automatic fitting could not meet the constraints. See Character → Manual adjustment or Analysis.", "자동 맞춤 조건을 만족하지 못했습니다. 캐릭터의 수동 보정 또는 분석을 확인하세요."),true);
+  refreshFitState();
+  if(!result.applied)feedback.warn(msg('Automatic fit needs attention', '자동 맞춤 확인 필요'), panelAction('analysis'), true);
 }
 async function fitInBackground(profile: RigProfile, kit: readonly KitPiece[]) {
   fitRunning=true;controls();status(msg("Fitting to character…", "체형에 맞추는 중…"),'working');
@@ -252,10 +275,15 @@ async function prepareSetupInBackground(profile: RigProfile, kit: readonly KitPi
   try{return await engine.prepareSetup(profile,kit);}
   finally{setupRunning=false;controls();}
 }
-get('cancel-fit').onclick=()=>{if(fitRunning)engine.cancelFit();if(setupRunning)engine.cancel();};
-async function autoFitCurrent() {
+get('cancel-fit').onclick=()=>{feedback.cancel();if(fitRunning)engine.cancelFit();if(setupRunning)engine.cancel();};
+async function autoFitCurrent(silent = false) {
+  if (busy || exporting || modelBusy) return;
+  if (silent) return autoFitCurrentWork();
+  return feedback.run('layout', msg('Fitting to character…', '체형에 맞추는 중…'), msg('Layout fitted to character', '체형에 맞게 배치했습니다'), panelAction('analysis'), autoFitCurrentWork);
+}
+async function autoFitCurrentWork() {
   if(busy||exporting||modelBusy)return;
-  audio?.pause();modelBusy=true;controls();bindText(get('calibration-message'), msg("Fitting to character…", "체형에 맞추는 중…"));
+  audio?.pause();modelBusy=true;controls();bindText(get('calibration-message'), '');
   const previous={seat:scene.getCalibration(),kit:scene.getKitLayout()};
   try {
     const seat={...scene.getAutomaticCalibration(fitBaseline),palmOrientation:previous.seat.palmOrientation};
@@ -265,7 +293,7 @@ async function autoFitCurrent() {
       preFitSetup=previous;
     }
     showFitResult(result);await refreshIdlePose();
-  }catch(error){bindText(get('calibration-message'), uiError(error));}
+  }catch(error){reportError(error, 'calibration-message');}
   finally{modelBusy=false;controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
 }
 get('kit-fit').onclick=()=>void autoFitCurrent();
@@ -281,7 +309,7 @@ get('target-apply').onclick=()=>{
   const fields=['x','y','z'].map(axis=>get<HTMLInputElement>(`target-${axis}`));
   if(fields.some(field=>!field.reportValidity()))return;
   try{applyCalibration(scene.getCalibration(),moveKitTarget(scene.getKitLayout(),get<HTMLSelectElement>('target-piece').value as PieceId,fields.map(field=>field.valueAsNumber/100) as Vec3),'target-message');}
-  catch(error){bindText(get('target-message'), uiError(error));refreshTarget();}
+  catch(error){reportError(error, 'target-message');refreshTarget();}
 };
 get('target-reset').onclick=()=>{
   const id=get<HTMLSelectElement>('target-piece').value as PieceId;
@@ -361,16 +389,21 @@ function refreshCharacterPreset() {
 }
 refreshCharacterPreset();
 async function importCharacter(fileOrPreset: File | CharacterPreset) {
+  if (busy || exporting || modelBusy) return;
+
+  return feedback.run('character', msg('Preparing character…', '캐릭터 준비 중…'), msg('Character ready', '캐릭터를 준비했습니다'), panelAction('character'), () => importCharacterWork(fileOrPreset));
+}
+async function importCharacterWork(fileOrPreset: File | CharacterPreset) {
   if(busy||exporting||modelBusy){refreshCharacterPreset();return;}
   audio?.pause(); modelBusy=true;
   const preset=fileOrPreset instanceof File?undefined:fileOrPreset;
   characterDownload=preset?new AbortController():null;
-  controls();bindText(get('character-message'), preset?msg('Downloading character…', '캐릭터를 내려받고 있습니다…'):msg("Inspecting VRM…", "VRM을 검사하고 있습니다…"));
+  controls();bindText(get('character-message'), '');
   let candidate: Awaited<ReturnType<typeof loadLocalVRM>> | null = null;
   let adapter: VRMHumanoidRigAdapter | null = null;
   try {
     const file=preset?await loadCharacterPreset(preset.id,characterDownload!.signal):fileOrPreset as File;
-    characterDownload=null;controls();bindText(get('character-message'), msg("Inspecting VRM…", "VRM을 검사하고 있습니다…"));
+    characterDownload=null;controls();bindText(get('character-message'), '');
     candidate=await loadLocalVRM(file);
     const reference=await fileReference('vrm',file),info=candidate.info;
     adapter=new VRMHumanoidRigAdapter(candidate.vrm,`vrm1:${reference.sha256}`); await adoptRig(adapter);
@@ -380,7 +413,7 @@ async function importCharacter(fileOrPreset: File | CharacterPreset) {
     currentFBX=undefined;sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));
     commitProjectFile(reference,file);showModelInfo(info,matchedPreset);
     bindText(get('character-message'), raw(file.name));setCharacterDisplay('model');
-  } catch(error) { if(adapter)adapter.dispose();else if(candidate)VRMUtils.deepDispose(candidate.vrm.scene); bindText(get('character-message'), characterDownload?.signal.aborted?msg('Character download canceled.', '캐릭터 다운로드를 취소했습니다.'):uiError(error)); }
+  } catch(error) { if(adapter)adapter.dispose();else if(candidate)VRMUtils.deepDispose(candidate.vrm.scene); if(characterDownload?.signal.aborted)feedback.cancel();else reportError(error, 'character-message'); }
   finally{characterDownload=null;modelBusy=false;refreshCharacterPreset();controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
 }
 function showFBXInfo(name:string) {
@@ -392,11 +425,15 @@ function showFBXInfo(name:string) {
 }
 async function importFBXCharacter(file:File,images:File[]) {
   if(busy||exporting||modelBusy)return;
+  return feedback.run('character', msg('Preparing character…', '캐릭터 준비 중…'), msg('Character ready', '캐릭터를 준비했습니다'), panelAction('character'), () => importFBXCharacterWork(file,images));
+}
+async function importFBXCharacterWork(file:File,images:File[]) {
+  if(busy||exporting||modelBusy)return;
   audio?.pause();modelBusy=true;controls();
   let candidate:Awaited<ReturnType<typeof setupFBX>>=null,adapter:FBXHumanoidRigAdapter|null=null;
   try {
     candidate=await setupFBX(file,images);
-    if(!candidate){bindText(get('character-message'),'');notify(msg('Character import canceled.', '캐릭터 가져오기를 취소했습니다.'));return;}
+    if(!candidate){bindText(get('character-message'),'');feedback.cancel();return;}
     const reference=await fileReference('fbx',file),textureReferences=await Promise.all(candidate.loaded.images.map(image=>fileReference('fbxTexture',image)));
     await candidate.loaded.applyTextures(candidate.config);
     adapter=new FBXHumanoidRigAdapter(candidate.loaded.scene,candidate.config,`fbx:${reference.sha256}`,candidate.loaded.release);
@@ -405,7 +442,7 @@ async function importFBXCharacter(file:File,images:File[]) {
     currentFBX=structuredClone(candidate.config);sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));commitProjectFile(reference,file);
     textureReferences.forEach((ref,index)=>commitProjectFile(ref,candidate!.loaded.images[index]));
     candidate=null;adapter=null;committedCharacter='local';showFBXInfo(file.name);bindText(get('character-message'),'');setCharacterDisplay('model');
-  }catch(error){if(adapter)adapter.dispose();else candidate?.loaded.dispose();bindText(get('character-message'),uiError(error));}
+  }catch(error){if(adapter)adapter.dispose();else candidate?.loaded.dispose();reportError(error, 'character-message');}
   finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg('Paused','일시정지'):msg('Idle','대기'));}
 }
 get('character-import').onclick=()=>get<HTMLInputElement>('character-file').click();
@@ -420,12 +457,17 @@ const selectCharacterFiles = async (event: Event) => {
 };
 get<HTMLInputElement>('character-file').onchange=selectCharacterFiles;
 get<HTMLInputElement>('character-folder').onchange=selectCharacterFiles;
-get('character-cancel').onclick=()=>characterDownload?.abort();
-async function resetCharacter(){
+get('character-cancel').onclick=()=>{feedback.cancel();characterDownload?.abort();};
+async function resetCharacter() {
+  if (busy || exporting || modelBusy) return;
+
+  return feedback.run('character', msg('Restoring character…', '캐릭터 복원 중…'), msg('Default skeleton restored', '기본 스켈레톤을 복원했습니다'), panelAction('character'), () => resetCharacterWork());
+}
+async function resetCharacterWork(){
   if(busy||exporting||modelBusy)return;audio?.pause();modelBusy=true;controls();
   const adapter=new NativeHumanoidRigAdapter();let adopted=false;
   try{await adoptRig(adapter,adapter.getCalibration());adopted=true;committedCharacter='native';currentFBX=undefined;sourceReferences=sourceReferences.filter(ref=>!characterAssetKinds.has(ref.kind));showModelInfo(null);bindText(get('character-message'), msg("Default skeleton", "기본 스켈레톤"));setCharacterDisplay('skeleton');}
-  catch(error){if(!adopted)adapter.dispose();bindText(get('character-message'), uiError(error));}
+  catch(error){if(!adopted)adapter.dispose();reportError(error, 'character-message');}
   finally{modelBusy=false;refreshCharacterPreset();controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
 }
 get<HTMLSelectElement>('character-preset').onchange=e=>{
@@ -446,10 +488,16 @@ async function synchronizeEquipmentAppearance(requireCompleteFit=false) {
   fitBaseline=structuredClone(baseline);preFitSetup=null;
   showFitResult(result);await refreshIdlePose();
   const unresolved=scene.getEquipmentDiagnostics();
-  if(unresolved.length)message(msg("Instrument/support layout needs attention: {0}", "악기·받침대 배치 확인 필요: {0}", unresolved.join(', ')),true);
+  if(unresolved.length)feedback.warn(msg('Drum layout needs attention', '드럼 배치 확인이 필요합니다'), panelAction('analysis'), true);
 }
 async function changeEquipment(change:()=>void|Promise<unknown>, commit:()=>void=()=>{}, options:{requireCompleteFit?:boolean}={}) {
+  if (busy || exporting || modelBusy) return;
+
+  return feedback.run('equipment', msg('Preparing drums…', '드럼 준비 중…'), msg('Drums updated', '드럼을 변경했습니다'), panelAction('drums'), () => changeEquipmentWork(change, commit, options));
+}
+async function changeEquipmentWork(change:()=>void|Promise<unknown>, commit:()=>void=()=>{}, options:{requireCompleteFit?:boolean}={}) {
   if(busy||exporting||modelBusy)return false;
+  bindText(get('model-message'), '');
   audio?.pause();modelBusy=true;controls();
   const previous={kit:scene.getKitLayout(),seat:scene.getCalibration(),baseline:fitBaseline,undo:preFitSetup,proposal:fitProposal,state:fitState};
   let rollback:Awaited<ReturnType<DrumScene['prepareProjectAppearance']>>|null=null,changed=false;
@@ -460,14 +508,14 @@ async function changeEquipment(change:()=>void|Promise<unknown>, commit:()=>void
   }
   catch(error){
     if(changed&&rollback){rollback.apply(previous.kit);scene.setCalibration(previous.seat);await scene.whenEquipmentReady();fitBaseline=previous.baseline;preFitSetup=previous.undo;fitProposal=previous.proposal;fitState=previous.state;refreshFitState();refreshCalibration();refreshTarget();refreshPiece();if(plan)updateFrame(audio?.currentTime??0);else await refreshIdlePose();}
-    bindText(get('model-message'), uiError(error));return false;
+    reportError(error, 'model-message');return false;
   }
   finally{rollback?.dispose();modelBusy=false;controls();status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));}
 }
 get<HTMLSelectElement>('kit-preset').onchange=async e=>{
   const input=e.target as HTMLSelectElement,preset=input.value as KitPresetId;
-  bindText(get('model-message'), msg("Preparing drum models…", "드럼 모델을 준비하고 있습니다…"));
-  if(await changeEquipment(()=>scene.setKitPreset(preset),()=>{committedPreset=preset;sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart');}))bindText(get('model-message'), ({library:'Innerscene · CC0',batoski:'Batoski · CC BY 3.0',smoj:'smoj · CC BY 3.0'} as Record<string,string>)[preset] ?? msg("Procedural geometry · appearance can be changed per piece.", "자체 생성 도형 · 부품별로 외형을 변경할 수 있습니다."));
+  bindText(get('model-message'), '');
+  if(await changeEquipment(()=>scene.setKitPreset(preset),()=>{committedPreset=preset;sourceReferences=sourceReferences.filter(ref=>ref.kind!=='drumPart');}))bindText(get('model-message'), ({library:'Innerscene · CC0',batoski:'Batoski · CC BY 3.0',smoj:'smoj · CC BY 3.0'} as Record<string,string>)[preset] ?? msg("Built-in geometry", "기본 도형"));
   input.value=committedPreset;
 };
 get<HTMLSelectElement>('piece').onchange=()=>{scene.selectPiece(selectedPiece());get<HTMLSelectElement>('target-piece').value=selectedPiece();refreshPiece();refreshTarget();};
@@ -488,8 +536,8 @@ get<HTMLInputElement>('piece-rotation').onchange=e=>void changeEquipment(()=>sce
 get('piece-import').onclick=()=>get<HTMLInputElement>('model-file').click();
 get<HTMLInputElement>('model-file').onchange=async e=>{
   const input=e.target as HTMLInputElement;const file=input.files?.[0];input.value='';if(!file)return;
-  bindText(get('model-message'), msg("Loading GLB…", "GLB를 불러오는 중…"));const id=selectedPiece();let reference:ProjectAsset;
-  if(await changeEquipment(async()=>{reference=await fileReference('drumPart',file,id);await scene.loadPieceModel(id,file);},()=>{commitProjectFile(reference,file);}))bindText(get('model-message'), msg("{0} · automatically scaled (check the strike target)", "{0} · 자동 크기 맞춤 (타점 확인 필요)", raw(file.name)));
+  bindText(get('model-message'), '');const id=selectedPiece();let reference:ProjectAsset;
+  if(await changeEquipment(async()=>{reference=await fileReference('drumPart',file,id);await scene.loadPieceModel(id,file);},()=>{commitProjectFile(reference,file);}))bindText(get('model-message'), raw(file.name));
 };
 const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 let responseChosen = false;
@@ -510,7 +558,7 @@ setTheme(theme);
 const clockText = (seconds: number) => `${Math.floor(Math.max(0, seconds) / 60).toString().padStart(2,'0')}:${Math.floor(Math.max(0,seconds) % 60).toString().padStart(2,'0')}`;
 const preciseClockText = (seconds: number) => `${clockText(seconds)}.${Math.floor((Math.max(0,seconds)%1)*1000).toString().padStart(3,'0')}`;
 function status(text: string, kind = '') { get('status').className = `status ${kind}`; bindText(get('status'), text); }
-function message(text: string, error = false) { const node = get('message'); bindText(node, text); node.classList.toggle('error', error); }
+function message(text: string, error = false) { if (error) feedback.fail(text); else feedback.progress(text); }
 function controls() {
   for (const id of ['play','reset','seek','export']) (get(id) as HTMLButtonElement).disabled = !plan || busy || exporting || modelBusy;
   for (const id of ['upload','demo-select','demo-load','replan','channel','mapping-profile','wav-import','wav-remove','wav-offset','wav-apply','mute-export','background']) (get(id) as HTMLInputElement).disabled = busy || exporting || modelBusy;
@@ -567,6 +615,8 @@ function fillSelection(info: MidiInfo) {
 }
 function clearAutomaticMapping() {
   get('automatic-mapping').hidden = true;
+  get('mapping-provisional').hidden = true;
+  get('mapping-table').hidden = true;
   bindText(get('automatic-mapping'), '');
 }
 async function prepare(generation: number,restoreTime=0) {
@@ -585,6 +635,7 @@ async function prepareSelection(data: Uint8Array, selection: DrumProject['select
       return {buffer:aligned?.buffer??await synthesis.run(candidate),alignment:aligned?.info};},
     commit:(candidate,profile,kit)=>engine.restorePlan(candidate,profile,kit),current:()=>generation===loadGeneration});
   if(!prepared)return false;
+  bindText(get('mapping-pending'), '');
   plan = prepared.plan;preparedSelection=selection;arrangement=arrangementOf(plan);
   if(prepared.audio.alignment)showWavInfo(prepared.audio.alignment);
   buffer = prepared.audio.buffer;
@@ -596,6 +647,7 @@ async function prepareSelection(data: Uint8Array, selection: DrumProject['select
   bindText(get('metric-duration'), clockText(plan.duration)); bindText(get('metric-hits'), plan.hits.length.toLocaleString()); bindText(get('metric-tempos'), String(plan.tempoCount));
   bindText(get('plan-label'), 'READY'); get('stage-empty').hidden = true;
   invalidateReview();renderDiagnostics();
+  if(get('mapping-provisional').hidden && !get('analysis-badge').hidden) feedback.warn(msg('Performance ready · review the analysis', '연주 준비 완료 · 분석을 확인해 주세요'), panelAction('analysis'));
   return true;
 }
 function renderDiagnostics() {
@@ -634,7 +686,7 @@ function renderDiagnostics() {
     li.append(detail);diagnosticList.append(li);
   }
   if(plan.diagnostics.length>100){const li=document.createElement('li');bindText(li, msg("{0} more diagnostics", "외 {0}개 알림", plan.diagnostics.length-100));diagnosticList.append(li);}
-  status(msg("Ready", "준비 완료"),'ready'); message(unmapped||unresolved?msg("Ready · {0} unmapped · {1} unassigned motions. See Analysis.", "준비 완료 · 미매핑 {0}개 · 동작 미배정 {1}개. 분석에서 확인하세요.", unmapped, unresolved):msg("Ready. Press Play to start the performance.", "준비가 끝났습니다. 재생 버튼을 눌러 연주를 시작하세요.")); timeline.resize();
+  status(msg("Ready", "준비 완료"),'ready'); timeline.resize();
 }
 function clearPerformance() {
   preparedSelection=null;audio?.dispose(); audio=null; buffer=null; plan=null;invalidateReview();
@@ -650,6 +702,12 @@ function clearPerformance() {
 }
 async function loadFile(data: Uint8Array, name: string) {
   if (busy || exporting || modelBusy) return;
+   notifications.invalidate('audio'); notifications.invalidate('review'); notifications.invalidate('project'); notifications.invalidate('project-save');
+  return feedback.run('performance', msg('Importing MIDI…', 'MIDI를 불러오는 중…'), msg('MIDI ready', 'MIDI를 불러왔습니다'), panelAction('source', 'mapping-profile'), () => loadFileWork(data, name));
+}
+async function loadFileWork(data: Uint8Array, name: string) {
+  if (busy || exporting || modelBusy) return;
+  pendingProject=null;get('project-relink').hidden=true;bindText(get('project-message'),'');
   arrangement={omittedSourceEventIds:[],handOverrides:{}};
   const generation = ++loadGeneration;
   clearPerformance(); engine.cancel(); synthesis.cancel();
@@ -669,7 +727,14 @@ async function loadFile(data: Uint8Array, name: string) {
     get<HTMLInputElement>('count-in-75').checked=false;
     get<HTMLInputElement>('hihat-policy').checked=false;
     get<HTMLInputElement>('hihat-openness').value='20';
-    bindText(get('automatic-mapping'),automaticMappingMessage(info.mappingAnalysis));
+    const analysis=info.mappingAnalysis;
+    bindText(get('automatic-mapping'), analysis.ambiguous ? msg('Provisional choice · interpretations differ. Review MIDI settings.', '임시 선택 · 해석이 다릅니다. MIDI 설정을 확인하세요.') : msg('Compared supported notes; this does not identify the exporter.', '지원 음표 수를 비교한 결과이며 제작 프로그램 식별 결과는 아닙니다.'));
+    const rows=get('mapping-comparison');rows.replaceChildren();
+    for(const candidate of analysis.candidates){const row=document.createElement('tr'),name=document.createElement('th'),count=document.createElement('td');name.scope='row';name.textContent=mappingLabel(candidate.profile);count.textContent=`${candidate.mapped} / ${analysis.totalNotes}`;row.append(name,count);rows.append(row);}
+    get('mapping-table').hidden=false;
+    get('mapping-provisional').hidden=!info.mappingAnalysis.ambiguous;
+    if(info.mappingAnalysis.ambiguous)feedback.warn(msg('Choose the drum mapping', '드럼 매핑을 확인해 주세요'), panelAction('source', 'mapping-profile'), true);
+    else feedback.success(msg('MIDI ready · {0}', 'MIDI 준비 완료 · {0}', mappingLabel(selection.mappingProfile!)));
     get('automatic-mapping').hidden=false;
     if(info.mappingAnalysis.ambiguous){openPanel('source');get<HTMLDetailsElement>('midi-settings').open=true;}
     controls(); await prepareSelection(data,selection,generation);
@@ -681,6 +746,11 @@ async function loadFile(data: Uint8Array, name: string) {
 }
 
 async function loadSelectedDemo(id: DemoId) {
+  if (busy || exporting || modelBusy) return;
+
+  return feedback.run('performance', msg('Preparing demo…', '데모 준비 중…'), msg('Demo ready', '데모를 준비했습니다'), panelAction('analysis'), () => loadSelectedDemoWork(id));
+}
+async function loadSelectedDemoWork(id: DemoId) {
   if(busy||exporting||modelBusy)return;
   const generation=++loadGeneration,controller=new AbortController();
   demoController=controller;audio?.pause();busy=true;controls();status(msg("Preparing demo", "데모 준비 중"),'working');
@@ -701,6 +771,8 @@ async function loadSelectedDemo(id: DemoId) {
     };
     if(!await prepareSelection(demo.bytes,selection,generation))return;
     // Source bytes, directives and file references change only after plan/audio preflight.
+    notifications.invalidate('review');notifications.invalidate('project');notifications.invalidate('project-save');notifications.invalidate('audio');
+    pendingProject=null;get('project-relink').hidden=true;bindText(get('project-message'),'');
     bytes=demo.bytes;fileName=demo.filename;commitProjectFile(reference,file);
     bindText(get('file-name'), raw(demo.filename));
     bindText(get('file-detail'), msg("{0} KiB · demo", "{0} KiB · 데모", (demo.bytes.byteLength/1024).toFixed(1)));
@@ -725,7 +797,7 @@ function showWavInfo(info?: WavAlignmentInfo) {
   if(info)wavAlignmentInfo=info;
   if(!plan)wavAlignmentInfo=undefined;
   info=info??wavAlignmentInfo;
-  if(!wav){wavAlignmentInfo=undefined;bindText(get('wav-info'), msg("Synthesized drum audio", "합성 드럼 오디오"));return;}
+  if(!wav){wavAlignmentInfo=undefined;bindText(get('audio-details'), '');bindText(get('wav-info'), msg("Synthesized drums", "합성 드럼"));return;}
   const parts=[raw(wav.name), msg("{0} s", "{0}초", wav.buffer.duration.toFixed(2)), msg("Start {0} s", "시작 {0}초", wavOffset.toFixed(3))];
   if(info){
     if(info.copiedSeconds===0)parts.push(msg("Warning: no overlap with the current song; the result is silent", "주의: 현재 곡 범위와 겹치지 않아 전체 무음"));
@@ -733,7 +805,9 @@ function showWavInfo(info?: WavAlignmentInfo) {
     if(info.trimmedEndSeconds>0)parts.push(msg("{0} s trimmed from end", "뒤 {0}초 잘림", info.trimmedEndSeconds.toFixed(2)));
     if(info.trailingSilenceSeconds>.001)parts.push(msg("{0} s trailing silence", "끝 무음 {0}초", info.trailingSilenceSeconds.toFixed(2)));
   }else parts.push(msg("Applied once MIDI is prepared", "MIDI를 준비하면 적용됩니다"));
-  bindText(get('wav-info'), joinMessages(parts));
+  bindText(get('audio-details'), joinMessages(parts));
+  bindText(get('wav-info'), joinMessages(parts.slice(0, 3)));
+  if(info?.copiedSeconds===0){bindText(get('wav-info'),msg('WAV does not overlap the song', 'WAV가 곡 범위와 겹치지 않습니다'));feedback.warn(msg('WAV alignment needs attention', 'WAV 시작 위치를 확인해 주세요'),panelAction('source','wav-offset'),true);}
 }
 function replaceAudio(next:AudioBuffer,time=audio?.pause()??0) {
   audio?.dispose();buffer=next;audio=new DrumAudio(next);audio.setVolume(Number(get<HTMLInputElement>('volume').value));audio.seek(time);invalidateVideo();updateFrame(time);status(msg("Paused", "일시정지"));
@@ -804,6 +878,11 @@ for(const [id,direction] of [['arrangement-previous',-1],['arrangement-next',1]]
   if(event){selectArrangementEvent(event.id);jumpToSongTime(event.timeUs/1e6);}
 };
 async function applyArrangement(next:Arrangement) {
+  if (busy || exporting || modelBusy) return;
+
+  return feedback.run('performance', msg('Preparing note edits…', '음표 편집 준비 중…'), msg('Note edits applied', '음표 편집을 적용했습니다'), panelAction('analysis'), () => applyArrangementWork(next));
+}
+async function applyArrangementWork(next:Arrangement) {
   if(!plan||!preparedSelection||!bytes||busy||exporting||modelBusy)return;
   const oldPlan=plan,oldSelection=preparedSelection,time=audio?.pause()??0,selectedId=get<HTMLSelectElement>('arrangement-event').value;
   busy=true;projectBusy=true;controls();status(msg("Preparing note edits", "음표 편집 준비 중"),'working');
@@ -817,17 +896,17 @@ async function applyArrangement(next:Arrangement) {
     scene.setPlan(plan);timeline.setPlan(plan);replaceAudio(nextBuffer,time);showWavInfo(aligned?.info);invalidateVideo();
     bindText(get('metric-hits'), plan.hits.length.toLocaleString());renderDiagnostics();
     selectArrangementEvent(selectedId);
-    bindText(get('arrangement-status'), msg("Note edits applied. Compare playback and seeking at the same time. Original MIDI and WAV are preserved.", "음표 편집을 적용했습니다. 같은 시각에서 재생·탐색으로 확인하세요. 원본 MIDI와 WAV는 보존됩니다."));
+    bindText(get('arrangement-status'), '');
   } catch(error){
     plan=oldPlan;preparedSelection=oldSelection;
-    bindText(get('arrangement-status'), uiError(error));
+    reportError(error, 'arrangement-status');
     status(msg("Edits need attention", "편집 확인 필요"),'error');
   } finally {busy=false;projectBusy=false;controls();updateFrame(time);}
 }
 get('arrangement-apply').onclick=()=>{
   if(!plan)return;
   try{void applyArrangement(withArrangementEdit(plan,get<HTMLSelectElement>('arrangement-event').value,get<HTMLInputElement>('arrangement-omit').checked,get<HTMLSelectElement>('arrangement-hand').value as 'auto'|'0'|'1'));}
-  catch(error){bindText(get('arrangement-status'), uiError(error));}
+  catch(error){reportError(error, 'arrangement-status');}
 };
 get('arrangement-reset').onclick=()=>void applyArrangement({omittedSourceEventIds:[],handOverrides:{}});
 
@@ -884,7 +963,7 @@ get('review-trace').onclick=()=>{
     }
     scene.setStickTrace(paths);
     bindText(get('review-measurement'), msg("Song {0}–{1} s · 37 actual stick-tip samples · left orange / right blue. Fixed traces around the current time; not a collision test.", "곡 {0}–{1}초 · 실제 스틱 끝 37개 표본 · 왼손 주황 / 오른손 파랑. 현재 시각 주변의 고정 궤적이며 충돌 판정은 아닙니다.", start.toFixed(3), end.toFixed(3)));
-  } catch(error){bindText(get('review-measurement'), uiError(error));}
+  } catch(error){reportError(error, 'review-measurement');}
   finally{updateFrame(outputTime);status(msg("Paused", "일시정지"));}
 };
 get('review-scan').onclick=async()=>{
@@ -909,7 +988,7 @@ get('review-scan').onclick=async()=>{
       boundText(get('review-status')),
       msg('Whole-stick overlaps: {0} / {1} samples{2}', '스틱 전체 겹침: {0} / {1}개 표본{2}',poseReview.proxy.toolIntersectingSamples,poseReview.proxy.toolSamples,poseReview.proxy.firstToolIntersectionSeconds==null?'':msg(' (first at {0} s)',' (처음 {0}초)',poseReview.proxy.firstToolIntersectionSeconds.toFixed(3)))
     ]));
-  }catch(error){if(generation===reviewGeneration)bindText(get('review-status'), uiError(error));}
+  }catch(error){if(generation===reviewGeneration)reportError(error, 'review-status');}
   finally{if(generation===reviewGeneration){reviewRunning=false;busy=false;status(msg("Paused", "일시정지"));controls();updateFrame(restoreTime);}}
 };
 get('review-download').onclick=()=>{
@@ -940,15 +1019,15 @@ get('project-save').onclick=async()=>{
       view:{theme,background:get<HTMLInputElement>('background').value,skeleton:get<HTMLInputElement>('skeleton-visible').checked,model:get<HTMLInputElement>('model-visible').checked,character:get<HTMLInputElement>('character-visible').checked,timelineZoom:Number(get<HTMLInputElement>('timeline-zoom').value)},outputTime};
     parseProject(JSON.stringify(project));
     downloadJson(project,`${fileName.replace(/\.(mid|midi)$/i,'')}.drumvrm.json`);
-    bindText(get('project-message'), ''); notify(msg("Project saved.", "프로젝트를 저장했습니다."));
-  }catch(error){bindText(get('project-message'), uiError(error));}
+    bindText(get('project-message'), '');
+  }catch(error){reportError(error, 'project-message');}
   finally{busy=false;projectBusy=false;controls();status(msg("Paused", "일시정지"));}
 };
 function showMissingProjectAssets() {
   if(!pendingProject)return;
   const missing=missingProjectAssets(pendingProject,projectFiles);
   get('project-relink').hidden=!missing.length;
-  if(missing.length)bindText(get('project-message'), msg("Relink original files: {0}", "원본 파일을 연결하세요: {0}", raw(missing.map(asset=>`${asset.kind} · ${asset.name}`).join(', '))));
+  if(missing.length){bindText(get('project-message'), msg('Relink {0} original files: {1}', '원본 {0}개 연결 필요: {1}', missing.length, raw(missing.map(asset=>asset.name).join(', '))));feedback.warn(msg('Original files are needed', '원본 파일을 연결해 주세요'), panelAction('source', 'project-relink'), true);}
 }
 async function restorePendingProject() {
   const project=pendingProject;if(!project)return;
@@ -985,6 +1064,7 @@ async function restorePendingProject() {
     const restored=await engine.restorePlan(project.plan,profile,project.kit);
     audio?.pause();openPanel('source');preparedAppearance.apply(project.kit);preparedAppearance=null;scene.setRig(adapter);adapter=null;
     scene.setCalibration(project.calibration);await scene.whenEquipmentReady();
+    notifications.invalidate('performance');notifications.invalidate('audio');notifications.invalidate('review');
     plan=restored;bytes=midiBytes;fileName=midiFile.name;preparedSelection=structuredClone(project.selection);arrangement=arrangementOf(restored);sourceReferences=structuredClone(project.assets);currentFBX=project.fbx?structuredClone(project.fbx):undefined;
     wav=nextWav;wavOffset=project.audio.offsetSeconds;wavAlignmentInfo=aligned?.info;
     committedPreset=project.appearance.preset;get<HTMLSelectElement>('kit-preset').value=committedPreset;
@@ -1005,11 +1085,11 @@ async function restorePendingProject() {
     committedCharacter=project.rig==='native'?'native':characterPreset?.id??'local';refreshCharacterPreset();
     scene.setPlan(plan);timeline.setPlan(plan);replaceAudio(nextBuffer,project.outputTime);showWavInfo(aligned?.info);showModelInfo(modelInfo,characterPreset);
     if(project.rig==='fbx')showFBXInfo(project.assets.find(a=>a.kind==='fbx')!.name);
-    bindText(get('character-message'), '');
+    bindText(get('character-message'), project.rig==='fbx'?msg("Project FBX", "프로젝트 FBX"):project.rig==='vrm'?msg("Project VRM", "프로젝트 VRM"):msg("Default skeleton", "기본 스켈레톤"));
     get<HTMLInputElement>('seek').max=String(outputDuration(plan));bindText(get('duration'), clockText(outputDuration(plan)));
     bindText(get('metric-duration'), clockText(plan.duration));bindText(get('metric-hits'), plan.hits.length.toLocaleString());bindText(get('metric-tempos'), String(plan.tempoCount));bindText(get('plan-label'), 'READY');get('stage-empty').hidden=true;
     fitProposal=null;preFitSetup=null;fitBaseline=structuredClone(project.kit);fitState=msg("Saved layout restored", "저장한 배치 복원");invalidateReview();refreshCalibration();refreshTarget();refreshPiece();renderDiagnostics();
-    pendingProject=null;get('project-relink').hidden=true;bindText(get('project-message'), ''); notify(msg("Project restored.", "프로젝트를 복원했습니다."));
+    pendingProject=null;get('project-relink').hidden=true;bindText(get('project-message'), '');
   } finally {adapter?.dispose();preparedAppearance?.dispose();}
 }
 get('project-open').onclick=()=>get<HTMLInputElement>('project-file').click();
@@ -1017,7 +1097,7 @@ get<HTMLInputElement>('project-file').onchange=async event=>{
   const input=event.target as HTMLInputElement,file=input.files?.[0];input.value='';if(!file||busy||exporting||modelBusy)return;
   busy=true;projectBusy=true;controls();audio?.pause();
   try{if(file.size>MAX_PROJECT_BYTES)throw new Error(msg("The project must be no larger than 32 MiB.", "프로젝트는 32 MiB 이하여야 합니다."));const candidate=parseProject(await file.text());if(await projectEngineHash()!==candidate.engineModuleSha256)throw new Error(msg("The saved project uses a different engine version. Prepare the original MIDI again.", "저장한 프로젝트와 현재 엔진 버전이 다릅니다. 원본 MIDI를 다시 준비해 주세요."));pendingProject=candidate;await restorePendingProject();}
-  catch(error){bindText(get('project-message'), uiError(error));}
+  catch(error){reportError(error, 'project-message');}
   finally{busy=false;projectBusy=false;controls();}
 };
 get('project-relink').onclick=()=>get<HTMLInputElement>('project-assets').click();
@@ -1028,15 +1108,16 @@ get<HTMLInputElement>('project-assets').onchange=async event=>{
     const rejected:string[]=[];
     for(const file of files){if(file.size>100*1024*1024){rejected.push(file.name);continue;}const ref=await fileReference('midi',file);if(pendingProject.assets.some(asset=>asset.sha256===ref.sha256&&asset.bytes===ref.bytes))projectFiles.set(ref.sha256,file);else rejected.push(file.name);}
     await restorePendingProject();
-    if(rejected.length)bindText(get('project-message'), joinMessages([boundText(get('project-message')), msg(" Files excluded because they did not match: {0}", " 일치하지 않아 제외한 파일: {0}", raw(rejected.join(', ')))], ''));
-  }catch(error){bindText(get('project-message'), uiError(error));}
+    if(rejected.length){feedback.warn(msg('Some source files did not match', '일치하지 않는 원본 파일이 있습니다'),panelAction('source','project-relink'),!!pendingProject);bindText(get('project-message'), joinMessages([boundText(get('project-message')), msg(" Files excluded because they did not match: {0}", " 일치하지 않아 제외한 파일: {0}", raw(rejected.join(', ')))], ''));}
+  }catch(error){reportError(error, 'project-message');}
   finally{busy=false;projectBusy=false;controls();}
 };
 
 get<HTMLInputElement>('hihat-policy').onchange=()=>controls();
-get('tracks').addEventListener('change',clearAutomaticMapping);
-get('channel').addEventListener('change',clearAutomaticMapping);
-get<HTMLSelectElement>('mapping-profile').onchange=()=>{clearAutomaticMapping();bindText(get('mapping-evidence'), msg("Mapping changed. Apply settings to prepare results for the selected drum sound source.", "매핑을 변경했습니다. 다시 준비하면 선택한 음원 기준의 결과를 확인할 수 있습니다."));controls();};
+function mappingEdited(){bindText(get('mapping-pending'),msg('Apply settings to update the performance.', '설정을 적용하면 연주가 갱신됩니다.'));}
+get('tracks').addEventListener('change',mappingEdited);
+get('channel').addEventListener('change',mappingEdited);
+get<HTMLSelectElement>('mapping-profile').onchange=()=>{bindText(get('mapping-pending'), msg('Apply settings to update the performance.', '설정을 적용하면 연주가 갱신됩니다.'));controls();};
 get('upload').onclick=()=>get<HTMLInputElement>('file').click();
 get<HTMLInputElement>('file').onchange=async(event)=>{const input=event.target as HTMLInputElement;const file=input.files?.[0]; if(file){if(file.size>MAX_FILE_BYTES){message(msg("Choose a MIDI file no larger than 10 MiB.", "10 MiB 이하의 MIDI 파일을 선택해 주세요."),true);}else await loadFile(new Uint8Array(await file.arrayBuffer()),file.name);}input.value='';};
 for(const demo of DEMO_CATALOG)get<HTMLSelectElement>('demo-select').add(uiOption(demo.label,demo.id));
@@ -1046,8 +1127,8 @@ const dropzone=get('dropzone');
 dropzone.ondragover=e=>{e.preventDefault();if(!busy&&!exporting)dropzone.classList.add('dragging');};
 dropzone.ondragleave=()=>dropzone.classList.remove('dragging');
 dropzone.ondrop=async(e)=>{e.preventDefault();dropzone.classList.remove('dragging');if(busy||exporting||modelBusy)return;const file=e.dataTransfer?.files[0];if(file){if(file.size>MAX_FILE_BYTES){message(msg("Choose a MIDI file no larger than 10 MiB.", "10 MiB 이하의 MIDI 파일을 선택해 주세요."),true);return;}await loadFile(new Uint8Array(await file.arrayBuffer()),file.name);}};
-get('cancel-analysis').onclick=()=>{const wasReview=reviewRunning;++loadGeneration;++reviewGeneration;reviewRunning=false;demoController?.abort();demoController=null;engine.cancel();synthesis.cancel();busy=false;showWavInfo();message(wasReview?msg("Song review cancelled.", "곡 검수를 취소했습니다."):msg("Preparation cancelled. Any previous performance is still available.", "준비를 취소했습니다. 기존 연주가 있다면 다시 재생할 수 있습니다."));if(wasReview)bindText(get('review-status'),msg("Review cancelled.", "검수를 취소했습니다."));status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));controls();};
-get('replan').onclick=async()=>{if(!bytes||busy||exporting||modelBusy)return;const generation=++loadGeneration,time=audio?.pause()??0;busy=true;controls();status(msg("Preparing", "준비 중"),'working');try{await prepare(generation,time);}catch(e){if(generation===loadGeneration){message(msg("{0} The previous performance is preserved. Check that note edits remain compatible with the changed mapping and track selection.", "{0} 기존 연주는 유지됩니다. 음표 편집과 변경한 매핑·트랙 선택의 호환성을 확인하세요.", uiError(e)),true);status(msg("Needs attention", "확인 필요"),'error');}}finally{if(generation===loadGeneration){busy=false;controls();}}};
+get('cancel-analysis').onclick=()=>{feedback.cancel();const wasReview=reviewRunning;++loadGeneration;++reviewGeneration;reviewRunning=false;demoController?.abort();demoController=null;engine.cancel();synthesis.cancel();busy=false;showWavInfo();message(wasReview?msg("Song review cancelled.", "곡 검수를 취소했습니다."):msg("Preparation cancelled. Any previous performance is still available.", "준비를 취소했습니다. 기존 연주가 있다면 다시 재생할 수 있습니다."));if(wasReview)bindText(get('review-status'),msg("Review cancelled.", "검수를 취소했습니다."));status(plan?msg("Paused", "일시정지"):msg("Idle", "대기"));controls();};
+get('replan').onclick=async()=>{if(!bytes||busy||exporting||modelBusy)return;const generation=++loadGeneration,time=audio?.pause()??0;busy=true;controls();status(msg("Preparing", "준비 중"),'working');try{if(await prepare(generation,time))get('mapping-provisional').hidden=true;}catch(e){if(generation===loadGeneration){message(msg("{0} The previous performance is preserved. Check that note edits remain compatible with the changed mapping and track selection.", "{0} 기존 연주는 유지됩니다. 음표 편집과 변경한 매핑·트랙 선택의 호환성을 확인하세요.", uiError(e)),true);status(msg("Needs attention", "확인 필요"),'error');}}finally{if(generation===loadGeneration){busy=false;controls();}}};
 get('play').onclick=async()=>{
   if(!audio||!plan)return;
   try{if(audio.playing){audio.pause();status(msg("Paused", "일시정지"));}else{if(audio.currentTime>=outputDuration(plan)-.01)audio.seek(0);await audio.play();status(msg("Playing", "연주 중"),'playing');}}
@@ -1058,7 +1139,7 @@ get<HTMLInputElement>('seek').oninput=()=>{audio?.seek(Number(get<HTMLInputEleme
 get<HTMLInputElement>('volume').oninput=()=>audio?.setVolume(Number(get<HTMLInputElement>('volume').value));
 for(const button of document.querySelectorAll<HTMLButtonElement>('[data-camera]'))button.onclick=()=>{scene.setCamera(button.dataset.camera as CameraView);for(const other of document.querySelectorAll('[data-camera]'))other.setAttribute('aria-pressed',String(other===button));};
 get<HTMLInputElement>('background').oninput=()=>scene.setBackground(get<HTMLInputElement>('background').value);
-get('cancel-export').onclick=()=>exportController?.abort();
+get('cancel-export').onclick=()=>{feedback.cancel();exportController?.abort();};
 get('export').onclick=async()=>{
   if(!plan||!buffer||exporting||modelBusy)return;
   const currentPlan=plan; const currentBuffer=buffer; const restoreTime=audio?.pause()??0;
@@ -1076,7 +1157,7 @@ get('export').onclick=async()=>{
     const download=get<HTMLAnchorElement>('download');download.href=downloadUrl;download.download=`${fileName.replace(/\.(mid|midi)$/i,'').replace(/[^\p{L}\p{N} _-]/gu,'_')}-drum.${result.extension}`;download.hidden=false;
     bindText(get('export-note'), msg("{0} · {1} frames · {2} s · {3} · {4} MiB", "{0} · {1} 프레임 · {2}초 · {3} · {4} MiB", result.extension.toUpperCase(), result.frames, result.duration.toFixed(2), profile.audioCodec?(wav?msg("Includes user WAV", "사용자 WAV 포함"):msg("Includes synthesized drums", "합성 드럼 오디오 포함")):msg("Silent export selected", "선택한 무음 출력"), (result.blob.size/1048576).toFixed(1)));
     message(msg("Video ready. Download it from the Export panel.", "영상이 완성됐습니다. 내보내기 패널에서 다운로드하세요."));status(msg("Video ready", "영상 준비 완료"),'ready');
-  } catch(e){const cancelled=e instanceof DOMException&&e.name==='AbortError';message(cancelled?msg("Video export cancelled. You can play or export again.", "영상 추출을 취소했습니다. 다시 재생하거나 내보낼 수 있습니다."):msg("Video export failed: {0}", "영상 추출 실패: {0}", uiError(e)),!cancelled);status(cancelled?msg("Ready", "준비 완료"):msg("Export needs attention", "출력 확인 필요"),cancelled?'ready':'error');}
+  } catch(e){const cancelled=e instanceof DOMException&&e.name==='AbortError';if(!cancelled)message(cancelled?msg("Video export cancelled. You can play or export again.", "영상 추출을 취소했습니다. 다시 재생하거나 내보낼 수 있습니다."):msg("Video export failed: {0}", "영상 추출 실패: {0}", uiError(e)),!cancelled);status(cancelled?msg("Ready", "준비 완료"):msg("Export needs attention", "출력 확인 필요"),cancelled?'ready':'error');}
   finally {exporting=false;exportController=null;scene.setExportMode(false);scene.resize();updateFrame(restoreTime);controls();}
 };
 document.addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|SELECT|BUTTON|TEXTAREA/.test((e.target as HTMLElement).tagName)){e.preventDefault();get<HTMLButtonElement>('play').click();}});
@@ -1095,5 +1176,27 @@ async function initializeStudio() {
   catch(error){message(uiError(error),true);return;}
   finally{modelBusy=false;controls();}
 }
+
+// These handlers retain their existing validation, cancellation and commit boundaries.
+function notifyHandler(id: string, event: 'onclick' | 'onchange', scope: string, title: string, success: string, panel: Panel) {
+  const element = get<HTMLInputElement>(id), original = element[event];
+  if (!original) return;
+  element[event] = async function (e: Event) {
+    if (busy || exporting || modelBusy || element.disabled) return;
+    if (element.type === 'file' && !element.files?.length) return;
+    if (id === 'wav-apply' && !get<HTMLInputElement>('wav-offset').reportValidity()) return;
+    await feedback.run(scope, title, success, panelAction(panel), () => original.call(element, e as PointerEvent));
+  };
+}
+notifyHandler('replan','onclick','performance',msg('Preparing MIDI…','MIDI 준비 중…'),msg('MIDI settings applied','MIDI 설정을 적용했습니다'),'source');
+notifyHandler('wav-file','onchange','audio',msg('Reading WAV…','WAV를 읽는 중…'),msg('WAV loaded','WAV를 불러왔습니다'),'source');
+notifyHandler('wav-apply','onclick','audio',msg('Aligning audio…','오디오 정렬 중…'),msg('Audio offset applied','오디오 시작 위치를 적용했습니다'),'source');
+notifyHandler('wav-remove','onclick','audio',msg('Restoring audio…','오디오 복원 중…'),msg('Synthesized drums restored','합성 드럼으로 복원했습니다'),'source');
+notifyHandler('project-save','onclick','project-save',msg('Saving project…','프로젝트 저장 중…'),msg('Project file ready','프로젝트 파일을 준비했습니다'),'source');
+notifyHandler('project-file','onchange','project',msg('Opening project…','프로젝트 여는 중…'),msg('Project restored','프로젝트를 복원했습니다'),'source');
+notifyHandler('project-assets','onchange','project',msg('Checking source files…','원본 파일 확인 중…'),msg('Source files linked','원본 파일을 연결했습니다'),'source');
+notifyHandler('review-scan','onclick','review',msg('Reviewing song…','곡 검수 중…'),msg('Song review complete','곡 검수를 완료했습니다'),'analysis');
+notifyHandler('export','onclick','export',msg('Creating video…','영상 만드는 중…'),msg('Video ready to download','다운로드할 영상이 준비됐습니다'),'export');
+
 void initializeStudio();
-window.addEventListener('beforeunload',()=>{disposed=true;demoController?.abort();engine.dispose();synthesis.cancel();audio?.dispose();scene.dispose();timeline.dispose();resizeObserver.disconnect();clearTimeout(toastTimer);if(downloadUrl)URL.revokeObjectURL(downloadUrl);});
+window.addEventListener('beforeunload',()=>{disposed=true;demoController?.abort();engine.dispose();synthesis.cancel();audio?.dispose();scene.dispose();timeline.dispose();resizeObserver.disconnect();disposeNotifications();if(downloadUrl)URL.revokeObjectURL(downloadUrl);});

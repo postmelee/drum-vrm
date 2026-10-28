@@ -10,8 +10,13 @@
 #character-info .hint { white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Compact controls remain primary; supporting detail is deliberately disclosed. */
-.panel details>summary{padding:7px 0;font-size:13px}.panel details[open]>summary{margin-bottom:10px}.panel details>button{margin:4px 0}.panel .section-first{border:0;padding-top:0;margin-top:0}.panel p:empty{display:none}.panel strong{overflow-wrap:anywhere}.track-list{max-height:220px;overflow:auto}.toast{position:fixed;left:50%;bottom:262px;transform:translateX(-50%);z-index:6;max-width:min(540px,calc(100vw - 24px));padding:10px 12px;display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);font-size:12px}.toast button{flex-shrink:0}#analysis-badge{font-variant-numeric:tabular-nums;color:var(--focus)}#analysis-summary{margin-top:0;font-weight:500}.panel details .hint{margin:8px 0}#source-summary{margin-bottom:6px}
-@media(max-width:700px){.toast{bottom:222px}.menus{flex-wrap:wrap;justify-content:flex-start}.menus button{flex:1}.inspector{top:0}.panel{padding:12px}}
+.panel details>summary{padding:7px 0;font-size:13px}.panel details[open]>summary{margin-bottom:10px}.panel details>button{margin:4px 0}.panel .section-first{border:0;padding-top:0;margin-top:0}.panel p:empty{display:none}.panel strong{overflow-wrap:anywhere}.track-list{max-height:220px;overflow:auto}#analysis-badge{font-variant-numeric:tabular-nums;color:var(--focus)}#analysis-summary{margin-top:0;font-weight:500}.panel details .hint{margin:8px 0}#source-summary{margin-bottom:6px}
+@media(max-width:700px){.menus{flex-wrap:nowrap;justify-content:flex-start;min-width:0;gap:2px;overflow-x:auto;scrollbar-width:thin;padding:2px 0}.menus button{flex:1 0 auto;padding:3px 4px}.menus #theme,.menus #notifications-toggle{min-width:28px}.inspector{top:0}.panel{padding:12px}}
+
+.field-attention{font-size:12px;color:var(--text);border-left:2px solid var(--focus);padding-left:8px}
+
+#mapping-table{width:100%;border-collapse:collapse;font-size:12px}#mapping-table th,#mapping-table td{text-align:left;padding:6px 0;border-bottom:1px solid var(--border)}#mapping-table tbody th{font-weight:400}#mapping-table td{white-space:nowrap;text-align:right}
+@media(max-width:420px){.menus button{padding-inline:1px}}
 
 .fbx-setup { width: min(1120px, calc(100vw - 48px)); max-height: 85vh; overflow: auto; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
 .fbx-setup::backdrop { background: #0008; }

@@ -5,18 +5,30 @@ own measured results and publication evidence.
 
 ## Current review and next work
 
-The active batch fixes common automatic fitting (#18) and validates the three
-bundled public VRMs (#23). Work uses `codex/public-vrm-fit`, stacked on PR #58's
-integrated `c2b06f2`. Preserve its FBX, VRM 0.0 and expanded MIDI support. Draft
-[PR #64](https://github.com/postmelee/drum-vrm/pull/64) retains the previous
-`f2d3b87` failed-acceptance evidence; the owner selected fixing the fits before
-another Pages review. The [common-motion review](verification/common-motion-fit.md)
-records the new uncommitted-source/WASM identity: all four fits and all study hits
-now succeed, but every model still fails temporal physical-tool acceptance.
-The [diagnostic follow-up](verification/common-motion-fit.md#diagnostic-follow-up-measurement)
-preserves the same fits and sampled motion while exposing previously missed
-tool-path and evaluated-posture failures; it is not a path-repair completion.
-No new candidate has been merged or published.
+[PR #64](https://github.com/postmelee/drum-vrm/pull/64) carries the reviewed
+common-fitting/motion checkpoint on top of PR #58's FBX/VRM 0.0 work. The owner
+approved merging this known-incomplete candidate and publishing it to Pages on
+2026-10-29. The PR publication record owns the exact integrated commit, CI,
+workflow and public checks; approval alone is not deployment evidence. No
+Release/tag or strike-position variation is included.
+
+The [common-motion review](verification/common-motion-fit.md) preserves the
+`b837104` source/WASM measurements and the older `f2d3b87` failed baseline. All
+four static fits and both study assignments now succeed, but every model still
+fails temporal physical-tool acceptance. The
+[diagnostic follow-up](verification/common-motion-fit.md#diagnostic-follow-up-measurement)
+exposes previously missed tool-path and evaluated-posture failures without
+changing those measured fits or motion.
+
+The integration preserves main's shared notification/concise-inspector work
+([PR #63](https://github.com/postmelee/drum-vrm/pull/63),
+[contract](../specs/architecture/notifications.md),
+[evidence](verification/notification-design.md#production-integration)) and
+Songsterr/automatic mapping work ([PR #61](https://github.com/postmelee/drum-vrm/pull/61),
+[contract](../specs/architecture/midi-interpretation.md#songsterr-downloader-compatibility),
+[evidence](verification/songsterr-downloader-mapping.md)). Conflict resolution
+must retain guided FBX import, shared operation feedback and the native reference
+startup. These UI integrations do not establish new motion acceptance.
 
 - **Reference first:** the native skeleton starts at the reviewed fixed kit and
   authored seat, without an automatic startup search. Imported models first try

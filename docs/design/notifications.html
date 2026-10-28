@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Drum VRM · 알림 설계 시안</title>
+<style>
+:root{font-family:-apple-system,system-ui,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--text);background:var(--surface);font-size:13px;font-synthesis:none;--bg:#fff;--surface:#f5f5f5;--control:#eee;--border:#d3d3d3;--text:#171717;--muted:#646464;--active:#dce7f5;--focus:#3274c8;--action:var(--focus);--shadow:0 8px 24px #00000012,0 2px 6px #00000008;color-scheme:light}
+*{box-sizing:border-box}body{margin:0;padding:28px}button,input,select{font:inherit}button{cursor:pointer;color:inherit;background:var(--control);border:1px solid var(--border);border-radius:3px;min-height:32px;padding:6px 10px}button:hover{border-color:var(--muted)}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:2px solid var(--focus);outline-offset:3px}button:disabled{cursor:default;opacity:.5}select{width:100%;padding:8px;border:1px solid var(--border);border-radius:3px;color:var(--text);background:var(--surface)}[hidden]{display:none!important}.header{max-width:1280px;margin:0 auto 20px;display:flex;justify-content:space-between;align-items:center;gap:16px}.eyebrow{font-size:10px;font-weight:700;letter-spacing:.16em;color:var(--focus);margin-bottom:7px}h1{font-size:22px;margin:0;font-weight:600;letter-spacing:-.04em}.header p{color:var(--muted);margin:7px 0 0;line-height:1.5}.label{display:block;color:var(--muted);font-size:11px;margin-bottom:7px}.preview{max-width:1280px;margin:auto;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--surface);box-shadow:0 16px 56px #0000000d;color:var(--text)}.toolbar{height:54px;padding:0 16px;display:flex;align-items:center;gap:14px;border-bottom:1px solid var(--border);background:var(--surface)}.brand{font-size:14px;letter-spacing:-.04em;font-weight:700;white-space:nowrap}.transport{display:flex;align-items:center;gap:6px}.clock{font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted)}.menu{margin-left:auto;display:flex;gap:4px;align-items:center}.menu button{border-color:transparent;background:transparent;font-size:12px}.menu button.active{background:var(--active);color:var(--text);border-color:var(--focus)}.work{display:flex;position:relative;min-height:390px}.stage{flex:1;min-width:0;display:flex;flex-direction:column}.stagebar{height:40px;display:flex;align-items:center;justify-content:space-between;padding:0 14px;border-bottom:1px solid var(--border);font-size:11px;color:var(--muted)}.dot{width:6px;height:6px;display:inline-block;margin-right:6px;background:var(--focus);border-radius:50%}.views{display:flex;gap:6px}.views span{padding:4px 6px}.views .selected{background:var(--active);color:var(--text);border:1px solid var(--focus);border-radius:3px}.canvas{position:relative;flex:1;min-height:350px;background:var(--bg);overflow:hidden}.kit{width:340px;height:250px;position:absolute;left:44%;top:58%;transform:translate(-50%,-50%);color:var(--muted);opacity:.65}.floor{stroke:var(--border);stroke-width:1}.caption{position:absolute;bottom:16px;left:16px;font-size:10px;letter-spacing:.08em;color:var(--muted)}.inspector{width:272px;flex:none;border-left:1px solid var(--border);background:var(--surface)}.inspector header{padding:15px 18px;border-bottom:1px solid var(--border);font-weight:600}.inspector section{padding:18px;border-bottom:1px solid var(--border)}.inspector h2{font-size:12px;margin:0 0 12px;font-weight:600}.row{display:flex;gap:6px;align-items:center}.file{font-weight:500;font-size:13px;margin:0 0 5px}.meta{color:var(--muted);font-size:11px;margin:0 0 12px}details{margin-top:16px}summary{font-size:12px;cursor:pointer}details label{display:block;font-size:11px;margin-top:12px;margin-bottom:6px}.audio-value{display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:12px}.chip{font-size:10px;border:1px solid var(--border);border-radius:20px;padding:4px 8px;color:var(--muted)}.help{color:var(--muted);font-size:12px;padding:18px}.timeline{border-top:1px solid var(--border)}.timeline header{height:37px;display:flex;justify-content:space-between;align-items:center;font-size:11px;padding:0 14px}.roll{height:108px;display:grid;grid-template-columns:80px 1fr;background:var(--surface);border-top:1px solid var(--border)}.instruments{font-size:10px;color:var(--muted);display:flex;flex-direction:column;justify-content:space-around;padding:6px 14px;border-right:1px solid var(--border)}.notes{position:relative;background:repeating-linear-gradient(90deg,transparent 0 39px,var(--border) 40px),repeating-linear-gradient(0deg,transparent 0 26px,var(--border) 27px)}.notes i{position:absolute;height:5px;border-radius:1px;background:var(--focus);opacity:.65}.design-controls{max-width:1280px;margin:18px auto;display:flex;align-items:center;flex-wrap:wrap;gap:8px}.design-controls .title{font-weight:600;margin-right:5px;font-size:11px}.design-controls label{font-size:11px;display:flex;align-items:center;gap:5px;color:var(--muted)}.separator{height:20px;width:1px;background:var(--border);margin:0 5px}.footnote{max-width:1280px;margin:auto;color:var(--muted);font-size:11px;line-height:1.7}.footnote a{color:inherit}.tray{position:absolute;right:16px;top:16px;width:min(344px,calc(100% - 32px));display:flex;flex-direction:column;gap:8px;z-index:3;pointer-events:none}.toast{--toast-padding:10px 12px 4px;--toast-target:32px;pointer-events:auto;display:flex;align-items:flex-start;height:auto;min-height:0;gap:10px;padding:var(--toast-padding);border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:var(--shadow);animation:enter 220ms cubic-bezier(.2,0,0,1) both}.toast-content{display:flex;flex:1;min-width:0;flex-direction:column;align-items:flex-start;gap:2px}.severity{flex:0 0 18px;width:18px;height:18px;margin-top:2px;color:var(--focus);display:flex;align-items:center;justify-content:center;font-weight:700}.toast.warning .severity{color:#a06409}.toast.error .severity{color:#cf4335}.toast.info .severity,.toast.progress .severity{color:var(--action)}.severity svg{width:18px;height:18px;flex:none}.toast h3{font-size:14px;line-height:1.4;font-weight:600;letter-spacing:-.025em;margin:0}.toast p{font-size:12px;line-height:1.5;margin:0;color:var(--muted)}.toast .action{border:0;background:transparent;color:var(--action);font-size:12px;font-weight:600;display:inline-flex;align-items:center;padding:0;margin:0 0 0 -6px;min-height:var(--toast-target);max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}.toast .action-label{display:block;min-width:0;padding:3px 6px;border-radius:3px;line-height:18px}.toast .action:focus-visible{outline:none}.toast .action:focus-visible .action-label{background:var(--active);outline:2px solid var(--focus);outline-offset:2px}.toast .action:active .action-label{background:var(--active);color:var(--text)}@media(hover:hover){.toast .action:hover .action-label{background:var(--active)}}.toast .close{flex:0 0 var(--toast-target);align-self:start;border:0;background:transparent;font-size:20px;line-height:1;padding:0;width:var(--toast-target);height:var(--toast-target);margin:-6px -6px 0 0;color:var(--muted)}.toast.leaving{animation:exit 150ms cubic-bezier(.3,0,1,1) both}.spinner{width:15px;height:15px;border:2px solid var(--border);border-top-color:currentColor;border-radius:50%;animation:spin 1s linear infinite}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}.history{position:absolute;right:12px;top:12px;z-index:5;width:min(340px,calc(100% - 24px));padding:16px;background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow)}.history header{display:flex;align-items:center;justify-content:space-between;font-weight:600}.history ul{padding:0;list-style:none;max-height:240px;overflow:auto;margin:8px 0 0}.history li{padding:10px 0;border-top:1px solid var(--border);font-size:12px}.history li small{display:block;color:var(--muted);margin-top:4px}.history p{font-size:11px;color:var(--muted)}
+@keyframes enter{from{opacity:0;transform:translateY(-8px);box-shadow:none}to{opacity:1;transform:translateY(0);box-shadow:var(--shadow)}}@keyframes exit{to{opacity:0;transform:translateY(-4px)}}@keyframes spin{to{transform:rotate(360deg)}}
+body.dark{--bg:#000;--surface:#141414;--control:#242424;--border:#363636;--text:#eee;--muted:#a2a2a2;--active:#26394f;--action:color-mix(in srgb,var(--focus) 65%,var(--text));--shadow:0 8px 24px #0006,0 2px 6px #0004;color-scheme:dark;background:var(--bg);color:var(--text)}body.dark .toast.warning .severity{color:#edbd71}body.dark .toast.error .severity{color:color-mix(in srgb,#cf4335 65%,var(--text))}.preview.narrow{width:min(390px,100%)}.narrow .toolbar{height:96px;flex-wrap:wrap;padding:10px 12px;gap:8px}.narrow .menu{width:100%;margin:0;justify-content:space-between}.narrow .menu button{padding:4px 7px}.narrow .clock{font-size:10px}.narrow .inspector{position:absolute;right:0;top:40px;bottom:0;width:260px;z-index:1;overflow:auto}.narrow .canvas{min-height:390px}.narrow .tray{right:12px;top:12px;width:calc(100% - 24px);z-index:3}.narrow .toast~.toast{display:none}.narrow .toast{--toast-padding:8px 10px 2px;--toast-target:44px;gap:8px}.narrow .brand{margin-right:auto}.narrow .views{gap:0}.narrow .history{z-index:6}.reduce .toast,.reduce .toast.leaving{animation-duration:80ms;transform:none}.reduce .spinner{animation:none}.reduce .toast{animation-name:fade-in}.reduce .toast.leaving{animation-name:fade-out}@keyframes fade-in{from{opacity:0}to{opacity:1}}@keyframes fade-out{to{opacity:0}}@media(prefers-reduced-motion:reduce){.toast{animation:fade-in 80ms}.toast.leaving{animation:fade-out 80ms}.spinner{animation:none}}@media(max-width:700px){.toast{--toast-padding:8px 10px 2px;--toast-target:44px;gap:8px}}@media(max-width:600px){body{padding:16px 10px}.header{align-items:start}.header p{font-size:12px}.header h1{font-size:19px}.design-controls{gap:6px}.footnote{font-size:10px}}
+</style>
+<div class="header"><div><div class="eyebrow">DRUM VRM / INTERACTION STUDY 01</div><h1>조작은 메뉴에, 결과는 알림으로.</h1><p>토스트 설계 시안 · 실제 파일을 처리하지 않습니다.</p></div><div class="row"><button id="language" aria-label="Switch to English">English</button><button id="theme">어두운 테마</button></div></div>
+<main class="preview" id="preview">
+  <div class="toolbar"><span class="brand">Drum VRM</span><div class="transport"><button disabled aria-label="처음으로">↤</button><button disabled aria-label="재생">▷</button><span class="clock">00:00 / 00:12</span></div><nav class="menu"><button disabled>캐릭터</button><button disabled>드럼</button><button class="active" id="menu-toggle">파일 · 오디오</button><button id="analysis">분석</button><button id="history-toggle" aria-label="최근 알림" title="최근 알림"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg></button></nav></div>
+  <div class="work">
+    <div class="stage"><div class="stagebar"><span id="stage-state"><i class="dot"></i>준비 완료</span><div class="views"><span class="selected">연주</span><span>정면</span><span>위</span><span>연주자</span></div></div>
+      <div class="canvas"><svg class="kit" viewBox="0 0 360 260" fill="none" aria-hidden="true"><ellipse class="floor" cx="180" cy="219" rx="162" ry="27"/><g stroke="currentColor" stroke-width="2"><ellipse cx="180" cy="167" rx="49" ry="53"/><ellipse cx="180" cy="167" rx="40" ry="45"/><path d="M147 207l-18 19m84-19 18 19M62 70v140m0-6-22 21m22-21 22 21M293 85v122m0-7-22 21m22-21 22 21M90 151v65m0-8-15 17m15-17 17 17M249 153v58m0-7-18 21m18-21 18 21"/><ellipse cx="61" cy="70" rx="47" ry="8" fill="var(--surface)"/><ellipse cx="293" cy="85" rx="48" ry="9" fill="var(--surface)"/><path d="M112 100v37c0 13 57 13 57 0v-37m28 0v37c0 13 57 13 57 0v-37M63 140v26c0 11 56 11 56 0v-26m106 3v28c0 12 57 12 57 0v-28" fill="var(--surface)"/><ellipse cx="140" cy="100" rx="28" ry="10" fill="var(--surface)"/><ellipse cx="225" cy="100" rx="28" ry="10" fill="var(--surface)"/><ellipse cx="91" cy="140" rx="28" ry="9" fill="var(--surface)"/><ellipse cx="254" cy="143" rx="28" ry="9" fill="var(--surface)"/></g></svg><span class="caption">STAGE / SCHEMATIC PREVIEW</span><div class="tray" id="tray" aria-label="알림"></div></div>
+    </div>
+    <aside class="inspector" id="inspector"><header id="panel-title" tabindex="-1">파일 · 오디오</header><section><h2>프로젝트</h2><div class="row"><button disabled>저장</button><button disabled>열기…</button></div></section><section><p class="file">Drum study.mid</p><p class="meta">12초 · 1개 트랙</p><button id="import-demo">MIDI 불러오기…</button><details id="settings"><summary>MIDI 설정</summary><label for="mapping">드럼 음원 매핑</label><select id="mapping"><option>Songsterr Downloader</option><option>General MIDI</option><option>Logic · Drum Kit Designer</option></select><label for="channel">MIDI 채널</label><select id="channel"><option>10 · 드럼</option></select></details></section><section><h2>연주 오디오</h2><div class="audio-value"><span>합성 드럼</span><span class="chip">사용 중</span></div><button disabled>WAV 불러오기…</button></section><details class="help"><summary>사용 도움말</summary><p>설정의 의미와 형식 제한은 필요할 때 여기에서 확인합니다.</p></details></aside>
+    <section class="history" id="history" hidden><header><span>최근 알림</span><button id="history-close" aria-label="최근 알림 닫기">×</button></header><p>시안의 세션 기록 · 작업 동작은 재실행하지 않습니다.</p><ul id="history-list"></ul></section>
+  </div>
+  <div class="timeline"><header><strong>Piano Roll</strong><span>확대 ━━━○━━</span></header><div class="roll"><div class="instruments"><span>하이햇</span><span>스네어</span><span>킥</span><span>탐</span></div><div class="notes" id="notes" aria-hidden="true"></div></div></div>
+</main>
+<div class="design-controls"><span class="title">알림 미리보기</span><button data-example="success">성공</button><button data-example="warning">확인 필요</button><button data-example="error">실패</button><button data-example="progress">진행 → 완료</button><button id="stack">3개 알림</button><span class="separator"></span><label><input id="hold" type="checkbox" checked> 고정 보기</label><label><input id="narrow" type="checkbox"> 좁은 화면</label><label><input id="reduce" type="checkbox"> 동작 줄이기</label></div>
+<p class="footnote">고정 보기를 해제하면 성공은 4초 후 닫힙니다. 마우스·포커스가 카드 안에 있으면 멈춥니다.<br>범위: 배치·테마·문구·기본 수명과 모션 시안. 전체 대기열·실제 작업 취소·접근성 인증은 구현 검증 대상입니다. <a href="../../specs/architecture/notifications.ko.md">설계 명세</a></p>
+<div id="announcer" class="sr" role="status" aria-live="polite"></div><div id="error-announcer" class="sr" role="alert"></div>
+<script>
+const $=id=>document.getElementById(id), entries=[], timers=new Map();let generation=0;
+const examples={success:{kind:'success',icon:'✓',title:'MIDI를 불러왔습니다',detail:'Songsterr 매핑 · 1,513개 타격',action:'MIDI 설정',duration:4000},warning:{kind:'warning',icon:'!',title:'드럼 매핑을 확인해 주세요',detail:'General MIDI로 임시 설정했습니다',action:'매핑 선택',duration:0},error:{kind:'error',icon:'!',title:'MIDI를 읽지 못했습니다',detail:'다른 .mid 파일을 선택해 주세요',action:'파일 선택',duration:0},progress:{kind:'progress',icon:'',title:'연주 준비 중…',detail:'드럼 음표와 동작을 준비하고 있습니다',duration:0},info:{kind:'info',icon:'i',title:'WAV를 적용했습니다',duration:5000}};
+const translations={
+  "조작은 메뉴에, 결과는 알림으로.": "Controls in menus. Results in notifications.",
+  "토스트 설계 시안 · 실제 파일을 처리하지 않습니다.": "Notification design study · No files are processed.",
+  "어두운 테마": "Dark theme",
+  "밝은 테마": "Light theme",
+  "처음으로": "Reset",
+  "재생": "Play",
+  "캐릭터": "Character",
+  "드럼": "Drums",
+  "파일 · 오디오": "Files / Audio",
+  "분석": "Analysis",
+  "최근 알림": "Recent notifications",
+  "준비 완료": "Ready",
+  "연주": "Stage",
+  "정면": "Front",
+  "위": "Top",
+  "연주자": "Player",
+  "알림": "Notifications",
+  "프로젝트": "Project",
+  "저장": "Save",
+  "열기…": "Open…",
+  "12초 · 1개 트랙": "12 seconds · 1 track",
+  "MIDI 불러오기…": "Import MIDI…",
+  "MIDI 설정": "MIDI settings",
+  "드럼 음원 매핑": "Drum sound mapping",
+  "MIDI 채널": "MIDI channel",
+  "10 · 드럼": "10 · Drums",
+  "연주 오디오": "Performance audio",
+  "합성 드럼": "Synthesized drums",
+  "사용 중": "Active",
+  "WAV 불러오기…": "Load WAV…",
+  "사용 도움말": "Help",
+  "설정의 의미와 형식 제한은 필요할 때 여기에서 확인합니다.": "Find setting definitions and format limits here when needed.",
+  "최근 알림 닫기": "Close recent notifications",
+  "시안의 세션 기록 · 작업 동작은 재실행하지 않습니다.": "Study session history · Actions are not replayed.",
+  "확대 ━━━○━━": "Zoom ━━━○━━",
+  "하이햇": "Hi-hat",
+  "스네어": "Snare",
+  "킥": "Kick",
+  "탐": "Tom",
+  "알림 미리보기": "Preview notifications",
+  "성공": "Success",
+  "확인 필요": "Needs review",
+  "실패": "Error",
+  "진행 → 완료": "Progress → Done",
+  "3개 알림": "Three notifications",
+  "고정 보기": "Keep visible",
+  "좁은 화면": "Narrow layout",
+  "동작 줄이기": "Reduced motion",
+  "고정 보기를 해제하면 성공은 4초 후 닫힙니다. 마우스·포커스가 카드 안에 있으면 멈춥니다.": "Turn off Keep visible to dismiss success after 4 seconds. Hover or focus pauses the timer.",
+  "범위: 배치·테마·문구·기본 수명과 모션 시안. 전체 대기열·실제 작업 취소·접근성 인증은 구현 검증 대상입니다.": "Scope: placement, themes, copy, basic lifecycle and motion. Full queue behavior, real cancellation and accessibility require implementation validation.",
+  "설계 명세": "Design specification",
+  "MIDI를 불러왔습니다": "MIDI loaded",
+  "Songsterr 매핑 · 1,513개 타격": "Songsterr mapping · 1,513 hits",
+  "드럼 매핑을 확인해 주세요": "Review drum mapping",
+  "General MIDI로 임시 설정했습니다": "General MIDI selected provisionally",
+  "매핑 선택": "Choose mapping",
+  "MIDI를 읽지 못했습니다": "Could not read MIDI",
+  "다른 .mid 파일을 선택해 주세요": "Choose another .mid file",
+  "파일 선택": "Choose file",
+  "연주 준비 중…": "Preparing performance…",
+  "드럼 음표와 동작을 준비하고 있습니다": "Preparing drum notes and motion",
+  "WAV를 적용했습니다": "WAV applied",
+  "알림 닫기": "Dismiss notification",
+  "연주 준비 완료 · 동작 2개 확인": "Performance ready · Review 2 motions",
+  "Songsterr 매핑 적용": "Songsterr mapping applied"
+};
+let language=new URLSearchParams(location.search).get('lang')==='en'?'en':'ko';
+const textSources=new WeakMap(),attributeSources=new WeakMap();
+const translated=value=>language==='en'?(translations[value]??value):value;
+function localize(root=document.body){
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+  while(walker.nextNode()){
+    const node=walker.currentNode;
+    if(node.parentElement?.closest('script,style,#announcer,#error-announcer'))continue;
+    const source=textSources.get(node)??node.textContent;
+    if(translations[source.trim()]){textSources.set(node,source);node.textContent=source.replace(source.trim(),translated(source.trim()))}
+  }
+  for(const node of [root,...root.querySelectorAll('[aria-label],[title]')]){
+    let sources=attributeSources.get(node);if(!sources){sources={};attributeSources.set(node,sources)}
+    for(const key of ['aria-label','title']){const source=sources[key]??node.getAttribute(key);if(translations[source]){sources[key]=source;node.setAttribute(key,translated(source))}}
+  }
+}
+function setLanguage(next){
+  language=next;document.documentElement.lang=language;
+  document.title=language==='en'?'Drum VRM · Notification design study':'Drum VRM · 알림 설계 시안';
+  localize();$('language').textContent=language==='en'?'한국어':'English';
+  $('language').setAttribute('aria-label',language==='en'?'한국어로 전환':'Switch to English');
+  document.querySelector('.footnote a').setAttribute('href','../../specs/architecture/notifications'+(language==='ko'?'.ko':'')+'.md');
+  const url=new URL(location.href);url.searchParams.set('lang',language);history.replaceState(null,'',url);
+}
+$('language').onclick=()=>setLanguage(language==='en'?'ko':'en');
+function statusIcon(kind){
+  const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+  for(const [key,value] of Object.entries({viewBox:'0 0 24 24',fill:'none',stroke:'currentColor','stroke-width':'1.75','stroke-linecap':'round','stroke-linejoin':'round'}))svg.setAttribute(key,value);
+  const paths={success:'M9 12l2 2 4-4 M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0',warning:'M10.3 4.3a2 2 0 0 1 3.4 0l8 14A2 2 0 0 1 20 21H4a2 2 0 0 1-1.7-2.7z M12 9v4 M12 17h.01',error:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M9 9l6 6 M15 9l-6 6',info:'M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0 M12 11v5 M12 8h.01'};
+  const path=document.createElementNS(svg.namespaceURI,'path');path.setAttribute('d',paths[kind]||paths.info);svg.append(path);return svg;
+}
+const paused=state=>$('hold').checked||document.hidden||state.node.matches(':hover')||state.node.contains(document.activeElement);
+function tick(state){clearTimeout(state.timer);state.timer=null;if(!state.remaining||paused(state))return;state.started=performance.now();state.timer=setTimeout(()=>dismiss(state.node),state.remaining)}
+function pause(state){if(state.timer){clearTimeout(state.timer);state.timer=null;state.remaining=Math.max(1,state.remaining-(performance.now()-state.started))}}
+function dismiss(node){const state=timers.get(node);if(!state)return;clearTimeout(state.timer);timers.delete(node);if(node.contains(document.activeElement))$('history-toggle').focus();node.classList.add('leaving');node.addEventListener('animationend',()=>node.remove(),{once:true})}
+function record(data){if(data.kind==='progress')return;entries.unshift(data);entries.splice(20);renderHistory()}
+function renderHistory(){$('history-list').replaceChildren(...entries.map(data=>{const li=document.createElement('li');li.textContent=data.title;if(data.detail){const small=document.createElement('small');small.textContent=data.detail;li.append(small)}return li}));localize($('history-list'))}
+function reset(){generation++;for(const state of timers.values())clearTimeout(state.timer);timers.clear();$('tray').replaceChildren();return generation}
+function show(data,existing){const node=existing||document.createElement('article');if(existing){const old=timers.get(node);if(old)clearTimeout(old.timer)}node.className='toast '+data.kind;node.replaceChildren();attributeSources.delete(node);node.setAttribute('aria-label',data.title);const icon=document.createElement('span');icon.className='severity';icon.setAttribute('aria-hidden','true');if(data.kind==='progress'){const spinner=document.createElement('span');spinner.className='spinner';icon.append(spinner)}else icon.append(statusIcon(data.kind));const content=document.createElement('div'),title=document.createElement('h3');content.className='toast-content';title.textContent=data.title;content.append(title);if(data.detail){const p=document.createElement('p');p.textContent=data.detail;content.append(p)}if(data.action){const action=document.createElement('button');action.className='action';const actionLabel=document.createElement('span');actionLabel.className='action-label';actionLabel.textContent=data.action;action.append(actionLabel);action.onclick=()=>{$('inspector').hidden=false;if(data.kind==='error'){$('import-demo').focus()}else{$('settings').open=true;$('mapping').value=data.kind==='warning'?'General MIDI':'Songsterr Downloader';$('mapping').focus()}dismiss(node)};content.append(action)}const close=document.createElement('button');close.className='close';close.textContent='×';close.setAttribute('aria-label','알림 닫기');close.onclick=()=>dismiss(node);node.append(icon,content,close);if(!existing)$('tray').append(node);else node.style.animation='none';const state={node,remaining:data.duration,timer:null,started:0};timers.set(node,state);node.onpointerenter=()=>pause(state);node.onpointerleave=()=>tick(state);node.onfocusin=()=>pause(state);node.onfocusout=()=>queueMicrotask(()=>tick(state));node.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();dismiss(node)}};tick(state);record(data);localize(node);const announcer=$(data.kind==='error'?'error-announcer':'announcer');announcer.lang=language;announcer.textContent=translated(data.title)+(data.detail?'. '+translated(data.detail):'');return node}
+function sample(kind){const current=reset(),node=show(examples[kind]);if(kind==='warning')$('mapping').value='General MIDI';if(kind==='progress')setTimeout(()=>{if(generation!==current)return;if(node.isConnected)show(examples.success,node);else show(examples.success)},2200)}
+document.querySelectorAll('[data-example]').forEach(button=>button.onclick=()=>sample(button.dataset.example));$('import-demo').onclick=()=>sample('progress');$('stack').onclick=()=>{reset();show(examples.warning);show(examples.error);show(examples.success)};
+$('hold').onchange=()=>timers.forEach(s=>{$('hold').checked?pause(s):tick(s)});document.addEventListener('visibilitychange',()=>timers.forEach(s=>{document.hidden?pause(s):tick(s)}));$('theme').onclick=()=>{document.body.classList.toggle('dark');$('theme').textContent=document.body.classList.contains('dark')?'밝은 테마':'어두운 테마';localize($('theme'))};$('narrow').onchange=()=>{$('preview').classList.toggle('narrow',$('narrow').checked);reset();sample('success')};$('reduce').onchange=()=>document.body.classList.toggle('reduce',$('reduce').checked);$('menu-toggle').onclick=()=>{$('inspector').hidden=!$('inspector').hidden};$('history-toggle').onclick=()=>{$('history').hidden=!$('history').hidden;if(!$('history').hidden)$('history-close').focus()};$('history-close').onclick=()=>{$('history').hidden=true;$('history-toggle').focus()};$('analysis').onclick=()=>{reset();show({kind:'warning',icon:'!',title:'연주 준비 완료 · 동작 2개 확인',detail:'Songsterr 매핑 적용',duration:8000})};
+for(let row=0;row<4;row++)for(let column=0;column<20;column++){if((column+row)%3===0)continue;const note=document.createElement('i');note.style.cssText=`top:${row*27+10}px;left:${column*4.7+1}%;width:${row===0?1.2:2.1}%`; $('notes').append(note)}if(innerWidth<600){$('narrow').checked=true;$('preview').classList.add('narrow')}sample('success');setLanguage(language);
+</script>
+</html>
