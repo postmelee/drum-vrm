@@ -10,6 +10,7 @@
 | --- | --- |
 | 목적과 불변 조건 | [제품 요구사항](requirements.ko.md) |
 | 구성 요소와 데이터 흐름 | [아키텍처 개요](architecture/overview.ko.md) |
+| 간결한 메뉴와 통일된 피드백 | [알림 설계](architecture/notifications.ko.md) |
 | 원본 이벤트·매핑·연주 의도 | [MIDI 해석](architecture/midi-interpretation.ko.md) |
 | 로컬 저장·재열기와 원본 재연결 | [프로젝트 형식](architecture/project-format.ko.md) |
 | 시간·손발 배정·포즈 인터페이스 | [엔진 계약](architecture/engine-contract.ko.md) |

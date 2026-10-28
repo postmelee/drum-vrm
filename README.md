@@ -14,7 +14,7 @@ Turn drum MIDI from a DAW into a video of a 3D drummer, directly in your browser
 - Choose a reference skeleton, a bundled VRM 1.0 sample from the character dropdown, or your own local VRM; all use the same measured-body motion solver.
 - Automatically fit the seat and hand-played kit when loading a character; undo or adjust contact points and palm direction manually. Replace drum bodies while keeping shared stands and pedals.
 - Choose Studio, Vintage or Electronic procedural kits, or models by Innerscene, Batoski and smoj.
-- Use a white/black workspace, focused settings and a separate Analysis panel, stage/front/top/player views and optional hit feedback.
+- Use a white/black workspace, focused settings and a separate Analysis panel, stage/front/top/player views and optional hit feedback. Task results appear in shared toasts; the toolbar bell reopens session history and unresolved notices.
 - Export 1280 × 720 video at 30 fps with the selected audio as MP4 or WebM, depending on browser codecs.
 - Inspect individual source notes, omit a mistaken strike or choose its hand without rewriting the MIDI. Review measured contact errors and stick paths.
 - Save a local project with interpretation, appearance, calibration, audio offset and view settings; relink original files when reopening.
