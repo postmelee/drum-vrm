@@ -3,74 +3,49 @@
 Issues own live scope and acceptance. Contracts own behavior; verification records
 own measured results and publication evidence.
 
-## Current batch and next work
+## Current review and next work
 
-- [#56](https://github.com/postmelee/drum-vrm/issues/56) / [PR #58](https://github.com/postmelee/drum-vrm/pull/58):
-  local binary FBX imports, guided folder/bone setup, saved material choices,
-  automatic file settings, default VRM 0.0 shade compatibility and concise menus.
-  The feature branch incorporates `main` through `6038e8e`. The current local
-  integration combines its `e5fafb9` fit recovery with reference-layout checkpoint
-  `da026985b73abaa980c4ef702abc785f831137b2`, which started from `d8055d0`.
-  See the [import contract](../specs/architecture/rig-contract.md#fbx-import) and
-  [import/recovery evidence](verification/fbx-import.md).
+The owner requested common automatic fitting (#18) and visual review of the
+three bundled public VRMs (#23), followed by a Pages test deployment. Work uses
+`codex/public-vrm-fit`, based on PR #58's integrated `c2b06f2`. Preserve its FBX,
+VRM 0.0 and expanded MIDI support, plus the accepted compact reference layout.
+The other import chat has been notified of this continuation to avoid duplicate
+solver edits. No new candidate has been merged or published by this batch. The visual/numeric
+review found all three public automatic fits incomplete; publication is not a
+three-model acceptance result.
 
-- [#18](https://github.com/postmelee/drum-vrm/issues/18): the integrated fitter uses
-  one placement/certification pipeline with a nominal-seat allocation capped at
-  30,000 candidates and a reserved compact-family allocation within 80,000 total.
-  Initial nominal work gets 12,000, seat retries 6,000; compact families get 6,000
-  each and 24,000 per seat. Up to three validated snare anchors per pedal are
-  reconsidered when later placement fails. It retains nominal cymbal diameters,
-  the 0.76 minimum shell scale,
-  grouped rack toms, measured lower-limb frames, pedal direction and physical mount
-  metadata. Every returned layout uses the same arrangement, posture and clearance
-  gates. Preserve body dimensions, hardware constraints and exact contact frames;
-  report a failed fit rather than weakening them or adding avatar exceptions.
-  The [reference-layout record](verification/reference-layout.md) retains the
-  narrower knee/floor-tom/crash checkpoint and its incomplete acceptance.
+- [#18](https://github.com/postmelee/drum-vrm/issues/18): the common fitter still
+  exhausts its bounded search for all three public models. Expanded snare/rack
+  seed experiments were rejected: they did not complete these fits and raised
+  native fitting latency to 138 seconds. The candidate keeps the integrated
+  fitter, nominal cymbal sizes, lower-limb constraints and failure rollback.
+  Next work needs a shared posture/approach and complete-kit feasibility solution,
+  not another avatar-specific placement exception.
+- [#23](https://github.com/postmelee/drum-vrm/issues/23): review evidence now covers
+  the three public models, source-derived groove/tom/recovery landmarks, actual
+  adapter contact markers and ordered/shuffled evaluations. Missing assignments
+  and intersections remain explicit failures. The candidate fixes an intended
+  cymbal surface query that could overlook the stick shaft crossing its bow.
+- [PR #58](https://github.com/postmelee/drum-vrm/pull/58) supplies the integrated
+  source baseline. Its [record](verification/shared-fit-integration.md) retains
+  the native success (seat +60 mm upward) and all six imported-model failures.
+  Automated baseline test success does not establish imported-model acceptance.
+- [#20](https://github.com/postmelee/drum-vrm/issues/20): broader motion-path
+  refinement, expression and strike variation remain after this fit/review batch.
+  Existing residual motion diagnostics must remain visible.
 
-The integrated candidate passes 182 Rust and 312 web tests. Native/Studio fits at
-100% with a 60 mm upward seat adjustment, repeats unchanged and passes both authored
-studies; localhost:5180 serves the verified build. The three public VRMs and three
-private VRM 0.0/FBX samples remain incomplete under the stronger constraints.
-Next: resolve their coupled hi-hat/snare/rack and lower-limb failures within the
-same fitter; retain the failed setup and distinct search diagnostics. Do not treat
-budget exhaustion as physical impossibility or weaken the gates to match earlier
-hand-only results. The [combined evidence](verification/shared-fit-integration.md)
-records actual outcomes, latency and UI/rollback limits; full-cohort acceptance
-remains open.
+Start with [calibration](../specs/architecture/calibration.md),
+[equipment/contact](../specs/architecture/equipment-contact.md), and
+[rig measurements](../specs/architecture/rig-contract.md). The
+[reference-layout record](verification/reference-layout.md) owns the earlier
+layout checkpoint, not proof of this candidate's public-model acceptance.
+[Hardware sources](research/drum-hardware.md) and
+[ergonomics/sticking](research/ergonomics-and-sticking.md) retain the rationale.
 
-- [#60](https://github.com/postmelee/drum-vrm/issues/60): retain Songsterr Downloader
-  MIDI compatibility and automatic mapping comparison from the incorporated main
-  changes. Conflicting ties stay provisional; manual edits and saved-project
-  profiles remain intact. See the [mapping contract](../specs/architecture/midi-interpretation.md#songsterr-downloader-compatibility)
-  and [verification](verification/songsterr-downloader-mapping.md). This adds no URL fetching.
-- [#20](https://github.com/postmelee/drum-vrm/issues/20): carry validated pair/path
-  witnesses through the whole motion after placement is accepted. Static clearance
-  does not establish complete-motion or skin/clothing clearance. Expanded motion
-  and strike variation remain separate work.
-- [#23](https://github.com/postmelee/drum-vrm/issues/23): retain source IDs,
-  deterministic contact/pose checks and actual rendered marker evidence; inspect
-  skin/clothing separately. Profile fitting latency before expanding the search.
-- [#44](https://github.com/postmelee/drum-vrm/issues/44) owns automatic-fit/menu
-  acceptance. Fitting/planning use cancellable Workers. [#54](https://github.com/postmelee/drum-vrm/issues/54)
-  owns VRM 0.0 import; see its [verification](verification/vrm-0-support.md).
-
-The earlier detailed-hardware [PR #59](https://github.com/postmelee/drum-vrm/pull/59)
-and [hardware verification](verification/detailed-hardware.md) retain their tested
-WASM, multi-view evidence and limitations. Their successful study results do not
-validate the newer lower-limb gate, measured sole frames or nominal cymbal sizes.
-This integration is local work. Previous publication approvals do not authorize a
-new Pages deployment, release or tag; follow the [release policy](release-policy.md).
-
-Start with [equipment/contact](../specs/architecture/equipment-contact.md),
-[calibration](../specs/architecture/calibration.md),
-[MIDI interpretation](../specs/architecture/midi-interpretation.md) and the
-[engine boundary](../specs/architecture/engine-contract.md).
-[Hardware sources](research/drum-hardware.md),
-[ergonomics/sticking](research/ergonomics-and-sticking.md) and
-[motion adoption gates](research/motion-adoption-gates.md) retain rationale.
-[Outcome sequence](plan.md#outcome-sequence) keeps browser/WAV quality before
-advanced expression and production outputs.
+Record actual checks, exact source/WASM and browser evidence in the
+[public VRM review](verification/public-vrm-fit.md) before publication.
+The owner's request covers this fitting/review Pages batch, not a Release/tag or
+unrelated changes; follow the [release policy](release-policy.md).
 
 ## Earlier evidence and provenance
 

@@ -8,6 +8,9 @@ use crate::{
 };
 use std::sync::Arc;
 
+#[path = "radial_clearance.rs"]
+mod radial_clearance;
+
 pub const PITCH_OFFSETS: [f64; 9] = [0., -0.15, 0.15, -0.30, 0.30, -0.45, 0.45, -0.60, 0.60];
 
 pub struct EquipmentContext {
@@ -49,6 +52,9 @@ fn tapered_surface_interval(
     body: &equipment::EquipmentBox,
     surface: &equipment::Surface,
 ) -> f64 {
+    if let Some(profile) = &surface.radial_profile {
+        return radial_clearance::interval(start, end, radii, body, profile);
+    }
     let mut lines = [(0.0, 0.0); 7];
     for axis in 0..3 {
         for side in 0..2 {
@@ -259,7 +265,8 @@ pub fn hand_clearance(
                     center,
                     normal,
                     radius,
-                    radial_profile: None,
+                    radial_profile: equipment::surface(piece.expect("approach surface owner"))
+                        .radial_profile,
                     motion: None,
                 },
                 contact_height.abs() <= 0.012,

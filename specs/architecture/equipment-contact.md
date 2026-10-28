@@ -321,14 +321,32 @@ Only the terminal 20 mm can enter the explicitly intended approximate playing
 surface. The target piece comes from the active stroke/hold branch, never from
 spatial coincidence with an arbitrary nearby surface. Open hi-hat aliases resolve
 only to a closed hi-hat at the same physical anchor and radius. The remaining shaft
-continues to check that same body using the shared taper. For an approach within the
-playing region, that shaft query clips the conservative body by the local surface tangent plane;
-otherwise a rim/bell's highest point in an AABB would fill the entire playable
-area. The intended surface permits tangent contact without a free-space margin;
+continues to check that same body using the shared taper. For an approach within
+a planar playing region, that shaft query clips the conservative body by the
+surface plane; otherwise a rim's highest point in an AABB would fill the entire
+playable area. A declared radial profile instead uses the complete upper surface,
+as described below. The intended surface permits tangent contact without a free-space margin;
 other obstacles retain the full maximum-radius capsule and 2 mm safety margin.
 The terminal exception remains explicit: it does not prove tangent contact of a
 rounded tip, actual rim/bell clearance, or exact triangle contact along the shaft.
 Unrelated bodies, hardware and pedal boxes retain their full envelopes.
+
+[radial_clearance.rs](../../crates/drum-engine/src/radial_clearance.rs) queries a
+tapered shaft against the authored cymbal profile in its rigid local frame. It
+does not extend the tangent at one bell contact across the bow. For local height
+`h(r)`, outer radius `R` and maximum profile slope magnitude `L`, each shaft
+interval obtains this conservative clearance lower bound:
+
+`max((min(y) − max(h(r))) / sqrt(1 + L²), min(r) − R, box-face bounds) − max(shaft radius)`.
+
+Radial extrema are exact along the segment; maximum profile height includes all
+knots in that radial range. Box-face bounds retain the measured body envelope.
+The centre hole and space under the upper profile are deliberately filled, so
+an underside approach cannot pass as a valid strike. Intervals subdivide only
+within depth 16 and a 256-visit subdivision budget; unresolved bounds never
+become clearance. This may conservatively reject near-tangent paths. The query
+does not infer curvature for planar imports, change arm/hand body-box checks,
+or certify triangle, skin, clothing or continuous motion clearance.
 
 Fitting and score assignment share one neutral-torso feasibility query. It checks
 impact, 55 mm preparation and 110 mm recovery probes with the same bounded pitch

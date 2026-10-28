@@ -16,6 +16,7 @@ import { Quaternion, Vector3 } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 import * as wasm from '../src/wasm/drum_engine.js';
+import { motionReviewLandmarks } from './lib/review-landmarks.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
@@ -43,11 +44,15 @@ const jsonHash = object => hash(JSON.stringify(object));
 const write = (name, object) => fs.writeFileSync(resolve(output, name), JSON.stringify(object, null, 2) + '\n', { flag: 'wx' });
 const binary = fs.readFileSync('src/wasm/drum_engine_bg.wasm');
 wasm.initSync({ module: binary });
+const sourceFiles = execFileSync('git', ['ls-files', '-co', '--exclude-standard', 'crates/drum-engine', 'src', 'shared'], { encoding: 'utf8' })
+  .split('\n').filter(Boolean).sort().map(path => ({ path, sha256: hash(fs.readFileSync(path)) }));
 const environment = {
   createdAt: new Date().toISOString(), hardware: mode === 'fit' ? 'input-defined' : hardware, node: process.version, platform: `${process.platform}/${process.arch}`,
   commit: execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(),
   worktree: execFileSync('git', ['status', '--short'], { encoding: 'utf8' }).trim(),
+  sourceTreeHash: jsonHash(sourceFiles), sourceFiles,
   wasmHash: hash(binary), scriptHash: hash(fs.readFileSync(fileURLToPath(import.meta.url))),
+  landmarkHelperHash: hash(fs.readFileSync('scripts/lib/review-landmarks.mjs')),
 };
 write('environment.json', environment);
 
@@ -160,8 +165,8 @@ if (mode === 'fit') {
 } else {
   const vite = await createServer({ root, configFile: false, server: { middlewareMode: true, hmr: false, ws: false, watch: null }, appType: 'custom' });
   try {
-    const [native, vrm, demos, scene, bodies, models, calibration, checkpoints, layouts, automaticFit] = await Promise.all([
-      'rig-humanoid', 'rig-vrm', 'demo', 'scene', 'instrument-body', 'model-procedural', 'kit-calibration', 'review-checkpoints', 'kit-layout-presets', 'automatic-fit',
+    const [native, vrm, demos, scene, bodies, models, calibration, checkpoints, layouts, automaticFit, review, contacts] = await Promise.all([
+      'rig-humanoid', 'rig-vrm', 'demo', 'scene', 'instrument-body', 'model-procedural', 'kit-calibration', 'review-checkpoints', 'kit-layout-presets', 'automatic-fit', 'performance-review', 'contact-events',
     ].map(name => vite.ssrLoadModule(`/src/${name}.ts`)));
     const nominal = layouts.applyKitHardwarePreset(scene.DEFAULT_KIT,hardware);
     for (const piece of nominal) {
@@ -226,7 +231,8 @@ if (mode === 'fit') {
           const prepareMs = performance.now() - start;
           try {
             const plan = JSON.parse(run.plan_json()), beforeSeek = JSON.stringify(plan.kit);
-            const times = [...new Set(checkpoints.reviewCheckpoints(plan).flatMap(checkpoint => [checkpoint.time, checkpoint.time - .08, checkpoint.time + .08]))].sort((a, b) => a - b);
+            const landmarks = motionReviewLandmarks(plan, checkpoints.reviewCheckpoints(plan));
+            const times = [...new Set(landmarks.flatMap(checkpoint => [checkpoint.time, checkpoint.time - .08, checkpoint.time + .08]))].sort((a, b) => a - b);
             const samples = times.map(time => {
               const pose = run.evaluate_rig_at(time); rig.applyPose(pose);
               return { time, pose: Array.from(pose), markers: rig.getContactSamples(), inspection: JSON.parse(run.inspect_pose_at(time)) };
@@ -237,6 +243,24 @@ if (mode === 'fit') {
               poseDeterministic &&= JSON.stringify(Array.from(pose)) === JSON.stringify(sample.pose);
               markerDifference = Math.max(markerDifference, maxNumericDifference(rig.getContactSamples(), sample.markers));
             }
+            const sequenceTimes = [...new Set([...review.reviewTimes(plan), ...times])].sort((a, b) => a - b);
+            const ordered = sequenceTimes.map(time => run.evaluate_rig_at(time));
+            const shuffled = new Array(sequenceTimes.length);
+            for (const index of review.reviewOrder(sequenceTimes.length)) shuffled[index] = run.evaluate_rig_at(sequenceTimes[index]);
+            const sequence = review.summarizePoseReview(sequenceTimes, ordered, shuffled);
+            sequence.proxy = review.summarizeProxyReview(sequenceTimes, sequenceTimes.map(time => JSON.parse(run.inspect_pose_at(time))));
+            const planned = (plan.contactEvents ?? []).filter(event => event.status === 'planned' && event.toolPart !== 'beater');
+            const impactMeasurements = [], missingImpactMarkers = [];
+            for (const event of planned) {
+              rig.applyPose(run.evaluate_rig_at(event.time));
+              const actual = rig.getContactSamples().find(sample => sample.limb === event.limb)?.actual;
+              const measured = actual && contacts.measurePlannedContact(event, plan.kit, [-actual[0], actual[1], actual[2]], plan.hihatMotion);
+              if (measured) impactMeasurements.push(measured);
+              else missingImpactMarkers.push(event.id);
+            }
+            const markerContactMaximumErrorMeters = Math.max(0, ...impactMeasurements.map(sample => sample.errorMeters));
+            const actualContactsPassed = missingImpactMarkers.length === 0 && impactMeasurements.length === planned.length
+              && impactMeasurements.every(sample => Number.isFinite(sample.errorMeters) && sample.errorMeters <= 1e-5);
             const repeated = wasm.Performance.from_json_with_profile(JSON.stringify(prepared), JSON.stringify(fittedProfile));
             let planDeterministic;
             try { planDeterministic = JSON.stringify(JSON.parse(repeated.plan_json())) === JSON.stringify(plan); }
@@ -246,7 +270,9 @@ if (mode === 'fit') {
               layoutRoundTripMaxDifference: maxNumericDifference(applied, plan.kit), layoutAfterSeekUnchanged: JSON.stringify(JSON.parse(run.plan_json()).kit) === beforeSeek,
               sourcePreserved: JSON.stringify(plan.sourceEvents) === JSON.stringify(study.source.sourceEvents) && JSON.stringify(study.source) === sourceBefore,
               poseDeterministic, markerDifference, planDeterministic, posesFinite: samples.every(sample => sample.pose.every(Number.isFinite)),
-              diagnostics: plan.diagnostics, samples };
+              diagnostics: plan.diagnostics, landmarks, samples, sequence, impactMeasurements, missingImpactMarkers,
+              markerContactMaximumErrorMeters, actualContactsPassed,
+              observationScope: 'Sampled engine proxies and actual adapter markers; skin/clothing requires separate rendered review.' };
             result.studies.push(record);
           } finally { run.free(); }
         }
@@ -255,17 +281,21 @@ if (mode === 'fit') {
           && result.equipment.unresolvedPieceIds.length === 0 && result.fitDeterministic && result.boneLengthsPreserved && result.inputsUnchanged
           && result.candidateMeasurementRestored && result.candidateMeasurementMatchesApplied && result.appliedFitIdempotent
           && result.studies.every(study => study.layoutRoundTripMaxDifference < 1e-12
-            && study.layoutAfterSeekUnchanged && study.sourcePreserved && study.poseDeterministic && study.markerDifference === 0 && study.planDeterministic && study.posesFinite);
+            && study.layoutAfterSeekUnchanged && study.sourcePreserved && study.poseDeterministic && study.markerDifference === 0 && study.planDeterministic && study.posesFinite
+            && study.sequence.maxOrderDifference === 0 && study.sequence.nonfiniteValues === 0 && study.actualContactsPassed);
         // Note assignment is reported separately: stable layout is not proof
         // that a given motion/score is fully playable, or collision free.
         result.motionCoveragePassed = result.studies.every(study => study.unassigned.length === 0);
         result.passed = result.layoutPassed && result.motionCoveragePassed;
+        result.verificationScope = 'numeric-layout-motion-and-adapter-markers';
+        result.renderedReview = { status: 'not-performed-by-this-script', requiredViews: ['front', 'top', 'left', 'right'],
+          scope: 'Actual textured skin/clothing and instrument visibility at the recorded semantic landmarks.' };
         write(`${id}-review.json`, result);
         summary.push({ id, passed: result.passed, layoutPassed: result.layoutPassed, motionCoveragePassed: result.motionCoveragePassed,
           fitComplete: result.fit.complete, layoutViolations: result.fit.layoutViolations,
           fittedSeat, seatOffset: result.fit.seatOffset, appliedFitIdempotent: result.appliedFitIdempotent,
           equipmentUnresolved: result.equipment.unresolvedPieceIds, scale: result.fit.scale, fitMs: Math.round(result.fitMs), repeatFitMs: Math.round(result.repeatFitMs),
-          studies: result.studies.map(({ id, prepareMs, unassigned, layoutRoundTripMaxDifference }) => ({ id, prepareMs: Math.round(prepareMs), unassigned: unassigned.length, layoutRoundTripMaxDifference })) });
+          studies: result.studies.map(({ id, prepareMs, unassigned, layoutRoundTripMaxDifference, sequence, markerContactMaximumErrorMeters, actualContactsPassed }) => ({ id, prepareMs: Math.round(prepareMs), unassigned: unassigned.length, layoutRoundTripMaxDifference, sequence, markerContactMaximumErrorMeters, actualContactsPassed })) });
         if (!result.passed) process.exitCode = 1;
       } finally { rig.dispose(); }
     }
