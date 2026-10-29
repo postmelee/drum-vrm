@@ -36,6 +36,18 @@ export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = 
     '선택된 양손 경로의 그립 회전값을 복구할 수 없습니다.'
   ],
   [
+    'The selected hand motion track has no recoverable hand orientation.',
+    '선택된 양손 경로의 손 방향을 복구할 수 없습니다.'
+  ],
+  [
+    'The prepared hand orientation controls are invalid.',
+    '준비된 연주의 손 방향 제어점이 유효하지 않습니다.'
+  ],
+  [
+    'The prepared hand orientation does not match the grip policy.',
+    '준비된 연주의 손 방향이 그립 정책과 일치하지 않습니다.'
+  ],
+  [
     'The prepared hand motion track does not preserve the original strike contacts.',
     '준비된 연주의 양손 경로가 원본 타격 접촉을 보존하지 않습니다.'
   ],

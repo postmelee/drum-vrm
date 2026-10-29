@@ -39,7 +39,11 @@ fn impact_rank(
     }
     let best = (-16..=16)
         .filter_map(|step| {
-            profile.solve_hand_with_swivel(limb, hit.target, pitch, step as f64 * 0.05)
+            crate::equipment_motion::HandEnvironment {
+                equipment: Some(equipment),
+                intended_piece: Some(&hit.piece_id),
+            }
+            .solve(profile, limb, hit.target, pitch, step as f64 * 0.05, false)
         })
         .map(|hand| {
             let tool_clearance = crate::equipment_motion::tool_clearance(
@@ -64,7 +68,8 @@ fn impact_rank(
 /// Impact, preparation and recovery use the same physical target and tool.
 pub const PROBES: [(f64, f64); 3] = [(0., 0.), (0.055, -0.2), (0.11, -0.42)];
 
-/// A fixed-pitch witness. Runtime preservation uses this query rather than
+/// A witness for the requested pitch prior, including its actual selected tool
+/// orientation. Runtime preservation uses this query rather than
 /// borrowing a feasible but unevaluated pitch from the bounded static search.
 pub fn at_pitch(
     profile: &RigProfile,
@@ -85,16 +90,43 @@ pub(crate) fn at_pitch_mode(
     piece: Option<&str>,
     refine: bool,
 ) -> Option<HandSolution> {
+    at_pitch_search(
+        profile,
+        limb,
+        target,
+        pitch,
+        equipment,
+        piece,
+        refine,
+        posture::HandSearch::Full,
+    )
+}
+// Keep the query inputs identical across the two internal candidate families.
+#[allow(clippy::too_many_arguments)]
+fn at_pitch_search(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+    refine: bool,
+    search: posture::HandSearch,
+) -> Option<HandSolution> {
     let valid = |hand: &HandSolution| {
         equipment.is_none_or(|ctx| {
             crate::equipment_motion::tool_clearance(profile, limb, hand, ctx, piece)
                 >= posture::MARGIN
         })
     };
-    posture::hand_candidates(profile, limb, target, pitch)
+    let environment = crate::equipment_motion::HandEnvironment {
+        equipment,
+        intended_piece: piece,
+    };
+    posture::hand_candidates_in(profile, limb, target, pitch, search, environment)
         .find(valid)
         .or_else(|| {
-            posture::refined_hand_candidates(profile, limb, target, pitch)
+            posture::refined_hand_candidates_in(profile, limb, target, pitch, search, environment)
                 .take(if refine { 28 } else { 0 })
                 .find(valid)
         })
@@ -108,9 +140,31 @@ pub fn candidate(
     equipment: Option<&EquipmentContext>,
     piece: Option<&str>,
 ) -> Option<HandSolution> {
-    PITCH_OFFSETS
-        .into_iter()
-        .find_map(|delta| at_pitch(profile, limb, target, pitch + delta, equipment, piece))
+    candidate_mode(profile, limb, target, pitch, equipment, piece, true)
+}
+fn candidate_mode(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+    refine: bool,
+) -> Option<HandSolution> {
+    posture::HAND_SEARCHES.into_iter().find_map(|search| {
+        PITCH_OFFSETS.into_iter().find_map(|delta| {
+            at_pitch_search(
+                profile,
+                limb,
+                target,
+                pitch + delta,
+                equipment,
+                piece,
+                refine,
+                search,
+            )
+        })
+    })
 }
 
 /// Fit guarantees neutral facing. Optional runtime torso motion must preserve
@@ -139,18 +193,16 @@ pub(crate) fn hand_probe_mode(
         return profile.reachable(limb, target);
     }
     PROBES.into_iter().all(|(lift, pitch)| {
-        PITCH_OFFSETS.into_iter().any(|delta| {
-            at_pitch_mode(
-                profile,
-                limb,
-                [target[0], target[1] + lift, target[2]],
-                pitch + delta,
-                equipment,
-                piece,
-                refine,
-            )
-            .is_some()
-        })
+        candidate_mode(
+            profile,
+            limb,
+            [target[0], target[1] + lift, target[2]],
+            pitch,
+            equipment,
+            piece,
+            refine,
+        )
+        .is_some()
     })
 }
 
@@ -291,6 +343,141 @@ pub fn preserve_impact_pitches(
 mod tests {
     use super::*;
     use crate::rig::{pitch_rotation, HandControlFrame};
+    fn native_reference() -> (RigProfile, Vec<crate::model::KitPiece>) {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+        (
+            serde_json::from_value(fixture["profile"].clone()).unwrap(),
+            serde_json::from_value(fixture["kit"].clone()).unwrap(),
+        )
+    }
+
+    #[test]
+    fn later_pitch_preserves_the_arm_before_an_earlier_pitch_moves_it() {
+        let (profile, kit) = native_reference();
+        let ctx = EquipmentContext::for_kit(&kit).unwrap();
+        let hihat = kit.iter().find(|piece| piece.id == "hihat").unwrap();
+        let observer = std::array::from_fn(|i| (profile.roots[0][i] + profile.roots[1][i]) * 0.5);
+        let target = crate::contact::target(hihat, "edge", observer);
+        let limb = 1;
+        let (index, preserving) = PITCH_OFFSETS
+            .iter()
+            .enumerate()
+            .find_map(|(index, &pitch)| {
+                at_pitch_search(
+                    &profile,
+                    limb,
+                    target,
+                    pitch,
+                    Some(&ctx),
+                    Some("hihat"),
+                    true,
+                    posture::HandSearch::PreserveArm,
+                )
+                .map(|hand| (index, hand))
+            })
+            .expect("an existing later pitch has an exact arm-preserving witness");
+        assert!(
+            index > 0,
+            "this regression must exercise priority across pitches"
+        );
+        let earlier = at_pitch(&profile, limb, target, 0., Some(&ctx), Some("hihat"))
+            .expect("the earlier pitch has a full orientation fallback");
+        let selected = candidate(&profile, limb, target, 0., Some(&ctx), Some("hihat")).unwrap();
+        assert_eq!(selected.middle, preserving.middle);
+        assert_eq!(selected.end, preserving.end);
+        assert_eq!(selected.rotation, preserving.rotation);
+        assert!(crate::motion::distance(earlier.middle, selected.middle) > 0.01);
+        let mut legacy = profile.clone();
+        for frame in legacy.hand_frames.as_mut().unwrap() {
+            let x = frame.desired_palm[0];
+            let length = (x * x + 1.).sqrt();
+            frame.palm_roll_range = None;
+            frame.palm_reference = None;
+            frame.desired_palm = [x / length, -1. / length, 0.];
+        }
+        assert!(
+            (-16..=16).any(|step| {
+                let old = legacy
+                    .solve_hand_with_swivel(limb, target, PITCH_OFFSETS[index], step as f64 * 0.05)
+                    .unwrap();
+                old.middle == selected.middle && old.end == selected.end && old.tip == selected.tip
+            }),
+            "the selected hand must preserve actual legacy arm joints and contact"
+        );
+        assert!(profile.hand_orientation_policy_valid(limb, selected.rotation));
+        assert!(posture::anatomical(&profile, limb, target, &selected));
+        assert!(
+            crate::motion::distance(
+                crate::motion::add(selected.end, profile.offset(limb, selected.rotation)),
+                target
+            ) < 1e-10
+        );
+        assert!(
+            crate::equipment_motion::tool_clearance(&profile, limb, &selected, &ctx, Some("hihat"))
+                >= posture::MARGIN
+        );
+    }
+
+    #[test]
+    fn arm_first_frontier_retains_existing_physical_contact_certificates() {
+        let (profile, kit) = native_reference();
+        let ctx = EquipmentContext::for_kit(&kit).unwrap();
+        let observer = std::array::from_fn(|i| (profile.roots[0][i] + profile.roots[1][i]) * 0.5);
+        let mut retained = 0;
+        for piece in &kit {
+            for articulation in crate::contact::articulations_for_fit(piece) {
+                if matches!(
+                    piece.instrument,
+                    crate::model::Instrument::Kick
+                        | crate::model::Instrument::PedalHat
+                        | crate::model::Instrument::OpenHat
+                ) {
+                    continue;
+                }
+                let target = crate::contact::target(piece, articulation, observer);
+                for limb in 0..2 {
+                    for (lift, pitch) in PROBES {
+                        let tip = crate::motion::add(target, [0., lift, 0.]);
+                        let full = PITCH_OFFSETS.into_iter().find_map(|delta| {
+                            at_pitch(
+                                &profile,
+                                limb,
+                                tip,
+                                pitch + delta,
+                                Some(&ctx),
+                                Some(&piece.id),
+                            )
+                        });
+                        let selected =
+                            candidate(&profile, limb, tip, pitch, Some(&ctx), Some(&piece.id));
+                        if full.is_some() {
+                            retained += 1;
+                            assert!(
+                                selected.is_some(),
+                                "{}/{articulation}/{limb}/{lift}",
+                                piece.id
+                            );
+                        }
+                        if let Some(hand) = selected {
+                            assert!(posture::anatomical(&profile, limb, tip, &hand));
+                            assert!(profile.hand_orientation_policy_valid(limb, hand.rotation));
+                            assert!(
+                                crate::equipment_motion::tool_clearance(
+                                    &profile,
+                                    limb,
+                                    &hand,
+                                    &ctx,
+                                    Some(&piece.id)
+                                ) >= posture::MARGIN
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        assert!(retained > 40);
+    }
     fn profile() -> RigProfile {
         let mut profile = RigProfile::primitive();
         profile.id = "generic-pitched-contact".into();

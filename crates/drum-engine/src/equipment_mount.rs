@@ -105,8 +105,7 @@ pub(super) fn route(
         let angle = toward[0].atan2(toward[2]);
         for offset in [0.0_f64, 0.35, -0.35, 0.7, -0.7] {
             let radial = [(angle + offset).sin(), 0., (angle + offset).cos()];
-            let extent = (bounds.half_extents[0] / radial[0].abs().max(1e-6))
-                .min(bounds.half_extents[2] / radial[2].abs().max(1e-6));
+            let extent = super::box_ray_extent(&bounds, radial);
             let bracket = axis_add(bounds.center, radial, extent + 0.025);
             for rise in [0.08, 0.12, 0.18, 0.24, MAX_CLAMP_RISE] {
                 let clamp = [mast.start[0], bracket[1] - rise, mast.start[2]];

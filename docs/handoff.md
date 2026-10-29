@@ -5,21 +5,28 @@ own measured results and publication evidence.
 
 ## Current review and next work
 
-The owner-approved kit/grip batch on `codex/kit-grip-refinement` now includes
-player-facing rack toms, the bounded inward-to-down palm family and prepared
-roll controls shared by edge validation and replay. It remains a **local/draft
-review candidate, not published**. Read the
-[final v13 evidence](verification/common-motion-fit.md#prepared-roll-review-candidate--final-v13-boundary)
-before changing the solver. All four fits and 53/53 + 82/82 assignments pass;
-all eight studies still fail temporal physical/posture acceptance, with some
-new or deeper tool overlaps. Do not describe this as a regression-free release.
-The [elbow follow-up audit](verification/elbow-motion-audit.md) confirms that
-hand roll rotates the elbow reference plane outside the relative swivel bound.
-Simple pole replacements failed existing valid witnesses and were reverted.
-Next work is actual anatomical elbow-plane coordination with prepared grip roll,
-preserving exact impacts, reach and whole-tool gates. Further crash approach and
-rack tilt are not yet accepted; fast-fill choice explanations are also unfinished.
-Do not add another fitting grid or force paradiddles into every fill. The
+The kit/grip batch on `codex/kit-grip-refinement` remains **local/draft, not
+published**. The [v18 revision evidence](verification/elbow-grip-revision.md)
+records a shared 30-degree physical shaft/hand-forward grip, 25-degree
+player-facing rack toms, a 4 cm closer left crash and an 8 cm lower right crash.
+Fingers, thumb, socket and tool offsets use the same newly measured grip.
+Prepared format 7 stores one orientation quaternion; pointwise replay projection
+and independently interpolated orientation components were rejected after they
+caused rapid flips. Earlier [v13 evidence](verification/common-motion-fit.md#prepared-roll-review-candidate--final-v13-boundary)
+and the [elbow audit](verification/elbow-motion-audit.md) remain historical.
+The preceding v17 four-demo matrix assigned all 6,144 public-model hits and
+preserved source facts, seek order and prepared restore in all 16 native/public
+runs. **None passed full temporal tool/posture acceptance.** Do not relabel that
+matrix as a v18 result. The v18 grip/layout comparison retains all three public
+static fits and all 53 Posture Study hits, but B/Twist still pronate at the first
+high tom and all models retain temporal tool/posture failures. Native/Seed high
+toms improve; this does not establish all-model natural-motion completion.
+An exact route cache reduces the isolated native Studio benchmark from 33.03 to
+11.05 seconds with identical prepared bytes; public fitting and long-song latency
+remain severe. Next resolve the remaining approach/grip transitions using actual
+stick paths and wrist/upper-arm motion, before expanding the model matrix.
+Keep the owner review before VRM 0.0/FBX handoff. Fast-fill choice explanations
+also remain unfinished. Do not add another fitting grid or force paradiddles into every fill. The
 [ergonomics/sticking research](research/ergonomics-and-sticking.md) records why
 opposite-hand contact feasibility comes before retuning the existing vocabulary.
 
@@ -58,10 +65,10 @@ startup. These UI integrations do not establish new motion acceptance.
   Report measured lower-body warnings separately from fit completion. Extreme
   costume clearance is outside this batch; character scaling is not implemented.
 - **Next acceptance:** preserve current successful fit/assignment/contact and
-  prepared-format-3 restoration checks while repairing the remaining tool paths,
+  prepared-format-7 restoration checks while repairing the remaining tool paths,
   wrist limits and excessive arm elevation. Marker precision, palm direction and
   seek equality do not certify intervening motion. Exact branch-jump regressions
-  now pass, but sampled roll speeds remain too high for a natural-motion claim.
+  now pass, but sampled tool speeds and interior poses still fail natural-motion review.
   Keep earlier captures/measurements distinct from the final candidate evidence.
 - **Integration:** the other import chat has been notified to avoid duplicate
   solver edits. [PR #58](https://github.com/postmelee/drum-vrm/pull/58) and its
@@ -77,7 +84,7 @@ layout checkpoint, not proof of this candidate's public-model acceptance.
 [ergonomics/sticking](research/ergonomics-and-sticking.md) retain the rationale.
 
 Record subsequent checks and browser evidence against the exact candidate in the
-[common-motion review](verification/common-motion-fit.md); preserve the older
+[elbow/grip revision](verification/elbow-grip-revision.md); preserve the older
 [public VRM review](verification/public-vrm-fit.md) as its own measurement.
 The earlier Pages authorization covers the published PR #64 batch. A subsequent
 candidate needs its own reviewed scope and approval under the

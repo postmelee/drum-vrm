@@ -30,7 +30,7 @@ export function resolvePieceVisual(preset: KitPresetId, id: PieceId, override: P
   const rotation = override.rotation ?? 0;
   if (!Number.isFinite(rotation) || rotation < -360 || rotation > 360) throw new Error(msg("Rotation must be between -360° and 360°.", "회전은 -360°–360° 범위여야 합니다."));
   const instrument = canonicalPieceId(id);
-  const tilt = override.tilt ?? (instrument === 'crash' || instrument === 'crashRight' ? 12 : instrument === 'ride' ? 10 : instrument === 'tomHigh' || instrument === 'tomMid' ? 12 : instrument === 'snare' ? 4 : 0);
+  const tilt = override.tilt ?? (instrument === 'crashRight' ? 15 : instrument === 'crash' ? 12 : instrument === 'ride' ? 10 : instrument === 'tomHigh' || instrument === 'tomMid' ? 25 : instrument === 'snare' ? 4 : 0);
   if (!Number.isFinite(tilt) || tilt < -30 || tilt > 30) throw new Error(msg("Tilt must be between -30° and 30°.", "기울기는 -30°–30° 범위여야 합니다."));
   return { ...defaults, ...override, scale, rotation, tilt };
 }

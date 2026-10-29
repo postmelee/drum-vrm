@@ -13,7 +13,7 @@ motion frame or item of clothing is clear.
 [The default kit](../../shared/default-kit.json) is the single seed used by Rust,
 the browser and default pedal contacts. It retains nominal 14-inch snare/hi-hats,
 12/13/16-inch toms, 16/18-inch crashes and a 20-inch ride/kick. The measured Studio
-appearance starts with clear body bounds, head-approach regions and generated
+appearance reports physical body bounds, head-approach advisories and generated
 supports, including the directly connected hi-hat pedal. This physical seed is
 not a universal avatar fit: changed bodies or proportions still require inspection.
 
@@ -29,19 +29,19 @@ supports and pedal boxes rather than maintaining another routing algorithm.
 | --- | --- |
 | `version`, `source` | Version 1, `mesh-bounds` or `procedural`; neither means exact collision triangles |
 | `referenceRadius` | Radius at which local dimensions were measured, in metres |
-| `body.center`, `body.halfExtents` | Axis-aligned body box relative to the piece's planning anchor |
-| `surface.center`, `surface.normal`, `surface.radius` | Approximate circular playing region and unit normal in the same frame |
+| `body.center`, `body.halfExtents`, `body.rotation` | Body-box centre relative to the planning anchor, local half-extents and optional unit xyzw rotation from box axes to planning axes; absent rotation is identity |
+| `surface.center`, `surface.normal`, `surface.radius` | Playing-plane centre/normal and radius measured in that plane; a radial profile supplies its authoritative outer radius |
 | `surface.radialProfile` | Optional native cymbal surface: local origin, unit quaternion, increasing radius/height samples and an optional explicit `bellRadius` |
 | `surface.motion` | Optional semantic translation capability: unit axis and absolute travel in metres, independent of shell fit scale |
 
 For anchor `p` and scale `s = piece.radius / referenceRadius`, a local point becomes
-`p + s × localPoint`; box half-extents and surface radius also scale by `s`.
-The normal remains a unit direction. Descriptor validation rejects nonfinite values,
+`p + s × localPoint`; box centre/half-extents and surface radius scale by `s`, while body rotation and surface normal do not. The centre is already in planning axes and is not rotated again. A body-local point `u` becomes `p + s × body.center + body.rotation × (s × u)`.
+Descriptor validation requires a finite unit body quaternion when present and rejects nonfinite values,
 unknown versions/sources, reference or surface radii outside 0.01–1 m, body
 half-extents outside 0.001–2 m, local centres beyond ±3 m, and scale outside 0.05–5.
 
-Tagged surface meshes identify the projected playing footprint; otherwise body
-bounds provide an approximation. A downward ray samples the displayed surface's
+Semantic planar surfaces use their mesh-aligned plane radius; radial profiles use
+their authored outer radius. Unlabelled imports retain the approximate world footprint. A downward ray samples the displayed surface's
 contact and transformed interpolated normal (face normal fallback), and the descriptor's centre lies on that
 plane. A missing intersection falls back to the anchor-height horizontal plane.
 The static scale/rotation and sampled tilt are retained. Native acoustic cymbals
@@ -65,20 +65,16 @@ new measured geometry without a new measurement transaction.
 
 The shared result contains `bodies`, `supports`, `pedals`, `mechanisms` and
 `unresolvedPieceIds`. Boxes use metre-valued world `center` and local `halfExtents`.
-Body boxes are axis-aligned; pedal footboard/base boxes also carry an optional
-xyzw `rotation` (identity when absent). Segment queries transform into that local
-frame, and box separation uses the oriented axes. Supports are finite capsules
+Body and pedal footboard/base boxes carry optional xyzw `rotation` (identity when absent). Measured static body bounds preserve the display frame instead of inflating a tilted shell to a world-axis box. Segment queries transform into that local
+frame, and box separation uses the oriented axes. Fitting, lower-limb checks and final complete-tool validation share these boxes.
+World-axis bounds may still provide conservative routing guides and broad-phase rejection; they never replace the final oriented clearance query. Supports are finite capsules
 with endpoints and radii. Closed/open hi-hat aliases share one
 body; pedal contacts remain distinct. Own mount attachments and linked hi-hat
 hardware are intentional overlaps, not blanket exclusions for nearby instruments.
 
-Static layout checks combine:
+Hard static geometry checks combine:
 
 - A 5 mm body separation margin and ground bounds.
-- A bounded approach corridor above each head, extending 0.12 m along its normal.
-  Its radius is `min(0.45 × headRadius, 0.09 m)`; it tests nearby body boxes.
-  Both heads must pass. Separated tilted rims may overlap in top projection;
-  a drum stacked into another head's approach remains invalid.
 - Generated stand, basket, collar, tripod, pedal and kick-hardware capsules against
   other bodies, pedal boxes and unrelated supports. An expanded-box broad phase
   precedes exact segment-distance checks. Intentional common-holder joints are
@@ -86,6 +82,10 @@ Static layout checks combine:
   mast/boom search may find a clear route; failure retains `unresolvedPieceIds`
   rather than hiding a support.
 
+The broad head-access capsule extends 0.12 m along the head normal, with radius
+`min(0.45 × headRadius, 0.09 m)` against nearby body boxes. Its blockage is a fit
+`head-approach:<head>:<obstacle>` advisory, not a veto of a valid angled stick path.
+Complete contact/whole-stick and required-pair certificates remain mandatory.
 Support topology follows the physical role: a snare basket, bass-mounted rack-tom
 holder/L-arms when a kick is present, three shell-mounted floor-tom legs, and
 angled boom cymbal stands. A standalone rack tom may use a stand when the layout
@@ -154,15 +154,15 @@ Measured body offsets determine the corresponding hi-hat
 contact anchor. A mismatch above 3 mm remains unresolved; no long lateral linkage
 or implicit remote hi-hat conceals it. Common fitting keeps this relationship.
 
-Native appearance defaults tilt the snare 4°, rack toms 12°, ride 10°, and crashes
-12° toward the player; floor tom and hi-hat remain level. These are editable
+Native appearance defaults tilt the snare 4°, rack toms 25°, ride 10°, left crash
+12° and right crash 15° toward the player; floor tom and hi-hat remain level. Seed anchors place the right crash at Y = 1.30 m, left crash at Z = 0.65 m, and high/mid toms at Y = 1.105/1.075 m; rack height is retained while its tilt changes. These are editable
 engineering defaults, not prescribed technique angles. The appearance limit is
 ±30°. Body measurement includes the actual tilt, and project files retain it;
 older projects without a tilt field retain 0°. Same-assembly self-collision beyond
 the constructed joints, load/weight stability and complete moving-part swept
 volumes remain separate verification work. Top-view overlap between an elevated
-cymbal and a drum is not automatically invalid; the bodies, supports and head
-approach corridor must remain clear in three dimensions.
+cymbal and a drum is not automatically invalid; bodies, supports and actual whole-stick
+paths must remain clear. The broad normal-axis head-access corridor is advisory.
 
 Appearance replacement preserves the identity of the instrument and its source
 events. Because a replacement can change bounds, a new geometry/layout transaction
@@ -273,7 +273,7 @@ sample the same track; source note times never move.
 
 [contact.rs](../../crates/drum-engine/src/contact.rs) projects the seated shoulder
 midpoint toward each playing plane. This player-facing direction chooses a sector
-within the articulation's region. For centre `c`, normal `n`, observer `o` and radius
+within the articulation's region. For a planar centre `c`, normal `n`, observer `o` and radius
 `r`, let `u = normalize((o − c) − n × dot(o − c, n))`; the target is `c + α × r × u`.
 The degenerate direction uses a fixed fallback. Kick and pedal contacts retain
 their existing sole-contact anchors.
@@ -328,10 +328,10 @@ Only the terminal 20 mm can enter the explicitly intended approximate playing
 surface. The target piece comes from the active stroke/hold branch, never from
 spatial coincidence with an arbitrary nearby surface. Open hi-hat aliases resolve
 only to a closed hi-hat at the same physical anchor and radius. The remaining shaft
-continues to check that same body using the shared taper. For an approach within
-a planar playing region, that shaft query clips the conservative body by the
-surface plane; otherwise a rim's highest point in an AABB would fill the entire
-playable area. A declared radial profile instead uses the complete upper surface,
+continues to check that same body using the shared taper. Intended approaches use
+the common playable frame (radial-local XZ or declared plane) within 96% of its
+radius. A planar approach clips the body by its surface plane, avoiding empty rim
+box corners. A declared radial profile instead uses the complete upper surface,
 as described below. The intended surface permits tangent contact without a free-space margin;
 other obstacles retain the full maximum-radius capsule and 2 mm safety margin.
 The terminal exception remains explicit: it does not prove tangent contact of a
@@ -368,12 +368,30 @@ route between contacts. Optional torso turns must preserve the actual selected
 impact pitch; a hypothetical different pitch or turn cannot validate the stored
 motion. Fit and assignment therefore do not use incompatible reach gates.
 
+[motion_transfer.rs](../../crates/drum-engine/src/motion_transfer.rs) shapes travel before
+scalar corrections. Arch clearance uses the smoothstep chord's obstacle entry/exit,
+not just its midpoint; an available underpass limits rebound below overhead bodies.
+Different-height contacts may use two smoothstep legs through a body-face waypoint,
+chosen for the complete interval, independent of playback phase. Candidates preserve
+both contact points/times, add at most 0.20 m vertically, and obey the 12 m/s tip
+speed budget. Optional shoulder-radius projection is capped at the available corridor,
+reserving the later maximum 0.20 m lift. Its correction fades at reserved boundaries;
+it cannot move a contact or exempt an obstacle from the final whole-shaft query.
+Raw underpass ceilings also bound scalar rate projection and prevent later repair
+increases above the cap. Rotated boxes are supported. The intended physical surface
+and already-overlapping raw points do not define an underpass; all physical queries
+remain active. These are prepared track constraints, with no playback-time clamp.
+
 Bounded lift and wrist-pitch candidates seek a clear approach. Lift is zero at
 an actual impact, so a correction cannot move a source hit into the air or shift
 its time. Both torso/elbow coordination and equipment inspection use these
 absolute-time samples. Failed searches remain diagnostics; a least-bad trajectory
-is not a collision-free result. There is no rule to raise every elbow: available
-motion depends on the measured body, target region and complete shaft approach.
+is not a collision-free result. Available motion depends on the measured body, target region and complete shaft approach; no rule raises every elbow.
+The five coarse swivel states suppress the existing 28 finer states only if an
+anatomical, complete-shaft witness is clear. Shared `HandEnvironment` supplies the intended piece and `tool_clearance >= MARGIN` to the bounded solver, so an obstructed arm-preserving candidate continues through its existing alternatives. A valid arm alone is insufficient
+because the bounded wrist solver can change shaft heading with swivel. Nonnegative
+fixed/comfort and physical-penalty lower bounds skip candidates that cannot improve
+the winner; advisory body queries run only afterward. Exact ties retain their order. Joint routing memoizes one-hand witnesses/deficits/equipment clearance within one invocation using immutable input index, limb and exact effective target-Y/pitch float bits. The 16,384-entry limit clears the memo deterministically when full; pair clearance is recomputed with the current opposite hand. This changes neither candidate order, source times nor the 250,000-evaluation budget.
 
 Impact pitch is scheduled before projecting the intervening samples onto the
 2 rad/s correction limit. A nine-state bounded search first maximizes the number
@@ -386,8 +404,7 @@ source time; it does not certify the retained trajectory as clear. If no reachab
 pitch path exists, the previous diagnosed track is retained. Torso preservation
 checks the same fixed-pitch anatomical/tool-equipment witnesses at correction
 samples, reducing yaw where it would destroy an existing valid neutral candidate.
-Measured-body overlap remains advisory in both paths.
-A candidate elbow still needs the later joint temporal planner; interpolation and
+Measured-body overlap remains advisory in both paths. A candidate elbow still needs the later joint temporal planner; interpolation and
 skin/clothing remain separately inspected.
 
 The correction track retains its mandatory 30 Hz grid and exact hand impacts.
@@ -406,12 +423,15 @@ quarter, half and three-quarter points between controls. At a failure it tries
 16 pitch/lift delta pairs per hand, for at most four passes and 250,000
 changed-region sample evaluations. Minimal rate-limited envelopes retain the same
 amplitude/rate limits, exact targets and zero lift at impacts; even roundoff-sized
-changes cannot overwrite a locked impact lift. A candidate must
-improve the inspected result without turning a previously valid anatomical,
+changes cannot overwrite a locked impact lift. If the nearest interior control is locked
+or lacks lift rate budget, its free bounding neighbour carries that lift; exact impacts and
+intervals with both ends locked stay fixed. A candidate must improve the inspected result without turning a previously valid anatomical,
 equipment or tool-pair sample into a failure. This introduces no new transfer field.
-Elbow swivel alone cannot move a target-oriented shaft centreline; the later joint
-elbow planner remains necessary for anatomical coordination. Either bounded search
-can finish with residual diagnostics; refined samples are not a continuous-path certificate.
+Each static state retains its actual hand and shaft witness; the later joint elbow
+planner still owns continuous hand coordination. Identical scalar samples reuse
+metrics only within one candidate selection, with fixed profiles, obstacles and
+opposite-hand witnesses; evaluation counts and limits stay unchanged. Either search
+can retain diagnostics; refined samples are not a continuous-path certificate.
 
 ## Explicit stick-to-stick count-in
 

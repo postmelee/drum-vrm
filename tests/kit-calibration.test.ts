@@ -5,6 +5,17 @@ import { pieceInstrument, type Instrument, type KitPiece, type PerformancePlan }
 const ids: Instrument[]=['kick','snare','hihat','openHat','pedalHat','tomHigh','tomMid','tomLow','crash','ride'];
 const kit=():KitPiece[]=>ids.map(id=>({id,label:id,position:[0,id==='kick'||id==='pedalHat'?.08:1,.5],radius:.2}));
 describe('physical layout recalibration',()=>{
+  it('accepts optional unit body frames and rejects invalid measured rotations',()=>{
+    const layout=kit(), piece=layout.find(value=>value.id==='tomHigh')!;
+    piece.geometry={version:1,source:'procedural',referenceRadius:piece.radius,body:{center:[.01,-.1,.02],halfExtents:[.2,.11,.2]},surface:{center:[0,0,0],normal:[0,1,0],radius:.2}};
+    expect(validateKitLayout(layout)[5].geometry!.body.rotation).toBeUndefined();
+    piece.geometry.body.rotation=[Math.sin(.2),0,0,Math.cos(.2)];
+    expect(validateKitLayout(layout)[5].geometry).toEqual(piece.geometry);
+    for(const rotation of [[0,0,0,0],[0,0,0,2],[0,0,NaN,1],[0,0,1]]){
+      const invalid=structuredClone(layout); invalid[5].geometry!.body.rotation=rotation as [number,number,number,number];
+      expect(()=>validateKitLayout(invalid)).toThrow();
+    }
+  });
   it('round-trips semantic pedal direction and rejects non-horizontal or non-unit frames',()=>{
     const layout=kit(); layout.find(piece=>piece.id==='pedalHat')!.pedalForward=[-.6,0,.8];
     const restored=JSON.parse(JSON.stringify(layout)); validateKitLayout(restored);

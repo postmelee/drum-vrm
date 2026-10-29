@@ -42,16 +42,17 @@ fn unit_xz(v: Vec3) -> Vec3 {
 fn rack_frame(kit: &[KitPiece]) -> Option<(&KitPiece, Vec3, Vec3)> {
     let bass_piece = kit.iter().find(|p| p.instrument == Instrument::Kick)?;
     let bass = body(bass_piece)?;
+    let bass_half = super::box_world_half_extents(&bass);
     let start = [
         bass.center[0],
-        bass.center[1] + bass.half_extents[1] + 0.018,
-        bass.center[2] + bass.half_extents[2] * 0.35,
+        bass.center[1] + bass_half[1] + 0.018,
+        bass.center[2] + bass_half[2] * 0.35,
     ];
     let lowest = kit
         .iter()
         .filter(|p| matches!(p.instrument, Instrument::TomHigh | Instrument::TomMid))
         .filter_map(body)
-        .map(|b| b.center[1] - b.half_extents[1])
+        .map(|b| b.center[1] - super::box_world_half_extents(&b)[1])
         .reduce(f64::min)?;
     // Keep the shared yoke below the shells, but never collapse a telescopic
     // holder to an invisible zero-length post. Unfit layouts remain diagnosed.
@@ -269,8 +270,7 @@ fn rack_arm(
         let radial = [angle.sin(), 0., angle.cos()];
         // Exit the conservative shell box along this radial direction. The
         // short clamp enters only its own shell; the L-rod remains outside it.
-        let radius = (bounds.half_extents[0] / radial[0].abs().max(1e-6))
-            .min(bounds.half_extents[2] / radial[2].abs().max(1e-6));
+        let radius = super::box_ray_extent(&bounds, radial);
         let bracket = axis_add(bounds.center, radial, radius + 0.025);
         let bend = [bracket[0], joint[1], bracket[2]];
         let head = surface(piece);
@@ -351,7 +351,8 @@ pub(super) fn route(
             for leg in 0..3 {
                 let angle = leg as f64 * std::f64::consts::TAU / 3.0 + rotation;
                 let radial = [angle.sin(), 0., angle.cos()];
-                let radius = physical.half_extents[0].max(physical.half_extents[2]) + 0.02;
+                let half = super::box_world_half_extents(&physical);
+                let radius = half[0].max(half[2]) + 0.02;
                 let start = axis_add(physical.center, radial, radius);
                 let bend = [start[0], (start[1] * 0.42).max(0.055), start[2]];
                 let foot = [
@@ -405,7 +406,7 @@ pub(super) fn route(
             [0., 1., 0.],
             [
                 physical.center[0],
-                physical.center[1] + physical.half_extents[1] - 0.004,
+                physical.center[1] + super::box_world_half_extents(&physical)[1] - 0.004,
                 physical.center[2],
             ],
         )

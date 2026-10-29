@@ -54,7 +54,7 @@ absolute-time mechanism state across motion, feedback and separate actual-marker
 inspection. The [equipment contact contract](equipment-contact.md#shared-contact-records-and-hi-hat-state)
 owns their fields, regeneration and capability limits.
 
-Planner `phrase-beam-8-beat-horizon-24-posture-v13` uses an eight-candidate beam with lookahead
+Planner `phrase-beam-8-beat-horizon-24-posture-v18` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each
@@ -138,8 +138,8 @@ only with a complete proposal, regenerate the profile through the same adapter,
 and prepare the plan before committing scene state. A failed proposal preserves
 the input layout and zero seat offset; search-stage evidence does not replace
 layout-specific reach/clearance diagnostics. Optional `advisoryLayoutViolations: string[]` contains
-measured leg/foot-envelope warnings for the returned setup, excluding structural failures already in
-`layoutViolations`. It does not affect `complete`; an absent legacy field means unreported, not clear.
+measured leg/foot envelopes and broad `head-approach:<head>:<obstacle>` warnings, excluding hard failures in
+`layoutViolations`. Actual contact, whole-stick and required-pair checks still gate completion. It does not affect `complete`; an absent legacy field means unreported, not clear.
 The [calibration contract](calibration.md) owns search bounds and static/motion acceptance.
 
 ## Preparation and Worker boundary
@@ -167,16 +167,19 @@ prepared installation. This is bounded
 reuse, not a cache of arbitrary uploaded files.
 
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
-3, containing the plan, numeric profile, torso, elbow/roll and equipment-approach tracks,
+7, containing the plan, numeric profile, torso, elbow/orientation and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v13` distinguishes
-prepared numeric roll witnesses from pointwise orientation optimization; earlier prepared candidates must be rebuilt.
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v18` identifies
+single actual-orientation controls relative to the geometric approach; earlier prepared candidates must be rebuilt.
 Installation checks engine/planner versions, expected source/profile
-identity, finite values, ordering, track bounds and mandatory control times. Each
-`SwivelSample.rolls` value must be finite and inside that hand's `palmRollRange`,
-or `None` consistently when the hand has no bounded-roll policy. Assigned hand impacts
-and retained count-in contacts are rechecked with the stored/interpolated swivel and
-roll, torso yaw and equipment/stroke pitch. Pedal feasibility is also retained. A reachable
+identity, finite values, ordering, track bounds and mandatory control times. The separate
+`handOrientations` track retains every original swivel-time orientation exactly, stays within
+the original endpoints and has at most 6,000 sorted anchors. Each
+`SwivelSample.orientations` / `OrientationSample.orientations` value is a single finite unit quaternion (squared norm within
+`1e-8` of one), or consistently `None` for a hand without a bounded palm policy. Decoded
+orientations at control times must satisfy that policy. Assigned hand impacts and retained
+count-in contacts are rechecked with stored/interpolated swivel and approach-relative actual
+orientation, torso yaw and equipment/stroke pitch. Pedal feasibility is also retained. A reachable
 alternative pose cannot validate an unreachable stored impact. Equipment tracks additionally require bounded lift/pitch,
 rate limits and zero lift at each source impact. All mandatory equipment times must
 survive exactly; sorted extra controls may lie only within the original endpoints.
@@ -209,14 +212,22 @@ major pose. No frame-history randomness or accumulated secondary physics may
 silently change that result.
 
 Static fitting and contact candidates use [calibration](calibration.md)'s bounded optimizer:
-five wrist/arm solves only when reachable with shared `anatomical_violation == 0`, otherwise 21.
-No new threshold is introduced. The temporal planner stores the selected roll alongside
-each elbow-angle control in `SwivelSample`. Edge checks and playback share smoothstep
-interpolation of both values and one fixed-roll wrist/arm solve, so playback does not
-repeat the pointwise orientation search. Legacy hands keep `None` and their existing solve.
-The existing angular-change weight also penalizes roll variation as a soft cost;
-it adds no control grid, frame history or hard roll-rate guarantee. Inspected samples
-do not certify collision-free interpolation over the entire continuous path.
+retain the legacy anatomical arm using a feasible rigid wrist-to-tip twist, otherwise search
+shaft yaw within ±45° with twelve golden-section steps. Overextended approaches may use the
+existing 165° elbow reach cone via a shortest rigid tool-offset rotation, retaining exact contact
+and the full posture/palm gates. Static contact/probe and ready/pair searches exhaust the existing pitch range with arm-preserving witnesses before their full fallback families; a fixed-pitch query keeps its original coarse-first full search. There is no runtime cone search.
+Shared `HandEnvironment` gives contact, ready, cue, graph and route searches the intended-piece whole-tool gate before a static candidate is chosen; a colliding first witness continues through the existing bounded alternatives.
+Each selected original control stores one quaternion `inverse(q_approach) × q_selected`.
+Edge checks/replay use `q_currentApproach × slerp(residual)` with smoothstep weights.
+Selected endpoint wrist/elbow/contact remain exact; intermediate legacy-arm or pure wrist-twist preservation is not guaranteed. No isolated anchors or graph dimensions are added.
+Runtime performs one fixed-length arm solve; it does not repeat the ordinary roll refinements, project the palm/wrist or search shaft yaw. Unresolved
+interpolated poses retain their diagnoses. Legacy hands keep `None` and their existing solve.
+Actual tool rotation, wrist displacement and body-relative shoulder-to-elbow direction
+receive integrated squared-rate soft costs at graph transitions and inspected edge samples.
+The costs use actual poses, not residual quaternion changes. The 2 rad/s relative-swivel
+knot limit and smoothstep's 1.5 factor remain; neither these bounds nor the soft costs certify
+physiological limits on the complete arm/tool motion. There is no added graph dimension or
+frame history. Inspected samples do not certify the entire continuous path.
 
 In the measured-profile path, left/right hands normally wait 3.5 cm above snare/hi-hat.
 Between repetitions on one physical piece, the ready tip stays over that piece.

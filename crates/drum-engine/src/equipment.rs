@@ -17,6 +17,9 @@ pub const HIHAT_PEDAL_TO_AXIS: f64 = 0.12;
 pub struct LocalBox {
     pub center: Vec3,
     pub half_extents: Vec3,
+    /// Local box axes to planning axes; center already uses planning axes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotation: Option<crate::rig::Quat>,
 }
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,6 +132,10 @@ pub fn valid_piece_geometry(piece: &KitPiece) -> bool {
                 .half_extents
                 .iter()
                 .all(|n| n.is_finite() && (0.001..=2.0).contains(n))
+            && g.body.rotation.is_none_or(|rotation| {
+                rotation.iter().all(|v| v.is_finite())
+                    && (rotation.iter().map(|v| v * v).sum::<f64>() - 1.0).abs() < 1e-5
+            })
             && finite(g.surface.center, 3.0)
             && finite(g.surface.normal, 1.0)
             && (distance(g.surface.normal, [0.0; 3]) - 1.0).abs() < 1e-5
@@ -202,6 +209,7 @@ pub fn local_geometry(piece: &KitPiece) -> PieceGeometry {
         body: LocalBox {
             center,
             half_extents,
+            rotation: None,
         },
         surface: Surface {
             // The authored fallback is an analytic flat cymbal surface. Its
@@ -264,7 +272,7 @@ pub fn body(piece: &KitPiece) -> Option<EquipmentBox> {
         piece_id: piece.id.clone(),
         center: add(piece.position, g.body.center.map(|v| v * scale)),
         half_extents: g.body.half_extents.map(|v| v * scale),
-        rotation: None,
+        rotation: g.body.rotation,
         kind: "body",
     })
 }
@@ -358,13 +366,22 @@ fn box_local_vector(box_: &EquipmentBox, vector: Vec3) -> Vec3 {
         crate::rig::rotate([-x, -y, -z, w], vector)
     })
 }
-fn box_world_half_extents(box_: &EquipmentBox) -> Vec3 {
+pub(crate) fn box_world_half_extents(box_: &EquipmentBox) -> Vec3 {
     let axes = box_axes(box_);
     std::array::from_fn(|axis| {
         (0..3)
             .map(|i| axes[i][axis].abs() * box_.half_extents[i])
             .sum()
     })
+}
+/// Distance from the box centre to its boundary along a unit world direction.
+/// Mounts use this to exit tilted shells without treating local extents as world axes.
+pub(crate) fn box_ray_extent(box_: &EquipmentBox, direction: Vec3) -> f64 {
+    let local = box_local_vector(box_, direction);
+    (0..3)
+        .filter(|&axis| local[axis].abs() > 1e-10)
+        .map(|axis| box_.half_extents[axis] / local[axis].abs())
+        .fold(f64::INFINITY, f64::min)
 }
 /// Conservative distance lower bound to the contacted body's box clipped by
 /// the inward playing half-space. This handles tilted measured surfaces without
@@ -377,11 +394,13 @@ pub fn segment_surface_box_clearance(
     box_: &EquipmentBox,
     surface: &Surface,
 ) -> f64 {
+    let local_start = box_local_vector(box_, sub(start, box_.center));
+    let local_delta = box_local_vector(box_, sub(end, start));
     let delta = sub(end, start);
     let value = |t: f64| {
         let p = add(start, delta.map(|v| v * t));
         let box_distance = (0..3)
-            .map(|axis| (p[axis] - box_.center[axis]).abs() - box_.half_extents[axis])
+            .map(|axis| (local_start[axis] + local_delta[axis] * t).abs() - box_.half_extents[axis])
             .fold(f64::NEG_INFINITY, f64::max);
         let plane_distance = (0..3)
             .map(|axis| (p[axis] - surface.center[axis]) * surface.normal[axis])
@@ -419,33 +438,37 @@ fn head(instrument: Instrument) -> bool {
         Instrument::Snare | Instrument::TomHigh | Instrument::TomMid | Instrument::TomLow
     )
 }
-/// Preserve each head's three-dimensional central approach lane. Projected rim
-/// overlap alone is not obstruction: tilted drums can overhang at different
-/// heights while their bodies and useful striking regions remain separate.
-/// Body/support separation and actual whole-tool clearance remain separate
-/// geometry and motion/contact gates; this query grants no collision exemption.
-pub fn playable_pair(a: &KitPiece, b: &KitPiece) -> bool {
-    if matches!(a.instrument, Instrument::OpenHat | Instrument::PedalHat)
-        || matches!(b.instrument, Instrument::OpenHat | Instrument::PedalHat)
+/// A broad central access lane is a layout-quality heuristic, not a necessary
+/// condition for an actual angled stick approach. Its failure is advisory;
+/// body/support separation and complete-tool contact checks remain hard gates.
+fn head_approach_clear(piece: &KitPiece, other: &KitPiece) -> bool {
+    if !head(piece.instrument)
+        || matches!(other.instrument, Instrument::OpenHat | Instrument::PedalHat)
     {
         return true;
     }
-    let access = |piece: &KitPiece, other: &KitPiece| {
-        if !head(piece.instrument) {
-            return true;
-        }
-        let Some(obstacle) = body(other) else {
-            return true;
-        };
-        let s = surface(piece);
-        // Reserve a useful central striking region, not just one unobstructed
-        // mathematical point. Longer sideways transfers are checked by motion.
-        let radius = (s.radius * 0.45).min(0.09);
-        let start = add(s.center, s.normal.map(|v| v * (radius + 0.008)));
-        let end = add(s.center, s.normal.map(|v| v * (APPROACH_HEIGHT + radius)));
-        segment_box_clearance(start, end, radius, &obstacle) >= CLEARANCE
+    let Some(obstacle) = body(other) else {
+        return true;
     };
-    access(a, b) && access(b, a)
+    let s = surface(piece);
+    let radius = (s.radius * 0.45).min(0.09);
+    let start = add(s.center, s.normal.map(|v| v * (radius + 0.008)));
+    let end = add(s.center, s.normal.map(|v| v * (APPROACH_HEIGHT + radius)));
+    segment_box_clearance(start, end, radius, &obstacle) >= CLEARANCE
+}
+pub fn playable_pair(a: &KitPiece, b: &KitPiece) -> bool {
+    head_approach_clear(a, b) && head_approach_clear(b, a)
+}
+pub fn approach_advisories(kit: &[KitPiece]) -> Vec<String> {
+    let mut warnings = BTreeSet::new();
+    for piece in kit {
+        for other in kit {
+            if piece.id != other.id && !head_approach_clear(piece, other) {
+                warnings.insert(format!("head-approach:{}:{}", piece.id, other.id));
+            }
+        }
+    }
+    warnings.into_iter().collect()
 }
 
 fn capsule(piece: &KitPiece, start: Vec3, end: Vec3, radius: f64) -> EquipmentCapsule {
@@ -526,7 +549,7 @@ pub fn beater_contact(piece: &KitPiece) -> (Vec3, Vec3) {
         [
             bounds.center[0],
             bounds.center[1],
-            bounds.center[2] - bounds.half_extents[2],
+            bounds.center[2] - box_world_half_extents(&bounds)[2],
         ],
         [0.0, 0.0, -1.0],
     )
@@ -728,12 +751,12 @@ pub fn kit_geometry(kit: &[KitPiece]) -> EquipmentGeometry {
     }
     for (i, a) in kit.iter().enumerate() {
         if let Some(a_body) = body(a) {
-            if a_body.center[1] - a_body.half_extents[1] < -0.005 {
+            if a_body.center[1] - box_world_half_extents(&a_body)[1] < -0.005 {
                 unresolved.insert(a.id.clone());
             }
             for b in &kit[i + 1..] {
                 if let Some(b_body) = body(b) {
-                    if !boxes_clear(&a_body, &b_body) || !playable_pair(a, b) {
+                    if !boxes_clear(&a_body, &b_body) {
                         unresolved.insert(a.id.clone());
                         unresolved.insert(b.id.clone());
                     }

@@ -66,7 +66,7 @@ fn tilted_playing_plane_clips_only_its_own_conservative_top() {
 }
 
 #[test]
-fn vertically_disjoint_heads_are_not_a_playable_stack() {
+fn a_head_access_advisory_does_not_exempt_physical_body_or_support_collisions() {
     let kit = default_kit();
     let mut lower = kit.iter().find(|p| p.id == "tomHigh").unwrap().clone();
     let mut upper = kit.iter().find(|p| p.id == "tomMid").unwrap().clone();
@@ -74,8 +74,20 @@ fn vertically_disjoint_heads_are_not_a_playable_stack() {
     upper.position = [0.0, 1.04, 0.6];
     assert!(boxes_clear(&body(&lower).unwrap(), &body(&upper).unwrap()));
     assert!(!playable_pair(&lower, &upper));
-    let geometry = kit_geometry(&[lower, upper]);
-    assert_eq!(geometry.unresolved_piece_ids, vec!["tomHigh", "tomMid"]);
+    let kit = vec![lower, upper];
+    assert_eq!(
+        approach_advisories(&kit),
+        vec!["head-approach:tomHigh:tomMid"]
+    );
+    // Stacking these heads also crosses their generated stands. Classifying
+    // the broad access lane as advisory must not suppress that physical failure.
+    assert!(!kit_geometry(&kit).unresolved_piece_ids.is_empty());
+    let mut overlapping = kit;
+    overlapping[1].position[1] = 0.85;
+    assert_eq!(
+        kit_geometry(&overlapping).unresolved_piece_ids,
+        vec!["tomHigh", "tomMid"]
+    );
 }
 
 #[test]
@@ -124,6 +136,7 @@ fn actual_depth_and_radius_scale_together_and_invalid_geometry_is_rejected() {
         body: LocalBox {
             center: [0.0, -0.15, 0.0],
             half_extents: [0.2, 0.15, 0.2],
+            rotation: None,
         },
         surface: Surface {
             radial_profile: None,
@@ -141,6 +154,33 @@ fn actual_depth_and_radius_scale_together_and_invalid_geometry_is_rejected() {
     assert!((surface(&p).radius - 0.119).abs() < 1e-12);
     p.geometry.as_mut().unwrap().surface.normal = [0.0; 3];
     assert!(!valid_piece_geometry(&p));
+}
+
+#[test]
+fn measured_body_rotation_scales_extents_but_does_not_rotate_its_planning_center() {
+    let mut p = default_kit()
+        .into_iter()
+        .find(|p| p.id == "tomHigh")
+        .unwrap();
+    let mut geometry = local_geometry(&p);
+    let rotation = [(-0.2f64).sin(), 0.0, 0.0, 0.2f64.cos()];
+    geometry.body.center = [0.02, -0.1, 0.04];
+    geometry.body.half_extents = [0.2, 0.11, 0.2];
+    geometry.body.rotation = Some(rotation);
+    p.geometry = Some(geometry);
+    p.radius *= 0.8;
+    assert!(valid_piece_geometry(&p));
+    let b = body(&p).unwrap();
+    assert_eq!(b.rotation, Some(rotation));
+    assert!(distance(b.center, add(p.position, [0.016, -0.08, 0.032])) < 1e-12);
+    assert!((b.half_extents[1] - 0.088).abs() < 1e-12);
+    for bad in [[0.; 4], [0., 0., 0., 2.], [f64::NAN, 0., 0., 1.]] {
+        p.geometry.as_mut().unwrap().body.rotation = Some(bad);
+        assert!(!valid_piece_geometry(&p));
+    }
+    p.geometry.as_mut().unwrap().body.rotation = None;
+    assert!(valid_piece_geometry(&p));
+    assert!(body(&p).unwrap().rotation.is_none());
 }
 
 #[test]
@@ -660,6 +700,18 @@ fn oriented_box_queries_match_the_same_segment_in_local_coordinates() {
         center: [-0.4, 0.08, 0.43],
         ..plain.clone()
     };
+    let plane = Surface {
+        center: [0., 0.006, 0.],
+        normal: [0., 1., 0.],
+        radius: 0.1,
+        radial_profile: None,
+        motion: None,
+    };
+    let turned_plane = Surface {
+        center: add(turned.center, crate::rig::rotate(q, plane.center)),
+        normal: crate::rig::rotate(q, plane.normal),
+        ..plane.clone()
+    };
     for i in -5..=5 {
         for j in -5..=5 {
             let a = [i as f64 * 0.03, 0.06, j as f64 * 0.04];
@@ -671,12 +723,32 @@ fn oriented_box_queries_match_the_same_segment_in_local_coordinates() {
                 .abs()
                     < 1e-12
             );
+            assert!(
+                (segment_surface_box_clearance(a, b, 0.013, &plain, &plane)
+                    - segment_surface_box_clearance(
+                        world(a),
+                        world(b),
+                        0.013,
+                        &turned,
+                        &turned_plane,
+                    ))
+                .abs()
+                    < 1e-10
+            );
             let rod = capsule(&default_kit()[0], world(a), world(b), 0.013);
             assert_eq!(
                 rod_box_clear(&rod, &turned),
                 segment_box_clearance(rod.start, rod.end, rod.radius, &turned) >= CLEARANCE
             );
         }
+    }
+    for direction in [[1., 0., 0.], [0., 1., 0.], [0.6, 0., 0.8]] {
+        assert!(
+            (box_ray_extent(&plain, direction)
+                - box_ray_extent(&turned, crate::rig::rotate(q, direction)))
+            .abs()
+                < 1e-12
+        );
     }
     let nearby = EquipmentBox {
         center: add(turned.center, crate::rig::rotate(q, [0.12, 0., 0.])),

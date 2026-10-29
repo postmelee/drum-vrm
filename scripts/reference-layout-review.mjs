@@ -96,6 +96,7 @@ function layoutMetrics(kit, nominal) {
       radiusRatioToNominal: piece.radius / baseline.radius,
       anchorDeltaFromNominal: piece.position.map((v, axis) => v - baseline.position[axis]),
       bodyHalfExtents: piece.geometry?.body.halfExtents.map(v => v * scale),
+      bodyRotation: piece.geometry?.body.rotation ?? [0, 0, 0, 1],
       surfaceNormal: piece.geometry?.surface.normal,
     };
   });

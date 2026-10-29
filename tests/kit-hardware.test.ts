@@ -250,7 +250,9 @@ describe('body contacts remain independent of shared hardware', () => {
     alignInstrumentBody(body, pivot, piece, resolvePieceVisual('studio', 'snare', { scale: 1.2, rotation: 45 }));
     const geometry = measureInstrumentGeometry(pivot, piece, 'mesh-bounds');
     const bounds = new THREE.Box3().setFromObject(pivot);
-    expect(geometry.body.halfExtents[1] * 2).toBeCloseTo(bounds.max.y - bounds.min.y, 7);
+    const rotation = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(...geometry.body.rotation ?? [0, 0, 0, 1])).elements;
+    const worldHeight = 2 * (Math.abs(rotation[1]) * geometry.body.halfExtents[0] + Math.abs(rotation[5]) * geometry.body.halfExtents[1] + Math.abs(rotation[9]) * geometry.body.halfExtents[2]);
+    expect(worldHeight).toBeCloseTo(bounds.max.y - bounds.min.y, 7);
     expect(geometry.body.halfExtents[1] * 2).toBeGreaterThan(.135);
     const target = new THREE.Vector3(...piece.position), ray = new THREE.Raycaster(target.clone().add(new THREE.Vector3(0, 1, 0)), new THREE.Vector3(0, -1, 0));
     expect(ray.intersectObject(body, true)[0].point.distanceTo(target)).toBeLessThan(1e-7);

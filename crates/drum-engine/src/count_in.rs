@@ -126,12 +126,31 @@ fn witness(
                 equipment_motion::tool_clearance(profile, i, hand, ctx, None) >= posture::MARGIN
             })
         };
-        let mut hands: Vec<_> = posture::hand_candidates(profile, i, tips[i], pitches[i])
-            .filter(valid)
-            .collect();
+        let environment = equipment_motion::HandEnvironment {
+            equipment,
+            intended_piece: None,
+        };
+        let mut hands: Vec<_> = posture::hand_candidates_in(
+            profile,
+            i,
+            tips[i],
+            pitches[i],
+            posture::HandSearch::Full,
+            environment,
+        )
+        .filter(valid)
+        .collect();
         if hands.is_empty() {
             hands.extend(
-                posture::refined_hand_candidates(profile, i, tips[i], pitches[i]).filter(valid),
+                posture::refined_hand_candidates_in(
+                    profile,
+                    i,
+                    tips[i],
+                    pitches[i],
+                    posture::HandSearch::Full,
+                    environment,
+                )
+                .filter(valid),
             );
         }
         hands
@@ -453,10 +472,12 @@ mod tests {
             });
             f.palm_reference = Some(crate::rig::PalmReference::ShaftHeading);
         }
-        let target = [0., 0.6, 0.45];
-        let pitches = cue_pitches(&p, target, 0.15).unwrap();
+        // The old target gained coarse witnesses with the wrist-first solver.
+        // This nearby authored target still requires refined swivel witnesses.
+        let target = [0., 0.57, 0.41];
+        let pitches = cue_pitches(&p, target, 0.).unwrap();
         assert!(
-            (0..2).any(|i| posture::hand_candidates(&p, i, target, pitches[i])
+            (0..2).all(|i| posture::hand_candidates(&p, i, target, pitches[i])
                 .next()
                 .is_none())
         );

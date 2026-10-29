@@ -17,6 +17,8 @@ export function validateKitLayout(kit: readonly KitPiece[]): KitPiece[] {
     if (piece.standRotation !== undefined && (!rotatable || !Number.isFinite(piece.standRotation) || Math.abs(piece.standRotation)>Math.PI)) throw new Error(WORKER_MESSAGES.dimensions);
     const g=piece.geometry;
     if(g && (g.version!==1 || !['procedural','mesh-bounds'].includes(g.source) || !Number.isFinite(g.referenceRadius) || g.referenceRadius<.01 || g.referenceRadius>1 || !g.body.center.every(Number.isFinite) || !g.body.halfExtents.every(v=>Number.isFinite(v)&&v>=.001&&v<=2) || !g.surface.center.every(Number.isFinite) || !g.surface.normal.every(Number.isFinite) || Math.abs(Math.hypot(...g.surface.normal)-1)>1e-5 || !Number.isFinite(g.surface.radius) || g.surface.radius<.01 || g.surface.radius>1)) throw new Error(WORKER_MESSAGES.dimensions);
+    const bodyRotation = g?.body.rotation;
+    if (bodyRotation !== undefined && (!Array.isArray(bodyRotation) || bodyRotation.length !== 4 || !bodyRotation.every(Number.isFinite) || Math.abs(bodyRotation.reduce((sum,value)=>sum+value*value,0)-1)>=1e-5)) throw new Error(WORKER_MESSAGES.dimensions);
     const motion = g?.surface.motion;
     if (motion && (motion.kind !== 'translation' || !Array.isArray(motion.axis) || motion.axis.length!==3 || !motion.axis.every(Number.isFinite)
       || Math.abs(Math.hypot(...motion.axis)-1)>1e-5 || !Number.isFinite(motion.travelMeters) || motion.travelMeters<0 || motion.travelMeters>.025)) throw new Error(WORKER_MESSAGES.dimensions);

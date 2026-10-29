@@ -470,7 +470,13 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
         across.addScaledVector(forward, -across.dot(forward)).normalize();
       }
       const palm = forward.clone().cross(across).multiplyScalar(side === 'left' ? 1 : -1).normalize();
-      const shaft = forward.clone().add(across).normalize();
+      // A shallow diagonal leaves room for a thumb-up strike with a nearly
+      // straight wrist. The former fixed 45-degree diagonal itself exceeded
+      // the planner's wrist-swing bound for a horizontal inward-palm strike.
+      // This is one shared authored grip, not an anatomical universal. Fingers,
+      // thumb, mount and measured tool offsets all use this same physical shaft.
+      const gripAngle = Math.PI / 6;
+      const shaft = forward.clone().multiplyScalar(Math.cos(gripAngle)).addScaledVector(across, Math.sin(gripAngle)).normalize();
       const fingerLength = points.length ? points.reduce((sum, p) => sum + p[0].distanceTo(p[1]) + p[1].distanceTo(p[2]), 0) / points.length : .054;
       const grip = points.length ? points.reduce((sum, p) => sum.add(p[0]), new THREE.Vector3()).divideScalar(points.length) : forward.clone().multiplyScalar(.06);
       grip.addScaledVector(palm, fingerLength * .5).addScaledVector(forward, -fingerLength * .08);
