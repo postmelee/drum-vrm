@@ -13,8 +13,12 @@ review candidate, not published**. Read the
 before changing the solver. All four fits and 53/53 + 82/82 assignments pass;
 all eight studies still fail temporal physical/posture acceptance, with some
 new or deeper tool overlaps. Do not describe this as a regression-free release.
-Next work is preparation/recovery trajectory repair, including fast roll and
-arm elevation, while preserving exact impact times, reach and whole-tool gates.
+The [elbow follow-up audit](verification/elbow-motion-audit.md) confirms that
+hand roll rotates the elbow reference plane outside the relative swivel bound.
+Simple pole replacements failed existing valid witnesses and were reverted.
+Next work is actual anatomical elbow-plane coordination with prepared grip roll,
+preserving exact impacts, reach and whole-tool gates. Further crash approach and
+rack tilt are not yet accepted; fast-fill choice explanations are also unfinished.
 Do not add another fitting grid or force paradiddles into every fill. The
 [ergonomics/sticking research](research/ergonomics-and-sticking.md) records why
 opposite-hand contact feasibility comes before retuning the existing vocabulary.
