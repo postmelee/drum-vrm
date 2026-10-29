@@ -6,6 +6,60 @@ use crate::{
     posture,
     rig::{HandSolution, RigProfile},
 };
+use std::collections::HashMap;
+
+// Preserve safe witnesses first, then exact contact, physical tool clearance and
+// posture deficit. An unsupported pose must not win merely because pitch zero
+// has the smallest stylistic cost while its wrist is outside the arm annulus.
+type ImpactRank = (usize, usize, f64, f64, f64);
+
+fn impact_rank(
+    profile: &RigProfile,
+    equipment: &EquipmentContext,
+    hit: &crate::model::Hit,
+    limb: usize,
+    pitch: f64,
+) -> ImpactRank {
+    let preference = pitch * pitch * 0.005;
+    if let Some(hand) = at_pitch(
+        profile,
+        limb,
+        hit.target,
+        pitch,
+        Some(equipment),
+        Some(&hit.piece_id),
+    ) {
+        return (
+            0,
+            0,
+            0.,
+            0.,
+            posture::comfort_cost(profile, limb, hit.target, &hand) + preference,
+        );
+    }
+    let best = (-16..=16)
+        .filter_map(|step| {
+            profile.solve_hand_with_swivel(limb, hit.target, pitch, step as f64 * 0.05)
+        })
+        .map(|hand| {
+            let tool_clearance = crate::equipment_motion::tool_clearance(
+                profile,
+                limb,
+                &hand,
+                equipment,
+                Some(&hit.piece_id),
+            );
+            (
+                usize::from(!hand.reachable),
+                (posture::MARGIN - tool_clearance).max(0.).powi(2),
+                posture::anatomical_violation(profile, limb, hit.target, &hand),
+                posture::comfort_cost(profile, limb, hit.target, &hand),
+            )
+        })
+        .min_by(|a, b| a.partial_cmp(b).unwrap())
+        .unwrap_or((1, f64::INFINITY, f64::INFINITY, 0.39));
+    (1, best.0, best.1, best.2, best.3 + preference)
+}
 
 /// Impact, preparation and recovery use the same physical target and tool.
 pub const PROBES: [(f64, f64); 3] = [(0., 0.), (0.055, -0.2), (0.11, -0.42)];
@@ -127,40 +181,52 @@ pub fn preserve_impact_pitches(
         return Vec::new();
     }
     let failed = || hits.iter().map(|h| h.time).collect();
-    let mut costs = [(usize::MAX, f64::INFINITY); 9];
+    let mut costs = [(
+        usize::MAX,
+        usize::MAX,
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::INFINITY,
+    ); 9];
     let mut parents = vec![[0usize; 9]; hits.len()];
     let mut supported = vec![[false; 9]; hits.len()];
+    // Repeated notes share exactly the same neutral contact query. Cache its
+    // bounded pitch ranks rather than resolving every swivel for every hit.
+    let mut ranks: HashMap<([u64; 3], &str), [ImpactRank; 9]> = HashMap::new();
     for (i, hit) in hits.iter().enumerate() {
-        let mut next = [(usize::MAX, f64::INFINITY); 9];
+        if !profile.may_reach_contact(limb, hit.target) {
+            return failed();
+        }
+        let ranks = ranks
+            .entry((hit.target.map(f64::to_bits), hit.piece_id.as_str()))
+            .or_insert_with(|| {
+                PITCH_OFFSETS.map(|pitch| impact_rank(profile, equipment, hit, limb, pitch))
+            });
+        let mut next = [(
+            usize::MAX,
+            usize::MAX,
+            f64::INFINITY,
+            f64::INFINITY,
+            f64::INFINITY,
+        ); 9];
         for (j, &pitch) in PITCH_OFFSETS.iter().enumerate() {
-            if !profile.may_reach_contact(limb, hit.target) {
-                continue;
-            }
-            let witness = at_pitch(
-                profile,
-                limb,
-                hit.target,
-                pitch,
-                Some(equipment),
-                Some(&hit.piece_id),
-            );
-            supported[i][j] = witness.is_some();
-            let missing = usize::from(witness.is_none());
-            let cost = witness.map_or(0.39, |hand| {
-                posture::comfort_cost(profile, limb, hit.target, &hand)
-            }) + pitch * pitch * 0.005;
+            let rank = ranks[j];
+            supported[i][j] = rank.0 == 0;
             if i == 0 {
-                next[j] = (missing, cost);
+                next[j] = rank;
                 continue;
             }
             let limit = crate::equipment_motion::PITCH_RATE * (hit.time - hits[i - 1].time) + 1e-9;
             for (k, &previous) in PITCH_OFFSETS.iter().enumerate() {
-                if !costs[k].1.is_finite() || (pitch - previous).abs() > limit {
+                if !costs[k].4.is_finite() || (pitch - previous).abs() > limit {
                     continue;
                 }
                 let candidate = (
-                    costs[k].0 + missing,
-                    costs[k].1 + cost + (pitch - previous).powi(2) * 0.01,
+                    costs[k].0 + rank.0,
+                    costs[k].1 + rank.1,
+                    costs[k].2 + rank.2,
+                    costs[k].3 + rank.3,
+                    costs[k].4 + rank.4 + (pitch - previous).powi(2) * 0.01,
                 );
                 if candidate < next[j] {
                     next[j] = candidate;
@@ -168,7 +234,7 @@ pub fn preserve_impact_pitches(
                 }
             }
         }
-        if next.iter().all(|v| !v.1.is_finite()) {
+        if next.iter().all(|v| !v.4.is_finite()) {
             return failed();
         }
         costs = next;
@@ -244,11 +310,15 @@ mod tests {
                 forearm: [0.5, -0.5, d],
                 palm: [d, d, 0.],
                 desired_palm: [d, -d, 0.],
+                palm_roll_range: None,
+                palm_reference: None,
             },
             HandControlFrame {
                 forearm: [-0.5, -0.5, d],
                 palm: [-d, d, 0.],
                 desired_palm: [-d, -d, 0.],
+                palm_roll_range: None,
+                palm_reference: None,
             },
         ]);
         profile
@@ -298,6 +368,8 @@ mod tests {
             forearm: [0., 0., 1.],
             palm: [0., 1., 0.],
             desired_palm: [0., 1., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         profile.hand_frames = Some([frame.clone(), frame]);
         assert!(hand_probe_fits(&profile, 0, [-0.15, 0.9, 0.55], None, None));
@@ -321,6 +393,8 @@ mod tests {
             forearm: [0., 0., 1.],
             palm: [0., 1., 0.],
             desired_palm: [0., 1., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         p.hand_frames = Some([frame.clone(), frame]);
         let ctx = EquipmentContext::new(
@@ -388,5 +462,80 @@ mod tests {
             track, before,
             "no fabricated trajectory when no reachable pitch exists"
         );
+    }
+
+    #[test]
+    fn unsupported_anchors_preserve_possible_contact_before_stylistic_pitch_cost() {
+        let p = profile();
+        let target = [0.2, 1.0, 0.8];
+        assert!(!p.solve_hand(1, target, 0.).unwrap().reachable);
+        // An independently authored obstruction makes every contact unsafe.
+        // The failure must remain reported, but zero pitch must not introduce
+        // an avoidable reach miss on top of that physical obstruction.
+        let ctx = EquipmentContext::new(
+            Vec::new(),
+            crate::equipment::EquipmentGeometry {
+                version: 1,
+                bodies: vec![crate::equipment::EquipmentBox {
+                    piece_id: "obstruction".into(),
+                    center: [0., 1., 0.4],
+                    half_extents: [2.; 3],
+                    rotation: None,
+                    kind: "body",
+                }],
+                supports: Vec::new(),
+                pedals: Vec::new(),
+                mechanisms: Vec::new(),
+                unresolved_piece_ids: Vec::new(),
+            },
+        );
+        let hits: Vec<_> = [0.2, 0.5, 0.8]
+            .into_iter()
+            .enumerate()
+            .map(|(id, time)| crate::model::Hit {
+                id,
+                time,
+                time_us: (time * 1e6) as u64,
+                tick: id as u64 * 480,
+                track: 0,
+                event_index: id,
+                channel: 9,
+                note: 51,
+                velocity: 90,
+                instrument: crate::model::Instrument::Ride,
+                piece_id: "ride".into(),
+                articulation: "bell".into(),
+                source_event_id: format!("0:{id}"),
+                limb: Some(1),
+                target,
+            })
+            .collect();
+        let mut track: Vec<_> = (0..=10)
+            .map(|i| crate::equipment_motion::PathSample {
+                time: i as f64 / 10.,
+                lift: [0.; 2],
+                pitch: [0.; 2],
+            })
+            .collect();
+        let original_hits = serde_json::to_string(&hits).unwrap();
+        let times: Vec<_> = track.iter().map(|s| s.time).collect();
+        let errors =
+            preserve_impact_pitches(&mut track, &p, &ctx, &hits.iter().collect::<Vec<_>>(), 1);
+        assert_eq!(errors, vec![0.2, 0.5, 0.8]);
+        assert_eq!(serde_json::to_string(&hits).unwrap(), original_hits);
+        assert_eq!(track.iter().map(|s| s.time).collect::<Vec<_>>(), times);
+        assert!(track
+            .windows(2)
+            .all(|w| (w[1].pitch[1] - w[0].pitch[1]).abs() <= 2. * (w[1].time - w[0].time) + 1e-9));
+        for hit in &hits {
+            let pitch = crate::equipment_motion::sample(&track, hit.time, 1).1;
+            assert!(at_pitch(&p, 1, target, pitch, Some(&ctx), Some("ride")).is_none());
+            assert!((-16..=16).any(|step| {
+                let hand = p
+                    .solve_hand_with_swivel(1, target, pitch, step as f64 * 0.05)
+                    .unwrap();
+                hand.reachable && crate::motion::distance(hand.tip, target) < 1e-9
+            }));
+        }
     }
 }

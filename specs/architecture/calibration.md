@@ -342,23 +342,24 @@ the hand. Writing a correct-looking tip position after solving the skeleton woul
 hide an attachment error. The rendered endpoint is therefore an independent observed
 quantity in contact checks.
 
-The diagonal palm mount and available finger curl remain measured adapter geometry.
-`handFrames` supply forearm/palm axes and a desired palm direction. The shared Rust
-solver first aims the shaft horizontally from shoulder toward target, with a 0.25 rad
-downward inclination plus the selected pitch. It recovers the wrist from that rotation
-and the complete grip/tip offset, then solves the actual two-bone arm. Four deterministic
-analytic roll updates around the shaft reduce measured wrist swing; palm direction is
-an initial preference, not an exact final constraint. The 0.60 rad wrist gate remains
-independent of this refinement. Neither bones nor the hand/tool attachment are stretched.
-The elbow preference combines 0.45 times the outward shoulder axis with unit down;
-shortest-arc transport carries its bend plane from body-forward to shoulder-to-wrist,
-then applies the planned swivel. Static fitting and runtime evaluation share this solve.
+The diagonal palm mount and finger curl retain measured adapter geometry; `handFrames` supply forearm/palm axes and desired palm.
+The shaft aims from shoulder to target in XZ, with 0.25 rad downward inclination plus pitch. Optional `palmReference: shaftHeading` rotates desired palm from +Z by horizontal yaw.
+Natural uses inward followed by 0–90° pronation, side-signed in `palmRollRange`; explicit up/inward/down allow ±0.15 rad around their world preference.
+Ranges contain zero, lie within ±π and span at most π. These are grip policies, not anatomical limits.
+Static fitting/contact candidates perform four analytic refinements and a final wrist/arm solve, returning after five solves only if reachable and shared `anatomical_violation == 0`; no new threshold is introduced.
+Otherwise the proposal and both interval endpoints receive complete wrist/arm evaluation, ranked by reach, the shared anatomical deficit,
+then squared wrist deviation plus comfort cost, then absolute roll. The deficit includes wrist, arm elevation, elbow angle and forward-position constraints.
+Twelve fixed golden-section refinement steps over the same interval retain the best evaluated pose: 21 wrist/arm solves in this fallback, without a global-optimum guarantee.
+Selected numeric rolls are stored alongside elbow angles in the existing `SwivelSample` control knots; legacy hands store `None`.
+The exact elbow-circle point closest to the measured forearm supplies the bend plane before planned swivel; axial degeneracy retains the transported pole.
+The independent 0.60 rad wrist gate and all joint limits remain unchanged. Each trial recovers the wrist from complete grip/tool offsets and solves fixed-length bones.
+Edge checks and runtime use the same smoothstep-interpolated angles and rolls, then one fixed-roll wrist/arm solve; they do not rerun the pointwise optimizer or add a grid/frame history. Equipment acceptance remains separate.
+Without a roll range, the original four unconstrained refinements remain; the elbow pole combines 0.45 times outward shoulder axis with down, transported by shortest arc from body-forward to shoulder-to-wrist.
 
 The cheap `may_reach_contact` triangle envelope only prunes impossible distances;
 passing it does not replace an actual posture/tool witness at the chosen pitch and swivel.
-These approach and roll rules are animation priors, not all grip styles, a global optimum
-or a continuous collision certificate. Inspect rendered fingers, wrist swing and the
-complete moving shaft separately from endpoint contact error.
+These approach and roll rules are animation priors, not all grip styles or a global optimum.
+Inspect rendered fingers, wrist swing and the whole moving shaft separately from endpoint error; this is not continuous collision certification.
 
 ## Coordinated torso and inspection
 
@@ -389,17 +390,17 @@ Dynamic programming selects a whole-timeline path, retaining alternatives that
 prepare for future constraints instead of accepting a locally convenient collision.
 An edge permits at most 2 rad/s of sampled-angle change; C1 smoothstep interpolation
 therefore contributes at most 3 rad/s. These are swivel-track limits, not limits on
-the entire moving elbow or wrist.
+the entire moving elbow or wrist. Roll changes receive the existing `0.01 × (Δangle)²` variation cost, not a new hard rate bound.
 
 When an edge has no coupled collision refinement, the bounded predecessor search
 is factored into one search per arm. It retains the same dynamic-programming optimum
 and stable predecessor order; refined coupled edges use the general search.
 
 Joint pitch/lift repair precedes elbow coordination; [equipment contact](equipment-contact.md) owns its budgets.
-The selected elbow path is checked at 30 Hz and exact impacts with the turned body and actual stroke targets.
+The selected angle/roll path is checked at 30 Hz and exact impacts with the turned body and actual stroke targets.
 Physical stick/equipment and stick/stick intersections receive feasibility penalties; measured body overlap
-receives bounded advisory cost. The graph is searched again up to eight times, retaining the best inspected
-path. A successful static fit or complete hit assignment is not temporal acceptance. `BODY_PATH_CLEARANCE`
+receives bounded advisory cost. Unreachable contacts add `1e12`; each anatomical failure adds `1e9 + 1e6 × min(deficit, 100)` using the shared squared deficit. This ranks failed fallbacks without making them valid.
+The graph is searched again up to eight times, retaining the best inspected path. A successful static fit or complete hit assignment is not temporal acceptance. `BODY_PATH_CLEARANCE`
 reports advisory overlap; `TOOL_EQUIPMENT_PATH_CLEARANCE` and `TOOL_PAIR_PATH_CLEARANCE` identify residual
 physical-tool problems. No source note or contact time is silently removed to suppress these diagnostics.
 

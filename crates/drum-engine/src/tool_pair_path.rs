@@ -191,8 +191,14 @@ fn envelope(
         } else {
             old.min(value + rate * distance)
         };
-        if (changed - *old).abs() > 1e-10 && (!pitch && locks[i][limb]) {
-            return None;
+        if !pitch && locks[i][limb] {
+            if (changed - *old).abs() > 1e-10 {
+                return None;
+            }
+            // A cone that meets the impact within roundoff still preserves the
+            // exact source anchor. Writing a tiny nonzero lift would invalidate
+            // the worker transfer's exact contact lock.
+            continue;
         }
         *old = changed;
     }
@@ -341,6 +347,8 @@ mod tests {
             forearm: [0., 0., 1.],
             palm: [0., 1., 0.],
             desired_palm: [0., 1., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         profile.hand_frames = Some([frame.clone(), frame]);
         profile
@@ -476,6 +484,22 @@ mod tests {
         assert_eq!(
             pitched.iter().map(|s| s.time).collect::<Vec<_>>(),
             path.iter().map(|s| s.time).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn cone_roundoff_does_not_write_a_nonzero_impact_lift() {
+        let path = [2.25, 2.2916666666666665].map(|time| PathSample {
+            time,
+            lift: [0.; 2],
+            pitch: [0.; 2],
+        });
+        let locks = [[true; 2], [false; 2]];
+        let lifted = envelope(&path, 1, 1, false, 0.05, &locks).unwrap();
+        assert_eq!(lifted[0].lift[1].to_bits(), 0_f64.to_bits());
+        assert_eq!(lifted[1].lift[1], 0.05);
+        assert!(
+            lifted[1].lift[1] <= equipment_motion::LIFT_RATE * (path[1].time - path[0].time) + 1e-9
         );
     }
 }

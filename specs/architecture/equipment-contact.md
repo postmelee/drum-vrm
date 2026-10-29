@@ -75,10 +75,10 @@ hardware are intentional overlaps, not blanket exclusions for nearby instruments
 Static layout checks combine:
 
 - A 5 mm body separation margin and ground bounds.
-- Distinct projected playing regions for snare/tom heads. Raising one drum above
-  another does not make their shared striking area playable.
 - A bounded approach corridor above each head, extending 0.12 m along its normal.
   Its radius is `min(0.45 × headRadius, 0.09 m)`; it tests nearby body boxes.
+  Both heads must pass. Separated tilted rims may overlap in top projection;
+  a drum stacked into another head's approach remains invalid.
 - Generated stand, basket, collar, tripod, pedal and kick-hardware capsules against
   other bodies, pedal boxes and unrelated supports. An expanded-box broad phase
   precedes exact segment-distance checks. Intentional common-holder joints are
@@ -105,11 +105,14 @@ Snare baskets use a 225 mm tripod radius; boom cymbal and direct hi-hat stands
 use 300 mm. These are shared engineering dimensions. Optional
 `KitPiece.standRotation` fixes the first tripod leg's absolute world-Y phase in
 radians (`−π…π`), with X/Z direction `[sin(phase), cos(phase)]`. It is supported on
-snare, hi-hat, crash and ride stands. If absent, routing selects a bounded phase;
-if present, it may move the stand base within existing limits but cannot silently
-select another phase. This lets fitting test the real tripod adjustment against
+snare, hi-hat, crash and ride stands, and three-leg floor toms. Floor rotation
+moves the brackets and all three legs together; a suspended tom cannot carry it.
+If absent, routing selects a bounded phase;
+if present, it cannot silently select another phase. A tripod base may still move
+within its existing limits; floor-tom brackets remain shell-mounted. Fitting tests this adjustment against
 seated legs while preserving the instrument's position. It is not a collision
-exemption. Saved layouts retain the accepted phase.
+exemption. Saved layouts retain the accepted phase. Switching to the suspended
+floor preset removes the obsolete floor-leg phase.
 
 An optional `mount: {kind: 'standClamp', supportPieceId: 'ride'}` selects a
 suspended floor tom. Only `tomLow` may depend on a distinct ride/crash stand
@@ -151,7 +154,7 @@ Measured body offsets determine the corresponding hi-hat
 contact anchor. A mismatch above 3 mm remains unresolved; no long lateral linkage
 or implicit remote hi-hat conceals it. Common fitting keeps this relationship.
 
-Native appearance defaults tilt the snare 4°, rack toms 8°, ride 10°, and crashes
+Native appearance defaults tilt the snare 4°, rack toms 12°, ride 10°, and crashes
 12° toward the player; floor tom and hi-hat remain level. These are editable
 engineering defaults, not prescribed technique angles. The appearance limit is
 ±30°. Body measurement includes the actual tilt, and project files retain it;
@@ -374,7 +377,9 @@ motion depends on the measured body, target region and complete shaft approach.
 
 Impact pitch is scheduled before projecting the intervening samples onto the
 2 rad/s correction limit. A nine-state bounded search first maximizes the number
-of retained neutral posture/equipment witnesses, then prefers comfortable paths.
+of retained neutral posture/equipment witnesses. Unsupported ties minimize reach misses,
+physical-tool deficit and anatomical deficit, in that order, before comfort/pitch cost.
+Repeated identical target/piece queries share a local cache of the nine pitch ranks.
 An incompatible fill therefore does not discard valid anchors elsewhere in the
 song. `CONTACT_PITCH_LIMIT` reports unsupported impact witnesses from their first
 source time; it does not certify the retained trajectory as clear. If no reachable
@@ -400,7 +405,8 @@ both tools through the existing pitch/lift track. It inspects each control and t
 quarter, half and three-quarter points between controls. At a failure it tries
 16 pitch/lift delta pairs per hand, for at most four passes and 250,000
 changed-region sample evaluations. Minimal rate-limited envelopes retain the same
-amplitude/rate limits, exact targets and zero lift at impacts. A candidate must
+amplitude/rate limits, exact targets and zero lift at impacts; even roundoff-sized
+changes cannot overwrite a locked impact lift. A candidate must
 improve the inspected result without turning a previously valid anatomical,
 equipment or tool-pair sample into a failure. This introduces no new transfer field.
 Elbow swivel alone cannot move a target-oriented shaft centreline; the later joint
@@ -421,6 +427,8 @@ hit, including an unassigned one, takes priority in this window. Nonduplicate cu
 times closer than 0.12 s are diagnosed rather than forcing a faster gesture.
 Without a feasible common anatomical/tool-equipment contact candidate, the cue remains in the
 source and receives `COUNT_IN_GESTURE_UNAVAILABLE`.
+If a hand has no valid coarse candidate, the cue reuses the existing 0.05 rad
+swivel refinement before failing; anatomical and physical-tool limits stay unchanged.
 
 Opposing stick inclines are derived from the actual terminal taper and measured
 horizontal opening between the hands. The cue contact point and time stay fixed.

@@ -18,16 +18,19 @@ describe('physical layout recalibration',()=>{
     const kick=structuredClone(layout);kick.find(piece=>piece.id==='kick')!.pedalForward=[0,0,1];
     expect(()=>validateKitLayout(kick)).toThrow();
   });
-  it('retains a bounded absolute tripod phase without accepting it on a non-tripod mount',()=>{
+  it('retains bounded tripod and floor-leg phases without accepting them on another mount',()=>{
     const layout=kit();layout.find(piece=>piece.id==='snare')!.standRotation=Math.PI/2;
+    layout.find(piece=>piece.id==='tomLow')!.standRotation=-Math.PI/2;
     const restored=validateKitLayout(JSON.parse(JSON.stringify(layout)));
     expect(sameKitLayout(layout,restored)).toBe(true);
     for(const value of [NaN,Infinity,Math.PI+.01]){
       const bad=structuredClone(layout);bad.find(piece=>piece.id==='snare')!.standRotation=value;
       expect(()=>validateKitLayout(bad)).toThrow();
     }
-    const bad=structuredClone(layout);bad.find(piece=>piece.id==='tomLow')!.standRotation=0;
+    const bad=structuredClone(layout);bad.find(piece=>piece.id==='tomHigh')!.standRotation=0;
     expect(()=>validateKitLayout(bad)).toThrow();
+    const mounted=structuredClone(layout);mounted.find(piece=>piece.id==='tomLow')!.mount={kind:'standClamp',supportPieceId:'ride'};
+    expect(()=>validateKitLayout(mounted)).toThrow();
   });
   it('keeps equivalent serialized setup but detects physical and semantic edits',()=>{
     const accepted=kit(), serialized=accepted.map(piece=>({radius:piece.radius,instrument:pieceInstrument(piece),label:piece.label,position:[...piece.position] as [number,number,number],id:piece.id}));

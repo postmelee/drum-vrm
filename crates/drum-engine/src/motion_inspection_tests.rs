@@ -101,6 +101,8 @@ fn final_posture_inspection_reports_a_nonimpact_violation_without_changing_poses
         forearm: [0., 0., 1.],
         palm: [0., 1., 0.],
         desired_palm: [0., 1., 0.],
+        palm_roll_range: None,
+        palm_reference: None,
     };
     profile.hand_frames = Some([frame.clone(), frame]);
     profile.rest_tips[0] = [-0.1, 0.95, 0.65];

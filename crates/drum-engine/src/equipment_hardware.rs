@@ -340,7 +340,13 @@ pub(super) fn route(
     }
     if piece.instrument == Instrument::TomLow {
         let mut original = Vec::new();
-        for rotation in [0.4, 0.8, 1.2, 1.6] {
+        // Floor legs rotate as one assembly around the shell. Keep an accepted
+        // body-aware phase rather than reselecting an equipment-only phase when
+        // the saved kit is rebuilt. Suspended toms were routed above.
+        let rotations = piece
+            .stand_rotation
+            .map_or_else(|| vec![0.4, 0.8, 1.2, 1.6], |angle| vec![angle]);
+        for rotation in rotations {
             let mut rods = Vec::new();
             for leg in 0..3 {
                 let angle = leg as f64 * std::f64::consts::TAU / 3.0 + rotation;
@@ -593,6 +599,72 @@ pub(super) fn route(
 #[cfg(test)]
 mod hardware_family_tests {
     use super::*;
+
+    #[test]
+    fn floor_leg_phase_is_absolute_persisted_and_never_silently_reselected() {
+        let mut floor = crate::model::default_kit()
+            .into_iter()
+            .find(|piece| piece.instrument == Instrument::TomLow)
+            .unwrap();
+        for angle in [-1.0_f64, 0.7] {
+            floor.stand_rotation = Some(angle);
+            assert!(valid_piece_geometry(&floor));
+            let saved = serde_json::to_string(&floor).unwrap();
+            let loaded: KitPiece = serde_json::from_str(&saved).unwrap();
+            let geometry = kit_geometry(&[loaded]);
+            assert!(geometry.unresolved_piece_ids.is_empty());
+            let center = body(&floor).unwrap().center;
+            let legs: Vec<_> = geometry
+                .supports
+                .iter()
+                .filter(|part| part.role == "floorLeg")
+                .collect();
+            assert_eq!(legs.len(), 6);
+            let actual = (legs[0].start[0] - center[0]).atan2(legs[0].start[2] - center[2]);
+            assert!((actual - angle).abs() < 1e-9);
+        }
+        floor.stand_rotation = Some(0.0);
+        let physical = body(&floor).unwrap();
+        let radius = physical.half_extents[0].max(physical.half_extents[2]) + 0.02;
+        let blocker = EquipmentBox {
+            piece_id: "blocked-corridor".into(),
+            center: [
+                physical.center[0],
+                0.15,
+                physical.center[2] + radius + 0.035,
+            ],
+            half_extents: [0.025, 0.07, 0.025],
+            rotation: None,
+            kind: "body",
+        };
+        let bodies = vec![physical, blocker];
+        let (blocked, accepted) = route(&floor, &bodies, &[], &[floor.clone()], &[]);
+        assert!(!accepted, "the requested phase must retain its collision");
+        assert_eq!(
+            blocked
+                .iter()
+                .filter(|part| part.role == "floorLeg")
+                .count(),
+            6
+        );
+        floor.stand_rotation = None;
+        assert!(
+            route(&floor, &bodies, &[], &[floor.clone()], &[]).1,
+            "an unfixed assembly may select an unobstructed phase"
+        );
+        floor.stand_rotation = Some(std::f64::consts::PI + 0.01);
+        assert!(!valid_piece_geometry(&floor));
+        floor.stand_rotation = Some(f64::NAN);
+        assert!(!valid_piece_geometry(&floor));
+        floor.stand_rotation = Some(0.0);
+        floor.mount = Some(crate::model::PieceMount::StandClamp {
+            support_piece_id: "ride".into(),
+        });
+        assert!(
+            !valid_piece_geometry(&floor),
+            "a suspended tom does not own floor legs"
+        );
+    }
 
     #[test]
     fn explicit_tripod_phase_is_absolute_for_snare_boom_and_hihat() {

@@ -54,7 +54,7 @@ absolute-time mechanism state across motion, feedback and separate actual-marker
 inspection. The [equipment contact contract](equipment-contact.md#shared-contact-records-and-hi-hat-state)
 owns their fields, regeneration and capability limits.
 
-Planner `phrase-beam-8-beat-horizon-24-posture-v10` uses an eight-candidate beam with lookahead
+Planner `phrase-beam-8-beat-horizon-24-posture-v13` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each
@@ -167,13 +167,16 @@ prepared installation. This is bounded
 reuse, not a cache of arbitrary uploaded files.
 
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
-2, containing the plan, numeric profile, torso/elbow and equipment-approach tracks,
+3, containing the plan, numeric profile, torso, elbow/roll and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v11` distinguishes
-the physical-tool/advisory-body policy; earlier prepared candidates must be rebuilt.
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v13` distinguishes
+prepared numeric roll witnesses from pointwise orientation optimization; earlier prepared candidates must be rebuilt.
 Installation checks engine/planner versions, expected source/profile
-identity, finite values, ordering, track bounds, mandatory control times and assigned
-contact/pedal feasibility at the stored torso yaw and equipment pitch. A reachable
+identity, finite values, ordering, track bounds and mandatory control times. Each
+`SwivelSample.rolls` value must be finite and inside that hand's `palmRollRange`,
+or `None` consistently when the hand has no bounded-roll policy. Assigned hand impacts
+and retained count-in contacts are rechecked with the stored/interpolated swivel and
+roll, torso yaw and equipment/stroke pitch. Pedal feasibility is also retained. A reachable
 alternative pose cannot validate an unreachable stored impact. Equipment tracks additionally require bounded lift/pitch,
 rate limits and zero lift at each source impact. All mandatory equipment times must
 survive exactly; sorted extra controls may lie only within the original endpoints.
@@ -204,6 +207,16 @@ A pose is a function of the validated plan, profile and absolute song time.
 Sequential playback, shuffled seeks and fixed-frame export must produce the same
 major pose. No frame-history randomness or accumulated secondary physics may
 silently change that result.
+
+Static fitting and contact candidates use [calibration](calibration.md)'s bounded optimizer:
+five wrist/arm solves only when reachable with shared `anatomical_violation == 0`, otherwise 21.
+No new threshold is introduced. The temporal planner stores the selected roll alongside
+each elbow-angle control in `SwivelSample`. Edge checks and playback share smoothstep
+interpolation of both values and one fixed-roll wrist/arm solve, so playback does not
+repeat the pointwise orientation search. Legacy hands keep `None` and their existing solve.
+The existing angular-change weight also penalizes roll variation as a soft cost;
+it adds no control grid, frame history or hard roll-rate guarantee. Inspected samples
+do not certify collision-free interpolation over the entire continuous path.
 
 In the measured-profile path, left/right hands normally wait 3.5 cm above snare/hi-hat.
 Between repetitions on one physical piece, the ready tip stays over that piece.

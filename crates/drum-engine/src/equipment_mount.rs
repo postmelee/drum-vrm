@@ -190,6 +190,7 @@ mod tests {
         floor.mount = Some(PieceMount::StandClamp {
             support_piece_id: "ride".into(),
         });
+        floor.stand_rotation = None;
         let ride = kit
             .iter_mut()
             .find(|p| p.instrument == Instrument::Ride)

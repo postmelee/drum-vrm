@@ -17,6 +17,31 @@ function expectSameBounds(first: THREE.Box3, second: THREE.Box3) {
 }
 
 describe('measured equipment body descriptors', () => {
+  it('tilts rack heads toward the player and measures the whole tilted shell in the same frame', () => {
+    for (const id of ['tomHigh', 'tomMid'] as const) {
+      const piece = DEFAULT_KIT.find(value => value.id === id)!;
+      const visual = resolvePieceVisual('studio', id);
+      const model = createPieceModel(piece, visual, 'studio', DEFAULT_KIT, false);
+      const geometry = measureInstrumentGeometry(model.root, piece, 'procedural');
+      const expectedNormal = new THREE.Vector3(0, 1, 0).applyAxisAngle(new THREE.Vector3(1, 0, 0), -THREE.MathUtils.degToRad(visual.tilt));
+      expect(visual.tilt).toBe(12);
+      expect(expectedNormal.z).toBeLessThan(0); // seated player is toward -Z
+      expect(new THREE.Vector3(...geometry.surface.normal).distanceTo(expectedNormal)).toBeLessThan(1e-7);
+      const surfaces: THREE.Object3D[] = [];
+      model.root.traverse(node => { if (node.name === 'contactSurface') surfaces.push(node); });
+      const center = new THREE.Vector3(...piece.position).add(new THREE.Vector3(...geometry.surface.center));
+      const hit = new THREE.Raycaster(center.clone().addScaledVector(expectedNormal, .1), expectedNormal.clone().negate()).intersectObjects(surfaces, true)[0];
+      expect(hit).toBeDefined(); expect(hit.point.distanceTo(center)).toBeLessThan(1e-6);
+      const bounds = absoluteBounds(piece, geometry).expandByScalar(1e-7);
+      model.root.traverse(node => {
+        if (!(node instanceof THREE.Mesh) || node.userData.hitResponseRole === 'marker') return;
+        const vertices = node.geometry.getAttribute('position');
+        for (let index = 0; index < vertices.count; index++) expect(bounds.containsPoint(new THREE.Vector3().fromBufferAttribute(vertices, index).applyMatrix4(node.matrixWorld))).toBe(true);
+      });
+      disposeModel(model.root);
+    }
+  });
+
   it.each(['studio', 'vintage', 'electronic'] as const)('scales all %s body dimensions with a fitted radius while retaining serialized reference geometry', preset => {
     for (const original of DEFAULT_KIT.filter(piece => !['openHat', 'pedalHat'].includes(piece.id))) {
       const visual = resolvePieceVisual(preset, original.id, { rotation: 17, scale: 1.1 });

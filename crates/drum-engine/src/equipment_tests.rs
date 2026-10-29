@@ -79,6 +79,42 @@ fn vertically_disjoint_heads_are_not_a_playable_stack() {
 }
 
 #[test]
+fn tilted_rim_overhang_keeps_body_separation_and_bidirectional_stroke_clearance() {
+    let kit = default_kit();
+    let mut snare = kit.iter().find(|p| p.id == "snare").unwrap().clone();
+    let mut tom = kit.iter().find(|p| p.id == "tomHigh").unwrap().clone();
+    snare.position = [-0.0756, 0.825, 0.631];
+    tom.position = [-0.11, 1.11, 0.91];
+    // Measurements of the authored Studio bodies at 4/12 degrees, not a
+    // smaller collision-only proxy. The tilted rim overhang is about 3 cm.
+    snare.geometry = Some(serde_json::from_value(serde_json::json!({
+        "version":1,"referenceRadius":0.1778,"source":"procedural",
+        "body":{"center":[0.,-0.0678343554,0.0045341708],"halfExtents":[0.1913595082,0.0842273128,0.1945067039]},
+        "surface":{"center":[0.,0.0000195116,0.0002790259],"normal":[0.,0.9975640502598242,-0.0697564737441253],"radius":0.1706629661}
+    })).unwrap());
+    tom.geometry = Some(serde_json::from_value(serde_json::json!({
+        "version":1,"referenceRadius":0.1524,"source":"procedural",
+        "body":{"center":[0.,-0.1105306789,0.0231891806],"halfExtents":[0.1659595082,0.1461290116,0.1790918551]},
+        "surface":{"center":[0.,0.0001767722,0.0008316468],"normal":[0.,0.9781476007338057,-0.20791169081775931],"radius":0.1430543105}
+    })).unwrap());
+    let (a, b) = (surface(&snare), surface(&tom));
+    assert!((a.center[0] - b.center[0]).hypot(a.center[2] - b.center[2]) < a.radius + b.radius);
+    assert!(boxes_clear(&body(&snare).unwrap(), &body(&tom).unwrap()));
+    assert!(playable_pair(&snare, &tom));
+    assert!(playable_pair(&tom, &snare));
+    // Moving the same separated shell over the useful snare striking region
+    // must still fail in either ordering; removal of the 2D rule is no waiver.
+    tom.position[0] = snare.position[0];
+    tom.position[2] = snare.position[2];
+    assert!(boxes_clear(&body(&snare).unwrap(), &body(&tom).unwrap()));
+    assert!(!playable_pair(&snare, &tom));
+    assert!(!playable_pair(&tom, &snare));
+    // Lowering into the snare remains a physical body collision.
+    tom.position = [-0.11, 1.07, 0.91];
+    assert!(!boxes_clear(&body(&snare).unwrap(), &body(&tom).unwrap()));
+}
+
+#[test]
 fn actual_depth_and_radius_scale_together_and_invalid_geometry_is_rejected() {
     let mut p = default_kit().into_iter().find(|p| p.id == "snare").unwrap();
     p.geometry = Some(PieceGeometry {

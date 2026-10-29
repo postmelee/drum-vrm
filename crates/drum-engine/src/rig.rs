@@ -12,6 +12,12 @@ pub const RIG_POSE_FLOATS: usize = POSE_FLOATS + 20;
 pub const COORDINATE_SYSTEM: &str = "legacy-y-up-z-forward-left-negative-x";
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PalmReference {
+    ShaftHeading,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HandControlFrame {
@@ -19,6 +25,14 @@ pub struct HandControlFrame {
     pub forearm: Vec3,
     pub palm: Vec3,
     pub desired_palm: Vec3,
+    /// Allowed roll around the target-oriented shaft relative to desired_palm.
+    /// This is an animation-style preference, independent of anatomical limits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palm_roll_range: Option<[f64; 2]>,
+    /// None keeps a world-space preference. ShaftHeading transports the desired
+    /// palm by yaw from canonical +Z forward to the shaft's horizontal heading.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palm_reference: Option<PalmReference>,
 }
 
 /// Numeric envelope measurements in the profile's world basis. The torso axes
@@ -263,6 +277,16 @@ impl RigProfile {
                     || !unit(frame.palm)
                     || !unit(frame.desired_palm)
                     || perpendicular.abs() > 1e-6
+                    || frame.palm_roll_range.is_some_and(|[min, max]| {
+                        !min.is_finite()
+                            || !max.is_finite()
+                            || min > 0.
+                            || max < 0.
+                            || min > max
+                            || min < -std::f64::consts::PI
+                            || max > std::f64::consts::PI
+                            || max - min > std::f64::consts::PI
+                    })
                 {
                     return Err("손목 기준 축은 유한한 직교 단위 방향이어야 합니다.".into());
                 }
@@ -336,6 +360,47 @@ impl RigProfile {
         self.hand_frames.as_ref().map(|frames| {
             hand_solver::solve_with_swivel(self, limb, tip, pitch, &frames[limb], swivel)
         })
+    }
+
+    /// Replay a prepared roll; absence preserves the legacy/static solve path.
+    pub fn solve_hand_with_swivel_and_roll(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+        roll: Option<f64>,
+    ) -> Option<HandSolution> {
+        let Some(roll) = roll else {
+            return self.solve_hand_with_swivel(limb, tip, pitch, swivel);
+        };
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        let [minimum, maximum] = frame.palm_roll_range?;
+        if !roll.is_finite() || roll < minimum - 1e-9 || roll > maximum + 1e-9 {
+            return None;
+        }
+        Some(hand_solver::solve_with_roll(
+            self,
+            limb,
+            tip,
+            pitch,
+            frame,
+            swivel,
+            roll.clamp(minimum, maximum),
+        ))
+    }
+
+    /// Extract an optimized witness's bounded roll for deterministic replay.
+    /// Legacy frames have no independent roll control and return None.
+    pub fn hand_roll(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        hand: &HandSolution,
+    ) -> Option<f64> {
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        hand_solver::selected_roll(self, limb, tip, pitch, frame, hand)
     }
 
     pub fn reachable(&self, limb: usize, tip: Vec3) -> bool {

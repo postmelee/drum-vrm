@@ -257,18 +257,32 @@ failures rather than altering limb lengths or source times.
 ## Hands, feet and repeatability
 
 The grip uses a measured diagonal hand-local mount and available finger curl.
-The default `natural` palm preference is oblique inward/downward (45° between
-those directions), with up/inward/down retained as explicit alternatives. This is
+The default `natural` palm preference starts inward/thumb-up relative to the
+shaft heading and permits pronation toward palm-down. Up/inward/down remain explicit alternatives. This is
 an engineering starting pose, not a claim that one grip suits every drummer.
 Symmetric palms-up is not a complete traditional grip. The thumb solver jointly
 minimizes pad-to-shaft distance and distal-axis misalignment with bounded rotations
 about the model's rest joints; it never extends finger bones. Missing optional
 fingers retain reduced grip detail. Optional measured `handFrames` let the common solver
 orient the shaft toward each target, recover the wrist from the rotated grip/tool
-offset, and solve the real two-bone arm. Four analytic roll refinements reduce wrist
-swing while preserving segment lengths and the calibrated grip. Desired palm direction
-is an initial preference; the shared posture gate limits actual wrist swing to 0.60 rad.
-The bend plane is transported across the front workspace before planned elbow swivel.
+offset, and solve the real two-bone arm. With optional `palmRollRange`, static fitting/contact
+uses four analytic refinements and a final solve, returning after five wrist/arm solves only
+when reachable and shared `anatomical_violation == 0`, without a new threshold. Otherwise it compares
+the proposal and interval endpoints, then performs 12 fixed golden-section refinements: 21 solves in total.
+Ranking prioritizes reach and shared anatomical constraints, then wrist/comfort cost and absolute roll.
+This preserves segment lengths and the calibrated grip, without a global-optimum guarantee.
+Selected numeric rolls join elbow angles at the existing `SwivelSample` control knots.
+Edge checks and runtime use the same smoothstep-interpolated angles/rolls and one fixed-roll
+wrist/arm solve, without rerunning the pointwise optimizer, adding a grid or keeping frame history.
+Roll variation has a soft angular-change cost, not a new hard rate limit or a collision-free-path guarantee.
+`palmReference: shaftHeading` transports the natural preference with horizontal shaft yaw;
+absence keeps a world-space preference. Bounded profiles choose the exact elbow-circle
+point closest to the measured forearm, then apply the planned swivel. The independent
+posture gate still limits actual wrist swing to 0.60 rad. Legacy frames without the
+roll policy retain `None` rolls, transported elbow poles and the original four unconstrained roll refinements.
+`RigContactSample.palmNormal` measures the actual rendered hand normal in renderer
+world coordinates (+Y up; reflect X when comparing with the engine profile);
+its range is review evidence, not a universal technique threshold.
 This is not a complete anatomical or skin-clearance model. Profiles without hand frames
 retain the previous fixed-orientation path. [Calibration](calibration.md) owns the numeric rules.
 With hand frames, bounded joint pitch/lift repair adjusts the shared tool path

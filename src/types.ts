@@ -3,7 +3,8 @@ export type { EquipmentMechanism } from './equipment-types';
 export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
 /** Numeric Rust contract. Geometry is reflected only at the native VRM adapter boundary. */
-export interface HandControlFrame { forearm: Vec3; palm: Vec3; desiredPalm: Vec3; }
+export interface HandControlFrame { forearm: Vec3; palm: Vec3; desiredPalm: Vec3; palmRollRange?: [number, number];
+  palmReference?: 'shaftHeading'; }
 /** Bounded sampled envelopes, never a skin/clothing collision certificate. */
 export interface BodyBox { center: Vec3; halfExtents: Vec3; }
 export interface BodyGeometry {

@@ -16,7 +16,7 @@ mod sticking;
 mod tool_pair_path;
 #[path = "motion_transfer.rs"]
 mod transfer;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v11";
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v13";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -445,6 +445,14 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
         }
         start = end;
     }
+}
+
+/// Exercise source-to-contact assignment without constructing temporal tracks.
+/// Sticking regressions inspect this boundary; trajectory suites cover Motion.
+#[cfg(test)]
+pub(crate) fn assign_measured_contacts_for_test(plan: &mut PerformancePlan, profile: &RigProfile) {
+    crate::contact::apply(plan, profile);
+    assign_for_profile(plan, Some(profile));
 }
 
 /// Analytic two-bone IK in a stable plane, initialized from calibration each time.
@@ -1502,16 +1510,20 @@ impl Motion {
         };
         let yaw = crate::body_motion::at(&self.body_turns, time);
         let posed_profile = self.profile.as_ref().map(|p| p.turned(yaw));
-        let swivels = crate::hand_coordination::at(&self.hand_swivels, time);
+        let hands = crate::hand_coordination::at(&self.hand_swivels, time);
         let mut pose = Vec::with_capacity(RIG_POSE_FLOATS);
         let mut rotations = [[0.0, 0.0, 0.0, 1.0]; 4];
         for (limb, rotation) in rotations.iter_mut().enumerate() {
             let (tip, pitch) = self.stroke_at(limb, time);
             if let Some(profile) = &posed_profile {
                 if limb < 2 {
-                    if let Some(solution) =
-                        profile.solve_hand_with_swivel(limb, tip, -pitch, swivels[limb])
-                    {
+                    if let Some(solution) = profile.solve_hand_with_swivel_and_roll(
+                        limb,
+                        tip,
+                        -pitch,
+                        hands.angles[limb],
+                        hands.rolls[limb],
+                    ) {
                         *rotation = solution.rotation;
                         for point in [
                             profile.roots[limb],

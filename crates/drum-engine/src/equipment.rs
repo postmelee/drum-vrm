@@ -107,10 +107,11 @@ pub struct EquipmentGeometry {
 
 pub fn valid_piece_geometry(piece: &KitPiece) -> bool {
     piece.stand_rotation.is_none_or(|angle| {
-        matches!(
+        (matches!(
             piece.instrument,
             Instrument::Snare | Instrument::Hihat | Instrument::Crash | Instrument::Ride
-        ) && angle.is_finite()
+        ) || (piece.instrument == Instrument::TomLow && piece.mount.is_none()))
+            && angle.is_finite()
             && angle.abs() <= std::f64::consts::PI
     }) && piece.pedal_forward.is_none_or(|direction| {
         piece.instrument == Instrument::PedalHat
@@ -418,21 +419,16 @@ fn head(instrument: Instrument) -> bool {
         Instrument::Snare | Instrument::TomHigh | Instrument::TomMid | Instrument::TomLow
     )
 }
-/// Drumheads require distinct projected playing regions, regardless of height.
-/// Cymbals may overhang another body only outside its bounded head-approach lane.
+/// Preserve each head's three-dimensional central approach lane. Projected rim
+/// overlap alone is not obstruction: tilted drums can overhang at different
+/// heights while their bodies and useful striking regions remain separate.
+/// Body/support separation and actual whole-tool clearance remain separate
+/// geometry and motion/contact gates; this query grants no collision exemption.
 pub fn playable_pair(a: &KitPiece, b: &KitPiece) -> bool {
     if matches!(a.instrument, Instrument::OpenHat | Instrument::PedalHat)
         || matches!(b.instrument, Instrument::OpenHat | Instrument::PedalHat)
     {
         return true;
-    }
-    let (sa, sb) = (surface(a), surface(b));
-    if head(a.instrument)
-        && head(b.instrument)
-        && (sa.center[0] - sb.center[0]).hypot(sa.center[2] - sb.center[2])
-            < sa.radius + sb.radius + CLEARANCE
-    {
-        return false;
     }
     let access = |piece: &KitPiece, other: &KitPiece| {
         if !head(piece.instrument) {

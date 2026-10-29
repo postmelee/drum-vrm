@@ -5,16 +5,26 @@ import { DEFAULT_KIT } from '../src/kit-default';
 import type { KitPiece } from '../src/types';
 
 describe('semantic hardware presets', () => {
+  it('drops floor-leg phase when replacing those legs with a stand clamp', () => {
+    const input = structuredClone(DEFAULT_KIT);
+    input.find(piece => piece.id === 'tomLow')!.standRotation = .8;
+    const result = applyKitHardwarePreset(input, 'suspended-floor');
+    expect(result.find(piece => piece.id === 'tomLow')!.standRotation).toBeUndefined();
+    expect(input.find(piece => piece.id === 'tomLow')!.standRotation).toBe(.8);
+    expect(applyKitHardwarePreset(result, 'floor-legs').find(piece => piece.id === 'tomLow')!.standRotation).toBeUndefined();
+  });
   it('changes only floor support metadata and preserves accepted measurements', () => {
     const input = structuredClone(DEFAULT_KIT), original = structuredClone(input);
     const result = applyKitHardwarePreset(input, 'suspended-floor');
     expect(input).toEqual(original);
     expect(kitHardwarePreset(result)).toBe('suspended-floor');
     expect(result.find(piece => piece.id === 'tomLow')!.mount).toEqual({kind:'standClamp',supportPieceId:'ride'});
-    expect(result.map(({mount, ...piece})=>piece)).toEqual(original);
+    const withoutLegPhase = structuredClone(original);
+    delete withoutLegPhase.find(piece => piece.id === 'tomLow')!.standRotation;
+    expect(result.map(({mount, ...piece})=>piece)).toEqual(withoutLegPhase);
     expect(sameKitLayout(input,result)).toBe(false);
     const restored = applyKitHardwarePreset(result,'floor-legs');
-    expect(restored).toEqual(original); expect(kitHardwarePreset(restored)).toBe('floor-legs');
+    expect(restored).toEqual(withoutLegPhase); expect(kitHardwarePreset(restored)).toBe('floor-legs');
   });
 
   it('retains explicit mount dependencies through layout validation and rejects invalid links', () => {

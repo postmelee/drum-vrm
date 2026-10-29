@@ -61,6 +61,8 @@ fn profile(scale: f64) -> RigProfile {
         forearm: [0.0, 0.0, 1.0],
         palm: [0.0, 1.0, 0.0],
         desired_palm: [0.0, 1.0, 0.0],
+        palm_roll_range: None,
+        palm_reference: None,
     };
     p.hand_frames = Some([frame.clone(), frame]);
     p

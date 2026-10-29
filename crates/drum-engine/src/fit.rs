@@ -920,12 +920,15 @@ fn choose_leg_clear_stand_phase(
     if failures.is_empty() {
         return true;
     }
-    if !matches!(
+    let rotatable = matches!(
         candidate[index].instrument,
         Instrument::Snare | Instrument::Hihat | Instrument::Crash | Instrument::Ride
-    ) || failures
-        .iter()
-        .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
+    ) || (candidate[index].instrument == Instrument::TomLow
+        && candidate[index].mount.is_none());
+    if !rotatable
+        || failures
+            .iter()
+            .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
     {
         return false;
     }

@@ -142,9 +142,13 @@ describe('semantic humanoid and hand-local tools', () => {
       const forearm = hand.getWorldPosition(new Vector3()).sub(lower.getWorldPosition(new Vector3())).normalize();
       const forward = new Vector3(side === 'left' ? .065 : -.065, 0, .008).normalize().applyQuaternion(hand.getWorldQuaternion(new Quaternion()));
       const palm = new Vector3(0, -1, 0).applyQuaternion(hand.getWorldQuaternion(new Quaternion()));
-      const desired = palmOrientation === 'natural' ? new Vector3(limb === 0 ? -1 : 1, -1, 0).normalize() : palmOrientation === 'up' ? new Vector3(0, 1, 0) : palmOrientation === 'down' ? new Vector3(0, -1, 0) : new Vector3(limb === 0 ? -1 : 1, 0, 0);
+      const desired = palmOrientation === 'up' ? new Vector3(0, 1, 0) : palmOrientation === 'down' ? new Vector3(0, -1, 0) : new Vector3(limb === 0 ? -1 : 1, 0, 0);
       desired.addScaledVector(forearm, -desired.dot(forearm)).normalize();
       expect(forward.dot(forearm)).toBeGreaterThan(1 - 1e-10); expect(palm.dot(desired)).toBeGreaterThan(1 - 1e-10);
+      expect(profile.handFrames![limb].palmReference).toBe(palmOrientation === 'natural' ? 'shaftHeading' : undefined);
+      const sample = rig.getContactSamples()[limb];
+      expect(new Vector3(...sample.palmNormal!).distanceTo(palm)).toBeLessThan(1e-10);
+      expect(profile.handFrames![limb].palmRollRange).toEqual(palmOrientation === 'natural' ? (limb === 0 ? [-Math.PI / 2, 0] : [0, Math.PI / 2]) : [-.15, .15]);
       const forearmPalm = new Vector3(0, -1, 0).applyQuaternion(lower.getWorldQuaternion(new Quaternion()));
       forearmPalm.addScaledVector(forearm, -forearmPalm.dot(forearm)).normalize();
       expect(forearmPalm.dot(palm)).toBeGreaterThan(1 - 1e-10);

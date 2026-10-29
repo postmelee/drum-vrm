@@ -7,7 +7,7 @@ use crate::{
 };
 use hand_coordination::SwivelSample;
 use serde::{Deserialize, Serialize};
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 3;
 const MAX_BYTES: usize = 128 * 1024 * 1024;
 pub(super) const MAX_EQUIPMENT_SAMPLES: usize = 16_000;
 
@@ -245,6 +245,20 @@ impl Motion {
                             .abs()
                                 > 1e-8
                     })
+                    || (0..2).any(|limb| {
+                        let range = p
+                            .profile
+                            .as_ref()
+                            .and_then(|profile| profile.hand_frames.as_ref())
+                            .and_then(|frames| frames[limb].palm_roll_range);
+                        match (s.rolls[limb], range) {
+                            (None, None) => false,
+                            (Some(roll), Some([minimum, maximum])) => {
+                                !roll.is_finite() || roll < minimum - 1e-9 || roll > maximum + 1e-9
+                            }
+                            _ => true,
+                        }
+                    })
             })
             || p.hand_swivels.windows(2).any(|w| {
                 w[1].time <= w[0].time
@@ -309,16 +323,25 @@ impl Motion {
                     let pitch =
                         crate::equipment_motion::sample(&p.equipment_path, hit.time, limb).1;
                     let turned = profile.turned(body_motion::at(&p.body_turns, hit.time));
-                    let swivel = hand_coordination::at(&p.hand_swivels, hit.time)[limb];
+                    let hands = hand_coordination::at(&p.hand_swivels, hit.time);
                     let reachable = turned
-                        .solve_hand_with_swivel(limb, hit.target, pitch, swivel)
+                        .solve_hand_with_swivel_and_roll(
+                            limb,
+                            hit.target,
+                            pitch,
+                            hands.angles[limb],
+                            hands.rolls[limb],
+                        )
                         .map_or_else(
-                            || turned.reachable_at_pitch(limb, hit.target, pitch),
-                            |hand| hand.reachable,
+                            || {
+                                turned.hand_frames.is_none()
+                                    && turned.reachable_at_pitch(limb, hit.target, pitch)
+                            },
+                            |hand| hand.reachable && super::distance(hand.tip, hit.target) < 1e-5,
                         );
                     if !reachable {
                         return Err(
-                            "준비된 연주의 몸통 회전이 원본 타격 접촉을 보존하지 않습니다.".into(),
+                            "준비된 연주의 양손 경로가 원본 타격 접촉을 보존하지 않습니다.".into(),
                         );
                     }
                 }
@@ -326,11 +349,36 @@ impl Motion {
         }
         // Reuse the complete plan/assignment/index validation path. Only expensive
         // torso/DP planning is skipped, using the already validated numeric tracks.
-        Self::assemble_with_tracks(
+        let motion = Self::assemble_with_tracks(
             p.plan,
             p.profile,
             Some((p.body_turns, p.hand_swivels, p.equipment_path)),
-        )
+        )?;
+        // Paired-tool cues are source contacts too, although they are not Hits.
+        if let Some(profile) = &motion.profile {
+            for cue in &motion.count_in.cues {
+                let turned = profile.turned(body_motion::at(&motion.body_turns, cue.time));
+                let controls = hand_coordination::at(&motion.hand_swivels, cue.time);
+                for limb in 0..2 {
+                    let (tip, pitch) = motion.stroke_at(limb, cue.time);
+                    if turned
+                        .solve_hand_with_swivel_and_roll(
+                            limb,
+                            tip,
+                            -pitch,
+                            controls.angles[limb],
+                            controls.rolls[limb],
+                        )
+                        .is_none_or(|hand| {
+                            !hand.reachable || super::distance(hand.tip, cue.contact_point) > 1e-5
+                        })
+                    {
+                        return Err("준비된 연주의 카운트인 접촉이 보존되지 않았습니다.".into());
+                    }
+                }
+            }
+        }
+        Ok(motion)
     }
 }
 
@@ -362,6 +410,8 @@ mod tests {
             forearm: [0., 0., 1.],
             palm: [0., 1., 0.],
             desired_palm: [0., 1., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         profile.hand_frames = Some([frame.clone(), frame]);
         Motion::with_profile(plan, profile).unwrap()
@@ -379,6 +429,72 @@ mod tests {
             piece.geometry = Some(crate::equipment::local_geometry(piece));
         }
         Motion::with_profile(plan, original.profile.unwrap()).unwrap()
+    }
+    fn sample_rolls(mixed: bool) -> Motion {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+        let mut profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        if mixed {
+            profile.hand_frames.as_mut().unwrap()[1].palm_roll_range = None;
+        }
+        let mut plan = sample(false).plan;
+        crate::contact::apply(&mut plan, &profile);
+        Motion::with_profile(plan, profile).unwrap()
+    }
+    #[test]
+    fn worker_roll_track_roundtrip_and_policy_validation() {
+        for mixed in [false, true] {
+            let original = sample_rolls(mixed);
+            let text = original.prepared_json();
+            let profile = profile_json(&original);
+            let hash = &original.plan.midi_hash;
+            let restored = Motion::from_prepared_json(&text, hash, &profile).unwrap();
+            for time in [0.417, -0.5, 0., 0.25, 0.125, 0.75, -0.1, 0.417] {
+                assert_eq!(original.evaluate_rig(time), restored.evaluate_rig(time));
+            }
+            let prepared: Prepared = serde_json::from_str(&text).unwrap();
+            assert!(prepared
+                .hand_swivels
+                .iter()
+                .all(|s| s.rolls[0].is_some() && s.rolls[1].is_none() == mixed));
+            let mut stale = prepared.clone();
+            stale.hand_swivels[0].rolls[0] = Some(0.12345);
+            assert_ne!(stale.checksum(), prepared.checksum);
+            assert!(Motion::from_prepared_json(
+                &serde_json::to_string(&stale).unwrap(),
+                hash,
+                &profile
+            )
+            .is_err());
+            for roll in [None, Some(10.), Some(f64::NAN)] {
+                let mut edited = prepared.clone();
+                edited.hand_swivels[0].rolls[0] = roll;
+                edited.checksum = edited.checksum();
+                assert!(Motion::from_prepared_json(
+                    &serde_json::to_string(&edited).unwrap(),
+                    hash,
+                    &profile
+                )
+                .is_err());
+            }
+            if mixed {
+                let mut edited = prepared.clone();
+                edited.hand_swivels[0].rolls[1] = Some(0.);
+                edited.checksum = edited.checksum();
+                assert!(Motion::from_prepared_json(
+                    &serde_json::to_string(&edited).unwrap(),
+                    hash,
+                    &profile
+                )
+                .is_err());
+            }
+            let mut missing: serde_json::Value = serde_json::from_str(&text).unwrap();
+            missing["handSwivels"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("rolls");
+            assert!(Motion::from_prepared_json(&missing.to_string(), hash, &profile).is_err());
+        }
     }
     #[test]
     fn exact_source_times_take_priority_over_nearby_sampling_grid() {

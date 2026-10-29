@@ -482,6 +482,8 @@ mod tests {
             forearm: [0., 0., 1.],
             palm: [0., 1., 0.],
             desired_palm: [0., 1., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         p.hand_frames = Some([frame.clone(), frame]);
         let target = [-0.2, 0.95, 0.55];
