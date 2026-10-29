@@ -371,3 +371,61 @@ Executed checks on the v18 source/bundle:
 
 The source remains a draft owner-review checkpoint. It does not merge PR #65,
 change Pages, close #18/#23, or authorize the deferred VRM 0.0/FBX validation.
+
+### Focused follow-up on the owner's lowered-elbow request
+
+The following private comparisons use runtime checkpoint `2b7660a` and the v18
+WASM above. None is adopted into production. They distinguish an inward-grip
+contact witness from a relaxed arm and a safe route to that witness.
+
+- All four current layouts contain inward high-tom witnesses in the existing
+  pitch/swivel family. However, B/Twist's high-tom horizontal reach at 6.5 s is
+  79.23/76.02 cm, near their arm-plus-tool lengths of 81.76/79.62 cm. Even an
+  optimistic two-link calculation that ignores wrist and equipment constraints
+  needs at least 71.66/67.06 degrees of upper-arm elevation. A valid inward
+  witness therefore does not establish the owner's dropped-elbow posture.
+- Ranking a pitch by its most comfortable existing witness, rather than its
+  first valid witness, exposes a real selection weakness. The isolated change
+  makes Twist's first high tom inward but raises its arm from 70.88 to 85.60
+  degrees; equipment/pair failure counts rise from 11/1 to 62/4. The patch was
+  saved privately and reverted byte-for-byte. No extra candidate grid was added.
+- Replacing the arm-comfort deadband with absolute elevation, retaining its
+  coefficient/cap and every hard bound, also regresses the public models and
+  physical paths. The cap merges high-arm candidates into the same cost. This
+  single private trial is rejected; no coefficient sweep was adopted.
+- A lower native right-crash endpoint exists at 54.99 degrees versus 67.22,
+  with a preceding swivel sequence within the existing 2 rad/s control bound.
+  Its endpoint gates pass, but current interpolation exceeds the 90-degree
+  palm interval by up to 1.49 degrees between endpoints. World-quaternion SLERP
+  still exceeds it by 0.23 degrees. Neither is a validated replacement route.
+
+The measured 5 mm body-envelope reserve limits a simultaneous standard-depth
+rack drop to 4.57 cm for native/Seed, 3.57 cm for B and 0.12 cm for the currently
+fitted Twist. The first limiting pair is snare/rack, not a stand. These are
+conservative OBB boundaries, not exact triangle collision proofs.
+
+The existing compact shell (11.66 cm depth) plus a common 5 cm drop clears static
+equipment geometry and makes the first high tom inward in all four rigs. B's
+arm falls from 74.78 to 67.88 degrees and Twist's from 70.87 to 64.69. However,
+their minimum inter-stick clearances worsen from -3.14/-3.31 mm to -5.45/-7.86
+mm; all four still fail temporal acceptance. All 53 assignments, original facts,
+contact, seek independence and restoration remain intact. This variant is also
+kept private. Moving only the seat forward by 8 or 16 cm fails the common static
+certificate for B/Twist: feet remain reachable, but the right thigh core meets
+the snare. A separate layout/trajectory repair is required.
+
+A single additional right-crash variant (6 cm inward, 10 cm toward the player,
+5 cm lower) fails static geometry in all four rigs: ride/crash envelope overlap
+for native/Seed and mid-tom/crash overlap or insufficient reserve for B/Twist.
+It was rejected before motion preparation, with no wider placement sweep.
+
+Private reproduction records: `.local/high-neutral-v18-audit/`,
+`.local/elbow-trajectory-v18/`, `.local/elevation-ablation-v18/`,
+`.local/rack-lowering-v18-audit/`,
+`.local/reference-layout/v18-compact-lower5-posture/`, and
+`.local/seat-forward-v18-audit/`; the rejected crash variant is under
+`.local/reference-layout/v18-right-crash-lower-inward-inputs/`.
+Textured B/Seed/Twist high-tom and right-crash
+side views were inspected using the final v18 browser bundle; B's complete
+Posture playback also reached the end. These views retain the visible problems
+and do not promote the numeric failures to a natural-motion pass.

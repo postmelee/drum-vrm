@@ -23,8 +23,13 @@ high tom and all models retain temporal tool/posture failures. Native/Seed high
 toms improve; this does not establish all-model natural-motion completion.
 An exact route cache reduces the isolated native Studio benchmark from 33.03 to
 11.05 seconds with identical prepared bytes; public fitting and long-song latency
-remain severe. Next resolve the remaining approach/grip transitions using actual
-stick paths and wrist/upper-arm motion, before expanding the model matrix.
+remain severe. The focused follow-up also finds that B/Twist rack targets are
+near maximum arm-plus-stick reach: inward contact alone cannot provide a dropped
+elbow. Independent pitch-ranking, arm-cost, compact-rack lowering and seat-only
+changes each retain or worsen physical failures and were not adopted. Next
+reconcile comfortable rack/crash approach distance with snare/leg clearance and
+preserve feasible arm/tool witnesses through transitions, before expanding the
+model matrix. Do not repeat isolated weight or angle sweeps.
 Keep the owner review before VRM 0.0/FBX handoff. Fast-fill choice explanations
 also remain unfinished. Do not add another fitting grid or force paradiddles into every fill. The
 [ergonomics/sticking research](research/ergonomics-and-sticking.md) records why
