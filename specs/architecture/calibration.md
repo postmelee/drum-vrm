@@ -189,7 +189,7 @@ and skeletal posture checks at contact and two preparation samples. The samples 
 rad. Initial cached queries keep the five original elbow candidates. Seat retries
 and shared contact queries can refine the same −0.8–+0.8 rad interval in 0.05 rad
 steps when coarse witnesses fail; anatomical limits and the 2 mm physical-tool
-margin remain hard constraints. Final certification uses the shared refined queries for every result.
+margin remain hard constraints. Final certification uses the shared refined queries for every result. Across the nine pitches, static contact/probe queries exhaust rigid-twist witnesses that preserve the legacy arm before trying the full fallback family; fixed-pitch queries retain their original coarse-first full-family search.
 Fitting requires these probes at neutral torso yaw;
 optional runtime facing must preserve the actual pitched contacts rather than rescue
 an otherwise unreachable layout. Snare center/rim-side regions, hat bow/edge, ride
@@ -211,7 +211,7 @@ Each sample must be reachable, with these bounds:
 A shared soft objective additionally prefers elevation below `35° + 55° × a`,
 interior elbow angles 80–140°, and a forearm no more than 20° downward. Squared
 radian excesses have weights 0.22, 0.12 (folded), 0.06 (extended) and 0.06
-(downward), capped at 0.39 per arm. These are adjustable animation priors;
+(downward), plus `0.08 × (palmRoll / (π/2))²` for natural grip to prefer inward/thumb-up when feasible. Layout, pitch, body and temporal selection share that term; explicit palm preferences do not acquire it. The total remains capped at 0.39 per arm. These are adjustable animation priors;
 Yamaha's relaxed-arm examples inform the objective, not its numeric limits.
 Ready-pair selection minimizes this objective, `0.015 × wristOffset²` and bounded
 body-overlap penalties among candidates satisfying anatomical and physical-tool
@@ -220,7 +220,7 @@ constraints. For advisory clearance `c`, the penalty is
 even for very large costume envelopes, so visual avoidance cannot outweigh a
 physical tool constraint. Per-hand body clearance and the pair's arm/cross clearance
 are scored separately. The same nine bounded wrist offsets and coarse-first elbow
-search are used, with bounded refinement only when no coarse pair exists.
+search are used: arm-preserving coarse pairs across the nine pitches, then their bounded refinement, followed only if needed by full-family coarse and refined pairs.
 Each hand is filtered and sorted before checking pairs; no Cartesian allocation
 or avatar-specific exception is needed. Kit probes,
 equipment routing, torso planning and temporal elbow planning use the same
@@ -245,7 +245,7 @@ phrase planner must validate actual assignments and transitions. Legacy profiles
 static reach checks without these posture guards.
 
 Candidates also use the [common equipment/contact geometry](equipment-contact.md): measured or procedural
-body boxes, projected head access and generated support/pedal envelopes. Every returned proposal, including
+body boxes and generated support/pedal envelopes; broad head access is advisory. Every returned proposal, including
 an unchanged input, undergoes the same final certification: arrangement, structural lower-limb clearance,
 rigid equipment clearance, designated-hand anatomical/whole-tool checks and required tool-pair checks
 determine `complete`. Adding a later instrument must preserve previously placed instruments' contact
@@ -263,7 +263,7 @@ return the **original layout unchanged**, `scale: 1`, zero translation, `pieceAd
 `seatOffset` and `complete: false`. `unreachablePieceIds` identifies reach or posture failures;
 `clearancePieceIds` identifies unresolved common equipment geometry. `layoutViolations` separates
 arrangement and structural lower-limb failures. Optional `advisoryLayoutViolations` lists measured leg/foot
-envelope warnings on that returned setup, excluding those already reported as hard failures. It never gates
+envelopes and broad `head-approach:<head>:<obstacle>` warnings, excluding reported hard failures. It never gates
 `complete`; absence in an older response means unreported, not clear. The browser shows these in Analysis,
 not as fit-failure toasts. The browser automatically applies a complete fit when
 importing a character or restoring the built-in rig, and offers persistent undo. Incomplete fitting retains
@@ -293,6 +293,7 @@ use an explicit skeleton fallback. The calculation distinguishes two uses:
 | --- | --- |
 | Complete physical stick against equipment or the other stick | Hard rejection; ordinarily 2 mm, with explicit count-in contact/approach rules |
 | Structural leg/foot cores against equipment | Hard rejection; 5 mm margin |
+| Broad normal-axis head-access capsule | Advisory; actual contact and whole-stick checks remain mandatory |
 | Measured torso, arms, hands, legs, shoes and clothing, including stick/body overlap | Advisory ranking and diagnostics; no reach veto |
 
 The raw inspection metrics remain available. Arms and hands use capsules, and the historical stick metric
@@ -342,23 +343,23 @@ the hand. Writing a correct-looking tip position after solving the skeleton woul
 hide an attachment error. The rendered endpoint is therefore an independent observed
 quantity in contact checks.
 
-The diagonal palm mount and available finger curl remain measured adapter geometry.
-`handFrames` supply forearm/palm axes and a desired palm direction. The shared Rust
-solver first aims the shaft horizontally from shoulder toward target, with a 0.25 rad
-downward inclination plus the selected pitch. It recovers the wrist from that rotation
-and the complete grip/tip offset, then solves the actual two-bone arm. Four deterministic
-analytic roll updates around the shaft reduce measured wrist swing; palm direction is
-an initial preference, not an exact final constraint. The 0.60 rad wrist gate remains
-independent of this refinement. Neither bones nor the hand/tool attachment are stretched.
-The elbow preference combines 0.45 times the outward shoulder axis with unit down;
-shortest-arc transport carries its bend plane from body-forward to shoulder-to-wrist,
-then applies the planned swivel. Static fitting and runtime evaluation share this solve.
+The shared matched grip uses a shaft 30° from measured hand-local forward toward the orthogonal across-palm axis. Finger curl, thumb, mount and grip/tool offsets are measured together against that shaft; `handFrames` supply forearm/palm axes and desired palm. This authored angle is not an anatomical universal or a guarantee of inward palms at every hit.
+The initial shaft approach aims from shoulder to target in XZ, with 0.25 rad downward inclination plus pitch. Optional `palmReference: shaftHeading` rotates desired palm from +Z by horizontal yaw.
+Natural uses inward followed by 0–90° pronation, side-signed in `palmRollRange`; explicit up/inward/down allow ±0.15 rad around their world preference.
+Ranges contain zero, lie within ±π and span at most π. These are grip policies, not anatomical limits.
+Static fitting/contact candidates retain the legacy anatomical elbow pole: 0.45 times the outward shoulder axis plus down, transported by shortest arc from body-forward to shoulder-to-wrist.
+The solver first tries a rigid twist about the wrist-to-tip axis, preserving the existing elbow, wrist and contact exactly. It intersects the palm policy and existing wrist-swing constraints as sinusoidal inequalities, then prefers wrist comfort among feasible witnesses. Shared `HandEnvironment` applies intended-piece whole-tool clearance inside this selection; an obstructed witness does not hide the remaining bounded alternatives.
+If the old approach is unreachable, a shortest rigid wrist-to-tip rotation first tries the reach cone defined by the existing 165° elbow limit. Otherwise, or if that fails, a bounded ±45° shaft-yaw search uses the same anatomical pole, four roll refinements and both palm endpoints per yaw, and twelve golden-section steps; an overextended result gets the same cone check. Only exact contact and full posture/palm validity admit a cone witness.
+Reach and shared anatomical deficit rank first, followed by displacement from the old arm, wrist/pose comfort and orientation/yaw preferences. This is a bounded search, not a global-optimum guarantee.
+The independent 0.60 rad wrist gate and all joint limits remain unchanged. Each trial recovers the wrist from complete grip/tool offsets and solves fixed-length bones.
+Each selected original control stores one unit quaternion `inverse(q_approach) × q_selected` in `SwivelSample.orientations` and its matching `OrientationSample`; `OrientationControl` is a quaternion alias. It represents the actual selected direction relative to the geometric target/pitch approach; legacy hands consistently store `None`.
+Angles keep their original C1 curve, and the residual uses sign-invariant smoothstep/shortest-arc slerp. Replay composes `q_currentApproach × residual` without rerunning the ordinary arm's four roll refinements. Selected endpoint wrist, elbow and contact are retained; interpolation does not guarantee an unchanged legacy arm or pure wrist twist between endpoints.
+Runtime uses that transported orientation and one fixed-length arm solve, without pointwise palm/wrist projection or shaft-yaw search. Interpolated palm, wrist, reach and physical tool failures remain diagnosed.
+The original angle and orientation controls stay unchanged; failed interior checks do not insert isolated orientation anchors. The 33 × 33 graph remains the bounded planner, without a new state dimension, runtime cone search or playback history.
+Without a roll range, the original four unconstrained refinements and anatomical pole remain unchanged.
 
-The cheap `may_reach_contact` triangle envelope only prunes impossible distances;
-passing it does not replace an actual posture/tool witness at the chosen pitch and swivel.
-These approach and roll rules are animation priors, not all grip styles, a global optimum
-or a continuous collision certificate. Inspect rendered fingers, wrist swing and the
-complete moving shaft separately from endpoint contact error.
+The cheap `may_reach_contact` triangle envelope only prunes impossible distances; passing it does not replace an actual posture/tool witness at the chosen pitch and swivel.
+These approach and roll rules are animation priors, not all grip styles or a global optimum. Inspect rendered fingers, wrist swing and the whole moving shaft separately from endpoint error; this is not continuous collision certification.
 
 ## Coordinated torso and inspection
 
@@ -389,25 +390,25 @@ Dynamic programming selects a whole-timeline path, retaining alternatives that
 prepare for future constraints instead of accepting a locally convenient collision.
 An edge permits at most 2 rad/s of sampled-angle change; C1 smoothstep interpolation
 therefore contributes at most 3 rad/s. These are swivel-track limits, not limits on
-the entire moving elbow or wrist.
+the entire moving elbow or wrist. Actual tool rotation receives `0.01 × (Δangle)² / Δtime`, and actual wrist displacement receives `0.1 × (Δdistance)² / Δtime`, at graph transitions and inspected samples; quaternion signs represent the same rotation.
+Actual shoulder-to-elbow directions in body coordinates receive `0.01 × (Δangle)² / Δtime`, an integrated squared angular-speed preference, at transitions and in inspected-path scoring. Only failed poses add coupled edge penalties; rate cost alone preserves the separable search. Removing torso yaw prevents whole-body turning from counting as an independent elbow gesture; this adds no hard actual-direction speed bound.
 
-When an edge has no coupled collision refinement, the bounded predecessor search
-is factored into one search per arm. It retains the same dynamic-programming optimum
-and stable predecessor order; refined coupled edges use the general search.
+Every transition first computes the bounded predecessor minimum separately per arm.
+Only a destination whose selected predecessor edge has a positive coupled penalty repeats the full joint-neighbor search; nonnegative penalties cannot change the other winners.
+Both paths use the canonical separable arithmetic and tie order; this is not an arbitrary-bit identity claim against the old general branch at floating-point ties.
 
 Joint pitch/lift repair precedes elbow coordination; [equipment contact](equipment-contact.md) owns its budgets.
-The selected elbow path is checked at 30 Hz and exact impacts with the turned body and actual stroke targets.
+The selected angle/orientation path is checked at 30 Hz and exact impacts with the turned body and actual stroke targets.
 Physical stick/equipment and stick/stick intersections receive feasibility penalties; measured body overlap
-receives bounded advisory cost. The graph is searched again up to eight times, retaining the best inspected
-path. A successful static fit or complete hit assignment is not temporal acceptance. `BODY_PATH_CLEARANCE`
+receives bounded advisory cost. Unreachable contacts add `1e12`; each anatomical failure adds `1e9 + 1e6 × min(deficit, 100)` using the shared squared deficit. This ranks failed fallbacks without making them valid.
+The graph is searched again up to eight times, retaining the best inspected path. A successful static fit or complete hit assignment is not temporal acceptance. `BODY_PATH_CLEARANCE`
 reports advisory overlap; `TOOL_EQUIPMENT_PATH_CLEARANCE` and `TOOL_PAIR_PATH_CLEARANCE` identify residual
 physical-tool problems. No source note or contact time is silently removed to suppress these diagnostics.
 
-The track is precomputed and independent of playback order. It changes neither
-source times nor hit targets, stretches no bones, and adds no random target offsets.
+The track is precomputed and independent of playback order. It changes neither source times nor hit targets, stretches no bones, and adds no random target offsets.
 
 The joint planner accepts at most 6,000 deduplicated control times, checked before
-allocating its node-cost and parent tables (about 52 MB + 13 MB at this bound).
+allocating its node costs, parents, per-hand quaternion and actual-motion witnesses (about 52 + 13 + 16 + 35 MB at this bound); the separate orientation track uses less than 1 MB. Candidate tables and selected controls each retain one orientation quaternion.
 Exceeding this separate motion budget returns an actionable preparation error;
 it does not fall back silently to an unchecked motion. The MIDI parser's 50,000-hit
 limit is not a promise that every dense score fits this humanoid planning budget.

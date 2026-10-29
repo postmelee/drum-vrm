@@ -28,6 +28,34 @@ export function diagnosticTitle(code: string): string {
  * engine exposes structured diagnostic arguments at this boundary. */
 export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = [
   [
+    'The grip policy changed within the hand motion track.',
+    '양손 경로의 그립 정책이 시간에 따라 변경되었습니다.'
+  ],
+  [
+    'The selected hand motion track has no recoverable grip rotation.',
+    '선택된 양손 경로의 그립 회전값을 복구할 수 없습니다.'
+  ],
+  [
+    'The selected hand motion track has no recoverable hand orientation.',
+    '선택된 양손 경로의 손 방향을 복구할 수 없습니다.'
+  ],
+  [
+    'The prepared hand orientation controls are invalid.',
+    '준비된 연주의 손 방향 제어점이 유효하지 않습니다.'
+  ],
+  [
+    'The prepared hand orientation does not match the grip policy.',
+    '준비된 연주의 손 방향이 그립 정책과 일치하지 않습니다.'
+  ],
+  [
+    'The prepared hand motion track does not preserve the original strike contacts.',
+    '준비된 연주의 양손 경로가 원본 타격 접촉을 보존하지 않습니다.'
+  ],
+  [
+    'The prepared performance does not preserve the count-in contacts.',
+    '준비된 연주의 카운트인 접촉이 보존되지 않았습니다.'
+  ],
+  [
     '{0} sampled whole-stick paths intersect drum equipment (minimum signed proxy clearance {1} mm). Original contact times are preserved; inspect the marked interval.',
     '스틱 전체 경로 표본 {0}개가 악기와 겹칩니다(대리 형상 최소 간격 {1} mm). 원래 타격 시각은 유지합니다. 표시된 구간을 확인하세요.'
   ],

@@ -261,7 +261,7 @@ get('analysis-source').onclick=()=>{openPanel('source');get<HTMLDetailsElement>(
 function showFitResult(result: Awaited<ReturnType<typeof prepareAutomaticFit>>) {
   fitProposal=result.proposal;fitState=result.applied?msg("Automatic body fit applied", "체형 자동 맞춤 적용"):msg("Automatic fit needs attention", "자동 맞춤 확인 필요");
   bindText(get('calibration-message'), result.applied?'':msg('Automatic fit needs attention', '자동 맞춤 확인 필요'));
-  bindText(get('fit-details'), joinMessages([result.message,...(result.proposal.advisoryLayoutViolations?.length?[msg('Advisory measured-body overlaps: {0}', '측정한 신체 영역 겹침 참고: {0}',joinMessages(result.proposal.advisoryLayoutViolations.map(layoutViolationMessage)))]:[])]));
+  bindText(get('fit-details'), joinMessages([result.message,...(result.proposal.advisoryLayoutViolations?.length?[msg('Layout advisories: {0}', '배치 참고: {0}',joinMessages(result.proposal.advisoryLayoutViolations.map(layoutViolationMessage)))]:[])]));
   refreshFitState();
   if(!result.applied)feedback.warn(msg('Automatic fit needs attention', '자동 맞춤 확인 필요'), panelAction('analysis'), true);
 }

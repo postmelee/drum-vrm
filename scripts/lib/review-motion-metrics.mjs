@@ -69,6 +69,8 @@ export function summarizeMotionSamples(samples, halfWindow = KINEMATIC_HALF_WIND
     limb, wristSwingDegrees: { samples: 0, minimum: null, maximum: null },
     upperArmElevationDegrees: { samples: 0, minimum: null, maximum: null },
     elbowInteriorDegrees: { samples: 0, minimum: null, maximum: null },
+    // Orientation evidence, not a universal technique/anatomy acceptance gate.
+    palmUpComponent: { samples: 0, minimum: null, maximum: null, missing: 0, invalid: 0 },
   })) };
   for (const sample of samples) {
     const { time, before, pose, after } = sample;
@@ -87,6 +89,14 @@ export function summarizeMotionSamples(samples, halfWindow = KINEMATIC_HALF_WIND
     if (invalid) kinematics.invalidObservations++;
     for (const hand of posture.hands) {
       const marker = (sample.markers ?? []).find(marker => marker.limb === hand.limb);
+      const palm = marker?.palmNormal, up = hand.palmUpComponent;
+      if (palm === undefined) up.missing++;
+      else if (!Array.isArray(palm) || palm.length !== 3 || !palm.every(Number.isFinite) || Math.abs(Math.hypot(...palm) - 1) > 1e-4) up.invalid++;
+      else {
+        up.samples++;
+        up.minimum = up.minimum === null ? palm[1] : Math.min(up.minimum, palm[1]);
+        up.maximum = up.maximum === null ? palm[1] : Math.max(up.maximum, palm[1]);
+      }
       for (const field of ['wristSwingDegrees', 'upperArmElevationDegrees', 'elbowInteriorDegrees']) {
         const value = marker?.[field], metric = hand[field];
         if (!Number.isFinite(value)) continue;

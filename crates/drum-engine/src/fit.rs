@@ -249,8 +249,8 @@ fn crash_role_search_fits(
         })
     })
 }
-/// Static equipment, playable head approaches and all supports use the same
-/// numeric geometry that the renderer and temporal inspector consume.
+/// Physical bodies and supports use the same numeric geometry as rendering and
+/// temporal inspection. Broad head-access lanes are returned as advisories.
 fn piece_clear(index: usize, kit: &[KitPiece]) -> bool {
     let piece = &kit[index];
     let Some(body) = crate::equipment::body(piece) else {
@@ -258,10 +258,8 @@ fn piece_clear(index: usize, kit: &[KitPiece]) -> bool {
     };
     if kit.iter().enumerate().any(|(other, p)| {
         other != index
-            && crate::equipment::body(p).is_some_and(|obstacle| {
-                !crate::equipment::boxes_clear(&body, &obstacle)
-                    || !crate::equipment::playable_pair(piece, p)
-            })
+            && crate::equipment::body(p)
+                .is_some_and(|obstacle| !crate::equipment::boxes_clear(&body, &obstacle))
     }) {
         return false;
     }
@@ -920,12 +918,15 @@ fn choose_leg_clear_stand_phase(
     if failures.is_empty() {
         return true;
     }
-    if !matches!(
+    let rotatable = matches!(
         candidate[index].instrument,
         Instrument::Snare | Instrument::Hihat | Instrument::Crash | Instrument::Ride
-    ) || failures
-        .iter()
-        .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
+    ) || (candidate[index].instrument == Instrument::TomLow
+        && candidate[index].mount.is_none());
+    if !rotatable
+        || failures
+            .iter()
+            .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
     {
         return false;
     }
@@ -1138,10 +1139,8 @@ fn repair_posture_order(
             };
             locked.iter().all(|&i| {
                 i == index
-                    || crate::equipment::body(&candidate[i]).is_none_or(|obstacle| {
-                        crate::equipment::boxes_clear(&body, &obstacle)
-                            && crate::equipment::playable_pair(piece, &candidate[i])
-                    })
+                    || crate::equipment::body(&candidate[i])
+                        .is_none_or(|obstacle| crate::equipment::boxes_clear(&body, &obstacle))
             })
         };
         let against_locked = |candidate: &[KitPiece]| {
@@ -1513,6 +1512,9 @@ pub fn fit_kit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
     .into_iter()
     .filter(|violation| !result.layout_violations.contains(violation))
     .collect();
+    result
+        .advisory_layout_violations
+        .extend(crate::equipment::approach_advisories(&result.kit));
     result.capabilities = Some(crate::posture::audit(&fitted_profile, &result.kit));
     Ok(cache.finish(result))
 }

@@ -61,6 +61,8 @@ fn profile(scale: f64) -> RigProfile {
         forearm: [0.0, 0.0, 1.0],
         palm: [0.0, 1.0, 0.0],
         desired_palm: [0.0, 1.0, 0.0],
+        palm_roll_range: None,
+        palm_reference: None,
     };
     p.hand_frames = Some([frame.clone(), frame]);
     p
@@ -772,6 +774,51 @@ fn native_ready_pose_fits_real_equipment_without_stacked_heads_or_buried_shafts(
         serde_json::to_string(&result.kit).unwrap(),
         serde_json::to_string(&again.kit).unwrap()
     );
+}
+
+#[test]
+fn limited_head_access_keeps_a_contact_certified_layout_but_never_bypasses_contact_failure() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+    let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+    let mut kit: Vec<KitPiece> = serde_json::from_value(fixture["kit"].clone()).unwrap();
+    // A modest cymbal move enters the broad normal-axis head-access capsule.
+    // The actual angled sticks, body boxes and generated supports still clear.
+    let crash = kit
+        .iter_mut()
+        .find(|piece| piece.id == "crashRight")
+        .unwrap();
+    crash.position[1] -= 0.025;
+    crash.position[2] -= 0.05;
+    assert!(kit_clearance_ids(&kit).is_empty());
+    let warning = "head-approach:tomMid:crashRight".to_string();
+    assert!(crate::equipment::approach_advisories(&kit).contains(&warning));
+    let result = fit_kit(&profile, &kit).unwrap();
+    assert!(result.complete);
+    assert!(result.advisory_layout_violations.contains(&warning));
+    assert!(result.piece_adjustments.is_empty());
+    for (accepted, original) in result.kit.iter().zip(&kit) {
+        assert!(crate::motion::distance(accepted.position, original.position) < 1e-10);
+        assert_eq!(accepted.radius, original.radius);
+    }
+    assert_eq!(result.seat_offset, [0.; 3]);
+    let ctx = crate::equipment_motion::EquipmentContext::for_kit(&kit).unwrap();
+    assert!(kit
+        .iter()
+        .all(|piece| equipment_posture_fits(&profile, piece, &ctx)));
+    assert!(crate::posture::required_pairs_with_equipment(&profile, &kit, Some(&ctx)).is_empty());
+
+    // The same advisory and physically separated equipment cannot certify a
+    // different body that fails real contact. No search or bone stretch hides it.
+    let mut short = profile;
+    short.lengths[0] = [0.05; 2];
+    short.lengths[1] = [0.05; 2];
+    let mut rejected = result;
+    certify(&short, &mut rejected);
+    assert!(!rejected.complete);
+    assert!(rejected.clearance_piece_ids.is_empty());
+    assert!(!rejected.unreachable_piece_ids.is_empty());
+    assert!(rejected.advisory_layout_violations.contains(&warning));
 }
 #[test]
 fn fit_budget_stops_before_allocating_more_candidate_work() {

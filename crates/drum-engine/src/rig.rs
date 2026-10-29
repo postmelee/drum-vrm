@@ -8,9 +8,22 @@ mod hand_solver;
 pub use hand_solver::HandSolution;
 
 pub type Quat = [f64; 4]; // xyzw, local tool frame -> legacy world frame
+
+/// One actual tool orientation relative to the current contact approach.
+pub type OrientationControl = Quat;
+pub(crate) fn valid_orientation(q: OrientationControl, tolerance: f64) -> bool {
+    q.iter().all(|v| v.is_finite())
+        && (q.iter().map(|v| v * v).sum::<f64>() - 1.).abs() <= tolerance
+}
 pub const RIG_POSE_FLOATS: usize = POSE_FLOATS + 20;
 pub const COORDINATE_SYSTEM: &str = "legacy-y-up-z-forward-left-negative-x";
 pub const MAX_PROFILE_BYTES: usize = 64 * 1024;
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PalmReference {
+    ShaftHeading,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -19,6 +32,14 @@ pub struct HandControlFrame {
     pub forearm: Vec3,
     pub palm: Vec3,
     pub desired_palm: Vec3,
+    /// Allowed roll around the target-oriented shaft relative to desired_palm.
+    /// This is an animation-style preference, independent of anatomical limits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palm_roll_range: Option<[f64; 2]>,
+    /// None keeps a world-space preference. ShaftHeading transports the desired
+    /// palm by yaw from canonical +Z forward to the shaft's horizontal heading.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub palm_reference: Option<PalmReference>,
 }
 
 /// Numeric envelope measurements in the profile's world basis. The torso axes
@@ -263,6 +284,16 @@ impl RigProfile {
                     || !unit(frame.palm)
                     || !unit(frame.desired_palm)
                     || perpendicular.abs() > 1e-6
+                    || frame.palm_roll_range.is_some_and(|[min, max]| {
+                        !min.is_finite()
+                            || !max.is_finite()
+                            || min > 0.
+                            || max < 0.
+                            || min > max
+                            || min < -std::f64::consts::PI
+                            || max > std::f64::consts::PI
+                            || max - min > std::f64::consts::PI
+                    })
                 {
                     return Err("손목 기준 축은 유한한 직교 단위 방향이어야 합니다.".into());
                 }
@@ -336,6 +367,171 @@ impl RigProfile {
         self.hand_frames.as_ref().map(|frames| {
             hand_solver::solve_with_swivel(self, limb, tip, pitch, &frames[limb], swivel)
         })
+    }
+
+    /// Static first frontier: preserve the ordinary arm at this pitch/swivel.
+    /// No witness means its exact wrist-to-tip twist family is infeasible.
+    pub(crate) fn solve_hand_preserving_arm_with_swivel(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+    ) -> Option<HandSolution> {
+        if limb >= 2 {
+            return None;
+        }
+        self.hand_frames.as_ref().and_then(|frames| {
+            hand_solver::solve_preserving_arm_with_swivel(
+                self,
+                limb,
+                tip,
+                pitch,
+                &frames[limb],
+                swivel,
+            )
+        })
+    }
+
+    /// Evaluate physical constraints before the static solver discards its
+    /// bounded alternatives. A full search still returns its diagnostic pose
+    /// when no candidate is accepted; the caller's existing hard gate remains.
+    pub(crate) fn solve_hand_with_swivel_where(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+        preserve_arm: bool,
+        accept: &dyn Fn(&HandSolution) -> bool,
+    ) -> Option<HandSolution> {
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        if preserve_arm {
+            hand_solver::solve_preserving_arm_with_swivel_where(
+                self, limb, tip, pitch, frame, swivel, accept,
+            )
+        } else {
+            Some(hand_solver::solve_with_swivel_where(
+                self, limb, tip, pitch, frame, swivel, accept,
+            ))
+        }
+    }
+
+    /// Common natural-grip style objective, shared by static, pitch and temporal planning.
+    /// Explicit palm preferences and legacy hands retain their own intent.
+    pub fn hand_grip_preference_cost(&self, limb: usize, rotation: Quat) -> f64 {
+        if limb < 2 {
+            hand_solver::inward_grip_cost(self, limb, rotation)
+        } else {
+            0.
+        }
+    }
+
+    /// Shared policy check for prepared knots and evaluated interpolation.
+    pub fn hand_orientation_policy_valid(&self, limb: usize, rotation: Quat) -> bool {
+        limb < 2 && hand_solver::orientation_policy_valid(self, limb, rotation)
+    }
+
+    /// Encode the selected actual tool orientation relative to its approach.
+    /// Legacy hands do not acquire an orientation track.
+    pub fn encode_hand_orientation(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+        rotation: Quat,
+    ) -> Option<OrientationControl> {
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        frame.palm_roll_range?;
+        let norm = rotation.iter().map(|v| v * v).sum::<f64>();
+        if !swivel.is_finite() || !norm.is_finite() || (norm - 1.).abs() > 1e-6 {
+            return None;
+        }
+        Some(hand_solver::encode_orientation(
+            self, limb, tip, pitch, frame, rotation,
+        ))
+    }
+    /// Transport the single prepared orientation with the current approach.
+    /// No legacy roll iteration or pointwise orientation search runs here.
+    pub fn decode_hand_orientation(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        control: OrientationControl,
+    ) -> Option<Quat> {
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        frame.palm_roll_range?;
+        if !valid_orientation(control, 1e-6) {
+            return None;
+        }
+        Some(hand_solver::decode_orientation(
+            self, limb, tip, pitch, frame, control,
+        ))
+    }
+    /// Replay the interpolated physical orientation for bounded hands.
+    /// Legacy profiles keep their original static solver and require None.
+    pub fn solve_hand_with_swivel_and_orientation(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+        orientation: Option<OrientationControl>,
+    ) -> Option<HandSolution> {
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        match (frame.palm_roll_range, orientation) {
+            (None, None) => self.solve_hand_with_swivel(limb, tip, pitch, swivel),
+            (Some(_), Some(control)) => {
+                let rotation = self.decode_hand_orientation(limb, tip, pitch, control)?;
+                Some(hand_solver::solve_with_rotation(
+                    self, limb, tip, rotation, swivel,
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    /// Replay a prepared roll; absence preserves the legacy/static solve path.
+    pub fn solve_hand_with_swivel_and_roll(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+        roll: Option<f64>,
+    ) -> Option<HandSolution> {
+        let Some(roll) = roll else {
+            return self.solve_hand_with_swivel(limb, tip, pitch, swivel);
+        };
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        let [minimum, maximum] = frame.palm_roll_range?;
+        if !roll.is_finite() || roll < minimum - 1e-9 || roll > maximum + 1e-9 {
+            return None;
+        }
+        Some(hand_solver::solve_with_roll(
+            self,
+            limb,
+            tip,
+            pitch,
+            frame,
+            swivel,
+            roll.clamp(minimum, maximum),
+        ))
+    }
+
+    /// Extract an optimized witness's bounded roll for deterministic replay.
+    /// Legacy frames have no independent roll control and return None.
+    pub fn hand_roll(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        hand: &HandSolution,
+    ) -> Option<f64> {
+        let frame = self.hand_frames.as_ref()?.get(limb)?;
+        hand_solver::selected_roll(self, limb, tip, pitch, frame, hand)
     }
 
     pub fn reachable(&self, limb: usize, tip: Vec3) -> bool {

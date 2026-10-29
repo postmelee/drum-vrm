@@ -28,7 +28,7 @@ describe('shared numeric hardware rendering', () => {
   it('renders a connected suspended floor tom from the shared mount graph without hidden legs', () => {
     const kit = structuredClone(DEFAULT_KIT).filter(piece=>piece.id==='tomLow'||piece.id==='ride');
     const floor=kit.find(piece=>piece.id==='tomLow')!, ride=kit.find(piece=>piece.id==='ride')!;
-    floor.position=[.50,.76,.55];floor.radius=.1651;floor.mount={kind:'standClamp',supportPieceId:'ride'};
+    floor.position=[.50,.76,.55];floor.radius=.1651;floor.mount={kind:'standClamp',supportPieceId:'ride'};delete floor.standRotation;
     ride.position=[.72,1.22,.68];
     const geometry=solveKitGeometry(kit), layer=new KitHardwareLayer();
     expect(geometry.unresolvedPieceIds).toEqual([]);
@@ -64,6 +64,34 @@ describe('shared numeric hardware rendering', () => {
     }
     hardware.dispose();
     expect(geometry.unresolvedPieceIds).toEqual([]);
+  });
+
+  it('connects both player-facing rack toms to one T holder through bounded horizontal and vertical L arms', () => {
+    const kit = measuredKit(), geometry = solveKitGeometry(kit);
+    expect(geometry.unresolvedPieceIds).toEqual([]);
+    const posts = geometry.supports.filter(part => part.role === 'tomPost');
+    const yokes = geometry.supports.filter(part => part.role === 'tomYoke');
+    const balls = geometry.supports.filter(part => part.role === 'tomBall');
+    expect(posts).toHaveLength(1); expect(yokes).toHaveLength(1); expect(balls).toHaveLength(2);
+    expect(posts[0].end[0]).toBe(posts[0].start[0]); expect(posts[0].end[2]).toBe(posts[0].start[2]);
+    expect(yokes[0].end[1]).toBe(yokes[0].start[1]); expect(yokes[0].end[2]).toBe(yokes[0].start[2]);
+    for (const id of ['tomHigh', 'tomMid']) {
+      const piece = kit.find(value => value.id === id)!;
+      const normal = new THREE.Vector3(...piece.geometry!.surface.normal);
+      expect(normal.z).toBeLessThan(-.2);
+      const arms = geometry.supports.filter(part => part.pieceId === id && part.role === 'tomArm');
+      expect(arms).toHaveLength(2);
+      expect(balls.some(ball => ball.start.every((value, axis) => Math.abs(value - arms[0].start[axis]) < 1e-8))).toBe(true);
+      expect(arms[0].end[1]).toBe(arms[0].start[1]);
+      expect(new THREE.Vector3(...arms[0].end).distanceTo(new THREE.Vector3(...arms[0].start))).toBeLessThanOrEqual(.38);
+      expect(arms[1].start).toEqual(arms[0].end);
+      expect(arms[1].end[0]).toBe(arms[1].start[0]); expect(arms[1].end[2]).toBe(arms[1].start[2]);
+      const bracket = geometry.supports.find(part => part.pieceId === id && part.role === 'suspensionBracket')!;
+      const body = geometry.bodies.find(value => value.pieceId === id)!;
+      const radial = new THREE.Vector3(...bracket.start).sub(new THREE.Vector3(...body.center));
+      expect(Math.abs(radial.dot(normal))).toBeLessThan(1e-7);
+      expect(radial.length()).toBeCloseTo(piece.geometry!.surface.radius, 7);
+    }
   });
 
   it('aligns native tilted cymbal spindles with the measured radial axis, not the bow normal', () => {
@@ -222,7 +250,9 @@ describe('body contacts remain independent of shared hardware', () => {
     alignInstrumentBody(body, pivot, piece, resolvePieceVisual('studio', 'snare', { scale: 1.2, rotation: 45 }));
     const geometry = measureInstrumentGeometry(pivot, piece, 'mesh-bounds');
     const bounds = new THREE.Box3().setFromObject(pivot);
-    expect(geometry.body.halfExtents[1] * 2).toBeCloseTo(bounds.max.y - bounds.min.y, 7);
+    const rotation = new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(...geometry.body.rotation ?? [0, 0, 0, 1])).elements;
+    const worldHeight = 2 * (Math.abs(rotation[1]) * geometry.body.halfExtents[0] + Math.abs(rotation[5]) * geometry.body.halfExtents[1] + Math.abs(rotation[9]) * geometry.body.halfExtents[2]);
+    expect(worldHeight).toBeCloseTo(bounds.max.y - bounds.min.y, 7);
     expect(geometry.body.halfExtents[1] * 2).toBeGreaterThan(.135);
     const target = new THREE.Vector3(...piece.position), ray = new THREE.Raycaster(target.clone().add(new THREE.Vector3(0, 1, 0)), new THREE.Vector3(0, -1, 0));
     expect(ray.intersectObject(body, true)[0].point.distanceTo(target)).toBeLessThan(1e-7);

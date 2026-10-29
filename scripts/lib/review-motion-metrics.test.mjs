@@ -95,3 +95,12 @@ test('posture reports measured ranges and distinguishes absent measurements from
   assert.deepEqual(result.hands[0].upperArmElevationDegrees, { samples: 2, minimum: 30, maximum: 40 });
   assert.deepEqual(result.hands[1].wristSwingDegrees, { samples: 0, minimum: null, maximum: null });
 });
+
+test('palm evidence preserves upward, inward and downward normals and exposes missing/invalid data', () => {
+  const samples = [[0,1,0], [1,0,0], [0,-1,0], undefined, [0,2,0], [NaN,0,0]].map((palmNormal,time) => ({
+    ...sampleAt(time), markers: [{limb: 0, palmNormal}],
+  }));
+  const hands = summarizeMotionSamples(samples).posture.hands;
+  assert.deepEqual(hands[0].palmUpComponent, { samples: 3, minimum: -1, maximum: 1, missing: 1, invalid: 2 });
+  assert.deepEqual(hands[1].palmUpComponent, { samples: 0, minimum: null, maximum: null, missing: 6, invalid: 0 });
+});

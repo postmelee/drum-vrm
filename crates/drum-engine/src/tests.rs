@@ -618,6 +618,16 @@ fn profile_replanning_diagnoses_outer_and_inner_reach_without_losing_audio() {
         (240, note(38, 100, 9)),
         (240, end()),
     ]);
+    // This boundary fixture needs an unreachable cymbal independently of the
+    // playable reference kit's current spacing.
+    let distant = [-1.2, 1.4, 1.2];
+    source
+        .kit
+        .iter_mut()
+        .find(|piece| piece.id == "crash")
+        .unwrap()
+        .position = distant;
+    source.hits[0].target = distant;
     source
         .diagnostics
         .push(Diagnostic::new("SOURCE_NOTICE", "keep this".into()));

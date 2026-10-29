@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { prepareAutomaticFit } from '../src/automatic-fit';
+import { layoutViolationMessage, prepareAutomaticFit } from '../src/automatic-fit';
 import { applyKitHardwarePreset } from '../src/kit-layout-presets';
 import { setLocale, translate } from '../src/i18n';
 import type { KitFitProposal, KitPiece, PieceId, RigProfile } from '../src/types';
@@ -10,6 +10,13 @@ const profile={id:'body',lengths:[[.2,.3],[.2,.3],[.4,.4],[.4,.4]]} as RigProfil
 const proposal=(kit:KitPiece[],complete=true):KitFitProposal=>({kit,complete,scale:.8,translation:[0,0,0],pieceAdjustments:[],unreachablePieceIds:complete?[]:['ride'],clearancePieceIds:[]});
 
 describe('automatic import fitting',()=>{
+  it('retains layout advisories on a complete fit and explains head access in both languages',async()=>{
+    const code='head-approach:tomMid:crashRight';
+    const result=await prepareAutomaticFit(profile,layout(),layout(),async()=>({...proposal(layout()),advisoryLayoutViolations:[code]}),{requireComplete:true});
+    expect(result.applied).toBe(true);expect(result.proposal.advisoryLayoutViolations).toEqual([code]);
+    expect(layoutViolationMessage(code)).toBe('tomMid has limited space above its head near crashRight');
+    try {setLocale('ko');expect(translate(layoutViolationMessage(code))).toBe('tomMid 위쪽 공간이 crashRight 근처에서 좁습니다');} finally {setLocale('en');}
+  });
   it('uses the explicit baseline for every import rather than compounding automatic scale',async()=>{
     const baseline=layout(),old=structuredClone(baseline),fit=vi.fn(async(_profile:RigProfile,kit:readonly KitPiece[])=>proposal(kit.map(piece=>({...piece,radius:piece.radius*.8}))));
     const first=await prepareAutomaticFit(profile,baseline,baseline,fit);

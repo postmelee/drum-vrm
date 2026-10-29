@@ -69,7 +69,7 @@ below are design concepts, not a shipped JSON schema.
 The implemented subset now includes common static fit and target-dependent neutral
 wrists (T01–T02), instrument-relative ready poses and velocity-scaled lift/pitch (T03),
 explicit short open/close hi-hat control (T06), and a bounded phrase beam that can
-alternate available hands during rapid snare repetitions (T07/T09). The
+alternate available hands during rapid snare/tom repetitions and mixed fills (T07/T09). The
 [engine](engine-contract.md), [calibration](calibration.md) and
 [MIDI interpretation](midi-interpretation.md) contracts own their precise behavior.
 

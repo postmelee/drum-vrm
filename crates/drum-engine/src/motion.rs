@@ -16,7 +16,7 @@ mod sticking;
 mod tool_pair_path;
 #[path = "motion_transfer.rs"]
 mod transfer;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v11";
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v18";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -447,6 +447,14 @@ fn assign_for_profile(plan: &mut PerformancePlan, profile: Option<&RigProfile>) 
     }
 }
 
+/// Exercise source-to-contact assignment without constructing temporal tracks.
+/// Sticking regressions inspect this boundary; trajectory suites cover Motion.
+#[cfg(test)]
+pub(crate) fn assign_measured_contacts_for_test(plan: &mut PerformancePlan, profile: &RigProfile) {
+    crate::contact::apply(plan, profile);
+    assign_for_profile(plan, Some(profile));
+}
+
 /// Analytic two-bone IK in a stable plane, initialized from calibration each time.
 /// Clamping protects intermediate arcs; every assigned contact is prevalidated.
 fn two_bone(root: Vec3, target: Vec3, pole: Vec3) -> (Vec3, Vec3) {
@@ -585,11 +593,19 @@ pub struct Motion {
     profile: Option<RigProfile>,
     body_turns: Vec<f64>,
     hand_swivels: Vec<crate::hand_coordination::SwivelSample>,
+    hand_orientations: Vec<crate::hand_coordination::OrientationSample>,
     equipment: Option<std::sync::Arc<crate::equipment_motion::EquipmentContext>>,
     equipment_path: Vec<crate::equipment_motion::PathSample>,
     count_in: crate::count_in::CountInTrack,
     ready_poses: ready_pose::ReadyPoses,
 }
+
+type PreparedTracks = (
+    Vec<f64>,
+    Vec<crate::hand_coordination::SwivelSample>,
+    Vec<crate::hand_coordination::OrientationSample>,
+    Vec<crate::equipment_motion::PathSample>,
+);
 
 impl Motion {
     pub fn new(mut plan: PerformancePlan) -> Result<Self, String> {
@@ -671,11 +687,7 @@ impl Motion {
     fn assemble_with_tracks(
         mut plan: PerformancePlan,
         profile: Option<RigProfile>,
-        tracks: Option<(
-            Vec<f64>,
-            Vec<crate::hand_coordination::SwivelSample>,
-            Vec<crate::equipment_motion::PathSample>,
-        )>,
+        tracks: Option<PreparedTracks>,
     ) -> Result<Self, String> {
         validate_plan(&plan)?;
         crate::contact::refresh_events(&mut plan);
@@ -757,14 +769,16 @@ impl Motion {
             profile,
             body_turns: Vec::new(),
             hand_swivels: Vec::new(),
+            hand_orientations: Vec::new(),
             equipment,
             equipment_path: Vec::new(),
             count_in,
             ready_poses,
         };
-        if let Some((body_turns, hand_swivels, equipment_path)) = tracks {
+        if let Some((body_turns, hand_swivels, hand_orientations, equipment_path)) = tracks {
             motion.body_turns = body_turns;
             motion.hand_swivels = hand_swivels;
+            motion.hand_orientations = hand_orientations;
             motion.equipment_path = equipment_path;
             return Ok(motion);
         }
@@ -850,14 +864,17 @@ impl Motion {
                 let inputs: Vec<_> = control_times.into_iter().map(make_input).collect();
                 let check_count =
                     ((motion.plan.duration + PRE_ROLL + TAIL) * 30.0).ceil() as usize + 1;
-                let mut times: Vec<_> = (0..check_count)
-                    .map(|i| i as f64 / 30.0 - PRE_ROLL)
-                    .collect();
+                // Hand repair must see the same refined route interiors that
+                // final inspection will measure, not just a coarser grid.
+                let mut times = motion.inspection_times();
+                times.extend((0..check_count).map(|i| i as f64 / 30.0 - PRE_ROLL));
                 times.extend(motion.plan.hits.iter().map(|hit| hit.time));
                 times.sort_by(f64::total_cmp);
                 times.dedup_by(|a, b| (*a - *b).abs() < 1e-9);
                 let checks: Vec<_> = times.into_iter().map(make_input).collect();
-                motion.hand_swivels = crate::hand_coordination::plan_with_checks(&inputs, &checks)?;
+                let hands = crate::hand_coordination::plan_with_checks(&inputs, &checks)?;
+                motion.hand_swivels = hands.swivels;
+                motion.hand_orientations = hands.orientations;
             }
         }
         motion
@@ -953,6 +970,7 @@ impl Motion {
         let mut times = tool_pair_path::check_times(&self.equipment_path);
         times.extend(crate::count_in::control_times_for_plan(&self.plan));
         times.extend(self.hand_swivels.iter().map(|sample| sample.time));
+        times.extend(self.hand_orientations.iter().map(|sample| sample.time));
         times.extend(
             self.plan
                 .hits
@@ -970,12 +988,29 @@ impl Motion {
         let (mut failures, mut first) = (0usize, None);
         for time in self.inspection_times() {
             let turned = profile.turned(crate::body_motion::at(&self.body_turns, time));
-            let hands = pose_hands(&self.evaluate_rig(time));
-            if hands
-                .iter()
-                .enumerate()
-                .any(|(limb, hand)| !crate::posture::anatomical(&turned, limb, hand.tip, hand))
-            {
+            let controls = crate::hand_coordination::at_with_orientations(
+                &self.hand_swivels,
+                &self.hand_orientations,
+                time,
+            );
+            // Inspect the exact same solve before the renderer's Float32 packing.
+            // A strict policy boundary must not turn serialization roundoff into
+            // a posture failure, nor discard the solver's actual reach result.
+            if (0..2).any(|limb| {
+                let (tip, pitch) = self.stroke_at(limb, time);
+                turned
+                    .solve_hand_with_swivel_and_orientation(
+                        limb,
+                        tip,
+                        -pitch,
+                        controls.angles[limb],
+                        controls.orientations[limb],
+                    )
+                    .is_none_or(|hand| {
+                        !crate::posture::anatomical(&turned, limb, tip, &hand)
+                            || !turned.hand_orientation_policy_valid(limb, hand.rotation)
+                    })
+            }) {
                 failures += 1;
                 first.get_or_insert(time.max(0.));
             }
@@ -1093,7 +1128,19 @@ impl Motion {
         // not a continuous collision certificate.
         for refinement in 0..=3 {
             track = proposed.clone();
-            crate::equipment_motion::limit_rates(&mut track, &impacts);
+            let ceilings: Vec<_> = track
+                .iter()
+                .map(|sample| {
+                    std::array::from_fn(|limb| {
+                        crate::equipment_motion::lift_ceiling(
+                            ctx,
+                            self.raw_stroke_at(limb, sample.time).0,
+                            self.contact_piece_at(limb, sample.time),
+                        )
+                    })
+                })
+                .collect();
+            crate::equipment_motion::limit_rates_with_caps(&mut track, &impacts, &ceilings);
             for limb in 0..2 {
                 unsupported[limb] = crate::contact_feasibility::preserve_impact_pitches(
                     &mut track,
@@ -1257,9 +1304,23 @@ impl Motion {
         );
         let transfer =
             |a: Vec3, b: Vec3, phase: f64, lift: f64, same_target: bool, duration: f64| {
+                if limb < 2 {
+                    if let Some(tip) = transfer::clearance_waypoint(
+                        a,
+                        b,
+                        phase,
+                        duration,
+                        same_target,
+                        self.equipment
+                            .as_ref()
+                            .map_or(&[], |ctx| ctx.geometry.bodies.as_slice()),
+                    ) {
+                        return tip;
+                    }
+                }
                 let weight = smooth(phase.clamp(0.0, 1.0));
                 let mut tip = lerp(a, b, weight);
-                tip[1] += if limb < 2 {
+                let clearance_lift = if limb < 2 {
                     transfer::lift(
                         a,
                         b,
@@ -1278,19 +1339,28 @@ impl Motion {
                     if let Some(profile) = &self.profile {
                         // Straight chords across the kit can fold a long forearm/tool
                         // toward the chest. Preserve interpolated shoulder distance
-                        // while moving around the front of the body instead. Apply
-                        // this after the lift: an upward preparation must not fold
-                        // the effective forearm/tool link back toward the shoulder.
+                        // while moving around the front of the body instead.
+                        // Do not let a vertical clearance lift advance X/Z into
+                        // the obstacle whose entry time determines that lift.
                         let root = profile.roots[limb];
                         let radius =
                             distance(root, a) * (1.0 - weight) + distance(root, b) * weight;
                         let direction = sub(tip, root);
                         let actual = distance(tip, root);
                         if actual > 1e-6 && radius > actual {
-                            tip = add(root, mul(direction, radius / actual));
+                            tip = transfer::limit_projection(
+                                tip,
+                                add(root, mul(direction, radius / actual)),
+                                clearance_lift,
+                                crate::equipment_motion::MAX_LIFT,
+                                self.equipment
+                                    .as_ref()
+                                    .map_or(&[], |ctx| ctx.geometry.bodies.as_slice()),
+                            );
                         }
                     }
                 }
+                tip[1] += clearance_lift;
                 tip
             };
         let foot = limb >= 2;
@@ -1502,16 +1572,24 @@ impl Motion {
         };
         let yaw = crate::body_motion::at(&self.body_turns, time);
         let posed_profile = self.profile.as_ref().map(|p| p.turned(yaw));
-        let swivels = crate::hand_coordination::at(&self.hand_swivels, time);
+        let hands = crate::hand_coordination::at_with_orientations(
+            &self.hand_swivels,
+            &self.hand_orientations,
+            time,
+        );
         let mut pose = Vec::with_capacity(RIG_POSE_FLOATS);
         let mut rotations = [[0.0, 0.0, 0.0, 1.0]; 4];
         for (limb, rotation) in rotations.iter_mut().enumerate() {
             let (tip, pitch) = self.stroke_at(limb, time);
             if let Some(profile) = &posed_profile {
                 if limb < 2 {
-                    if let Some(solution) =
-                        profile.solve_hand_with_swivel(limb, tip, -pitch, swivels[limb])
-                    {
+                    if let Some(solution) = profile.solve_hand_with_swivel_and_orientation(
+                        limb,
+                        tip,
+                        -pitch,
+                        hands.angles[limb],
+                        hands.orientations[limb],
+                    ) {
                         *rotation = solution.rotation;
                         for point in [
                             profile.roots[limb],

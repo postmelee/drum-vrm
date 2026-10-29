@@ -121,13 +121,39 @@ fn witness(
     contact: bool,
 ) -> bool {
     let candidates: [Vec<_>; 2] = std::array::from_fn(|i| {
-        posture::hand_candidates(profile, i, tips[i], pitches[i])
-            .filter(|hand| {
-                equipment.is_none_or(|ctx| {
-                    equipment_motion::tool_clearance(profile, i, hand, ctx, None) >= posture::MARGIN
-                })
+        let valid = |hand: &HandSolution| {
+            equipment.is_none_or(|ctx| {
+                equipment_motion::tool_clearance(profile, i, hand, ctx, None) >= posture::MARGIN
             })
-            .collect()
+        };
+        let environment = equipment_motion::HandEnvironment {
+            equipment,
+            intended_piece: None,
+        };
+        let mut hands: Vec<_> = posture::hand_candidates_in(
+            profile,
+            i,
+            tips[i],
+            pitches[i],
+            posture::HandSearch::Full,
+            environment,
+        )
+        .filter(valid)
+        .collect();
+        if hands.is_empty() {
+            hands.extend(
+                posture::refined_hand_candidates_in(
+                    profile,
+                    i,
+                    tips[i],
+                    pitches[i],
+                    posture::HandSearch::Full,
+                    environment,
+                )
+                .filter(valid),
+            );
+        }
+        hands
     });
     candidates[0].iter().any(|left| {
         candidates[1].iter().any(|right| {
@@ -391,6 +417,8 @@ mod tests {
             forearm: [0.0, 0.0, 1.0],
             palm: [0.0, 1.0, 0.0],
             desired_palm: [0.0, 1.0, 0.0],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         p.hand_frames = Some([frame.clone(), frame]);
         p
@@ -425,6 +453,35 @@ mod tests {
             });
         }
         plan
+    }
+    #[test]
+    fn cue_uses_existing_refined_swivels_when_coarse_poses_all_fail() {
+        let mut p = profile();
+        p.lengths[0] = [0.23, 0.21];
+        p.lengths[1] = [0.23, 0.21];
+        p.roots[0] = [-0.13, 1., 0.1];
+        p.roots[1] = [0.13, 1., 0.1];
+        for limb in 0..2 {
+            let f = &mut p.hand_frames.as_mut().unwrap()[limb];
+            f.palm = [if limb == 0 { 1. } else { -1. }, 0., 0.];
+            f.desired_palm = f.palm;
+            f.palm_roll_range = Some(if limb == 0 {
+                [-std::f64::consts::FRAC_PI_2, 0.]
+            } else {
+                [0., std::f64::consts::FRAC_PI_2]
+            });
+            f.palm_reference = Some(crate::rig::PalmReference::ShaftHeading);
+        }
+        // The old target gained coarse witnesses with the wrist-first solver.
+        // This nearby authored target still requires refined swivel witnesses.
+        let target = [0., 0.57, 0.41];
+        let pitches = cue_pitches(&p, target, 0.).unwrap();
+        assert!(
+            (0..2).all(|i| posture::hand_candidates(&p, i, target, pitches[i])
+                .next()
+                .is_none())
+        );
+        assert!(witness(&p, None, [target; 2], pitches, true));
     }
     #[test]
     fn tapered_cue_is_clear_through_dense_approach_and_rebound() {

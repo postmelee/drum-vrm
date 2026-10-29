@@ -162,6 +162,39 @@ images, scores, recordings or motion data are bundled. The
 [engine contract](../../specs/architecture/engine-contract.md) owns implemented ranking;
 issues #14/#20/#23 retain remaining style and path-review acceptance.
 
+## Grip and rack-tom review, 2026-10-29
+
+The owner observed outward, palms-up wrists on high toms and crashes after the
+`6dea42f` publication. A tilted head can improve the shaft's approach corridor,
+but cannot fix a wrist solver that discards its initial palm preference while
+minimizing wrist swing. Inspect the actual palm, forearm, elbow and whole shaft
+together; do not infer naturalness from a coincident stick tip.
+
+[Yamaha's snare pedagogy](https://hub.yamaha.com/music-educators/instruments/perc/snare-drum-basics-pedagogy/)
+starts from relaxed arms and a loose opposed thumb/index grip.
+[Zildjian Lesson 3](https://ae.zildjian.com/wp-content/uploads/Zildjian_Drum_Method_Lesson_3.pdf),
+printed pp.12–13, shows a relaxed matched grip; its roughly 45° hand example is
+teaching guidance, not a universal joint limit.
+[Lesson 13](https://ae.zildjian.com/wp-content/uploads/Zildjian_Drum_Method_Lesson_13.pdf),
+printed p.32, permits American-to-French grip changes at a reachable ride.
+Together with Lesson 14's reachable toms, this argues against an instrument-name
+rule that forces every elevated target into palm-down grip. A natural family can
+follow shaft heading from thumb-up/inward toward pronation while preserving the
+measured hand/tool relationship. Explicit grip preferences remain meaningful.
+
+Read-only source/assignment diagnosis of the reviewed public MIDI found a free
+four-hit high-tom run using one hand because the opposite hand's exact impact
+posture was unavailable, despite an available raised/split-target capability.
+The existing singles/doubles/paradiddle costs already penalize fast repeated
+hands. Changing those weights cannot restore an excluded contact candidate.
+Conversely, simultaneous snare/floor-tom repetitions legitimately keep one hand
+on each surface. Independent authored tests should cover both cases, with exact
+impact and preparation witnesses, before adding more technique vocabulary.
+
+These are new observations and implementation rationale, not a replacement for
+the earlier measurements above. No instructional images, scores or motion assets
+are included. The candidate's executed results belong in the verification record.
+
 ## Generalize import guidance without guessing intent
 
 The private file has track/instrument-name text but no sequencer-specific metadata,

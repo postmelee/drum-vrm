@@ -223,6 +223,8 @@ mod tests {
                     forearm: [0.0, 0.0, 1.0],
                     palm: [0.0, 1.0, 0.0],
                     desired_palm: [0.0, 1.0, 0.0],
+                    palm_roll_range: None,
+                    palm_reference: None,
                 };
                 profile.hand_frames = Some([frame.clone(), frame]);
             }

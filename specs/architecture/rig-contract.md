@@ -256,19 +256,59 @@ failures rather than altering limb lengths or source times.
 
 ## Hands, feet and repeatability
 
-The grip uses a measured diagonal hand-local mount and available finger curl.
-The default `natural` palm preference is oblique inward/downward (45° between
-those directions), with up/inward/down retained as explicit alternatives. This is
+The shared matched-grip shaft is 30° from the measured hand-local forward direction toward the orthogonal across-palm direction: `shaft = cos(30°) × forward + sin(30°) × across`.
+Finger curl, thumb opposition, the mount and physical grip/tool offsets are all measured against that same shaft. This is one authored grip rather than a universal anatomical angle.
+The default `natural` palm preference starts inward/thumb-up relative to the
+shaft heading and permits pronation toward palm-down. Up/inward/down remain explicit alternatives. This is
 an engineering starting pose, not a claim that one grip suits every drummer.
 Symmetric palms-up is not a complete traditional grip. The thumb solver jointly
 minimizes pad-to-shaft distance and distal-axis misalignment with bounded rotations
 about the model's rest joints; it never extends finger bones. Missing optional
 fingers retain reduced grip detail. Optional measured `handFrames` let the common solver
 orient the shaft toward each target, recover the wrist from the rotated grip/tool
-offset, and solve the real two-bone arm. Four analytic roll refinements reduce wrist
-swing while preserving segment lengths and the calibrated grip. Desired palm direction
-is an initial preference; the shared posture gate limits actual wrist swing to 0.60 rad.
-The bend plane is transported across the front workspace before planned elbow swivel.
+offset, and solve the real two-bone arm. All hand modes use the established
+body-relative anatomical elbow pole; changing the palm does not rotate that pole.
+With optional `palmRollRange`, static fitting first tries a rigid twist around the
+actual wrist-to-tip line. A feasible twist preserves the previous shoulder, elbow,
+wrist and contact exactly. Shared `HandEnvironment` applies intended-piece whole-tool clearance inside candidate selection across contact, ready, cue, graph and route searches; an obstructed first witness cannot hide the existing alternatives. Otherwise a bounded ±45° shaft-yaw refinement searches
+for a reachable posture using the same fixed-length arm and calibrated mount.
+An overextended approach can first receive the shortest rigid rotation of its
+actual wrist-to-tip offset onto the reach cone defined by the existing 165° elbow
+bound; a remaining overextension after yaw refinement receives the same check.
+This changes the initial pitch prior only through a real orientation witness,
+accepted only with exact contact, the full anatomical limits and palm policy.
+Reach and shared anatomical constraints outrank comfort preferences. Within feasible
+static candidates, natural grip softly prefers inward/thumb-up and uses only the
+pronation justified by wrist comfort and the preserved arm path; this is not a
+global-optimum guarantee. The independent actual wrist-swing limit stays 0.60 rad. The shared grip does not guarantee thumb-up at every hit or a clear whole performance; high contacts can still require pronation.
+Planner v18 / internal prepared format 7 stores one unit quaternion per selected
+bounded-hand control. `OrientationControl` aliases a quaternion; the JSON value is
+`[x, y, z, w]`, or `null` for a hand without a bounded palm policy. `Qapproach` is
+the geometric target/pitch approach frame, and encoding is
+`residual = inverse(Qapproach) × Qactual`. Formats 4, 5 and 6 require rebuilding.
+Edge checks and runtime use one sign-invariant shortest-arc slerp with smoothstep
+weights and the existing elbow controls. Replay reconstructs
+`Qactual = QcurrentApproach × residual`, without an intermediate legacy hand solve.
+Selected endpoint orientations, wrist, elbow and contact remain exact. Static
+arm-preserving witnesses retain the old arm at those controls; interpolation does
+not guarantee preservation of the legacy arm or a pure wrist-only twist between them.
+Runtime applies no pointwise palm projection or another yaw search. The planner
+retains the original orientation controls rather than inserting isolated interior
+repair anchors. Palm, wrist, reach and complete-tool checks still assess the actual
+pose, and unresolved interiors remain visible in diagnostics.
+Actual tool rotation, wrist displacement and body-relative upper-arm direction
+receive duration-aware squared-rate costs at graph transitions and inspected
+samples. Residual-quaternion changes are not a substitute for these
+physical measurements. These are motion preferences, not hard physiological speed
+limits; the relative swivel bound does not bound the complete moving elbow or
+wrist. Playback uses no frame history, and final path inspection remains necessary.
+`palmReference: shaftHeading` transports the natural preference with horizontal
+shaft yaw; absence keeps a world-space preference. Legacy hands without a bounded
+palm policy retain `None` orientation controls and the original four unconstrained
+roll refinements.
+`RigContactSample.palmNormal` measures the actual rendered hand normal in renderer
+world coordinates (+Y up; reflect X when comparing with the engine profile);
+its range is review evidence, not a universal technique threshold.
 This is not a complete anatomical or skin-clearance model. Profiles without hand frames
 retain the previous fixed-orientation path. [Calibration](calibration.md) owns the numeric rules.
 With hand frames, bounded joint pitch/lift repair adjusts the shared tool path
@@ -308,8 +348,8 @@ applied. Dynamic hair/clothing integration is outside this deterministic contrac
 [equipment.rs](../../crates/drum-engine/src/equipment.rs) defines common numeric
 bodies, supports and pedal boxes; [kit-hardware.ts](../../src/kit-hardware.ts)
 renders those returned shapes. Appearance adapters replace shell/head/cymbal bodies
-while preserving their role and hardware identity. Displayed static bounds are
-measured for planning; appearance replacement may therefore require a new layout
+while preserving their role and hardware identity. Displayed static bounds preserve
+the measured body axes through optional box rotation (missing means identity); the same oriented bounds feed fitting and final motion clearance. They are measured for planning; appearance replacement may therefore require a new layout
 transaction, while original MIDI identity and audio remain unchanged. Deliberate
 calibration can move/rebuild hardware with the bodies. The
 [equipment/contact contract](equipment-contact.md) owns geometry validation,

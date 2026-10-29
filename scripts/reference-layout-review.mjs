@@ -96,6 +96,7 @@ function layoutMetrics(kit, nominal) {
       radiusRatioToNominal: piece.radius / baseline.radius,
       anchorDeltaFromNominal: piece.position.map((v, axis) => v - baseline.position[axis]),
       bodyHalfExtents: piece.geometry?.body.halfExtents.map(v => v * scale),
+      bodyRotation: piece.geometry?.body.rotation ?? [0, 0, 0, 1],
       surfaceNormal: piece.geometry?.surface.normal,
     };
   });
@@ -288,11 +289,21 @@ if (mode === 'fit') {
             let planDeterministic;
             try { planDeterministic = JSON.stringify(JSON.parse(repeated.plan_json())) === JSON.stringify(plan); }
             finally { repeated.free(); }
+            // Exercise the actual worker-transfer boundary as well as direct
+            // construction. Exact impact locks must survive serialization.
+            let preparedRoundTrip = false, preparedRoundTripError = null;
+            try {
+              const restored = wasm.Performance.from_prepared_json(run.prepared_json(), plan.midiHash ?? '', JSON.stringify(fittedProfile));
+              try {
+                preparedRoundTrip = restored.plan_json() === run.plan_json()
+                  && samples.every(sample => JSON.stringify(Array.from(restored.evaluate_rig_at(sample.time))) === JSON.stringify(sample.pose));
+              } finally { restored.free(); }
+            } catch (error) { preparedRoundTripError = String(error); }
             const record = { id: study.id, midiHash: hash(study.bytes), selection: study.selection, plannerVersion: plan.plannerVersion,
               prepareMs, hitCount: plan.hits.length, unassigned: plan.hits.filter(hit => hit.limb === null).map(hit => ({ id: hit.id, sourceEventId: hit.sourceEventId, time: hit.time, pieceId: hit.pieceId })),
               layoutRoundTripMaxDifference: maxNumericDifference(applied, plan.kit), layoutAfterSeekUnchanged: JSON.stringify(JSON.parse(run.plan_json()).kit) === beforeSeek,
               sourcePreserved: JSON.stringify(plan.sourceEvents) === JSON.stringify(study.source.sourceEvents) && JSON.stringify(study.source) === sourceBefore,
-              poseDeterministic, markerDifference, planDeterministic, posesFinite: samples.every(sample => sample.pose.every(Number.isFinite)),
+              poseDeterministic, markerDifference, planDeterministic, preparedRoundTrip, preparedRoundTripError, posesFinite: samples.every(sample => sample.pose.every(Number.isFinite)),
               diagnostics: plan.diagnostics, landmarks, samples, sequence, motionValidity: validity, kinematics, posture, phaseReview,
               impactMeasurements, missingImpactMarkers,
               markerContactMaximumErrorMeters, actualContactsPassed,
@@ -306,7 +317,7 @@ if (mode === 'fit') {
           && result.candidateMeasurementRestored && result.candidateMeasurementMatchesApplied && result.appliedFitIdempotent
           && result.studies.every(study => study.layoutRoundTripMaxDifference < 1e-12
             && study.layoutAfterSeekUnchanged && study.sourcePreserved && study.poseDeterministic && study.markerDifference === 0 && study.planDeterministic && study.posesFinite
-            && study.sequence.maxOrderDifference === 0 && study.sequence.nonfiniteValues === 0 && study.actualContactsPassed);
+            && study.sequence.maxOrderDifference === 0 && study.sequence.nonfiniteValues === 0 && study.actualContactsPassed && study.preparedRoundTrip);
         // Note assignment is reported separately: stable layout is not proof
         // that a given motion/score is fully playable, or collision free.
         result.motionCoveragePassed = result.studies.every(study => study.unassigned.length === 0);
@@ -325,7 +336,7 @@ if (mode === 'fit') {
           fitComplete: result.fit.complete, layoutViolations: result.fit.layoutViolations,
           fittedSeat, seatOffset: result.fit.seatOffset, appliedFitIdempotent: result.appliedFitIdempotent,
           equipmentUnresolved: result.equipment.unresolvedPieceIds, scale: result.fit.scale, fitMs: Math.round(result.fitMs), repeatFitMs: Math.round(result.repeatFitMs),
-          studies: result.studies.map(({ id, prepareMs, unassigned, layoutRoundTripMaxDifference, sequence, motionValidity, kinematics, posture, phaseReview, markerContactMaximumErrorMeters, actualContactsPassed }) => ({ id, prepareMs: Math.round(prepareMs), unassigned: unassigned.length, layoutRoundTripMaxDifference, sequence, motionValidity, kinematics, posture, phaseReview, markerContactMaximumErrorMeters, actualContactsPassed })) });
+          studies: result.studies.map(({ id, prepareMs, unassigned, layoutRoundTripMaxDifference, sequence, motionValidity, kinematics, posture, phaseReview, markerContactMaximumErrorMeters, actualContactsPassed, preparedRoundTrip, preparedRoundTripError }) => ({ id, prepareMs: Math.round(prepareMs), unassigned: unassigned.length, layoutRoundTripMaxDifference, sequence, motionValidity, kinematics, posture, phaseReview, markerContactMaximumErrorMeters, actualContactsPassed, preparedRoundTrip, preparedRoundTripError })) });
         if (!result.passed) process.exitCode = 1;
       } finally { rig.dispose(); }
     }
