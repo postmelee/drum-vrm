@@ -11,6 +11,21 @@ const TOP_MARGIN: f64 = 0.012;
 // max |d/du (16 u² (1-u)²)| = 16 / (3 sqrt(3)) < 3.08.
 const ARCH_SLOPE_BOUND: f64 = 3.08;
 
+/// Distance-owned lower bound for a free hand transition. It preserves the
+/// existing preparation/recovery floors and the 0.65 s transition cap.
+pub(crate) fn hand_transition_duration(distance: f64, minimum: f64) -> f64 {
+    (distance / 2.5).clamp(minimum, 0.65)
+}
+
+/// Use spare time to settle gently without consuming the next preparation.
+/// Tight gaps keep the existing lower bound; their caller connects contacts
+/// directly instead of inserting an unfinished ready-pose recovery.
+pub(crate) fn settling_duration(distance: f64, available: f64) -> f64 {
+    hand_transition_duration(distance, 0.18)
+        .max(available.max(0.) * 0.5)
+        .min(0.65)
+}
+
 fn in_box(point: Vec3, body: &EquipmentBox) -> bool {
     let extents = box_world_half_extents(body);
     (0..3).all(|axis| (point[axis] - body.center[axis]).abs() <= extents[axis] + CORRIDOR_MARGIN)

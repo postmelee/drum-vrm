@@ -435,42 +435,42 @@ can retain diagnostics; refined samples are not a continuous-path certificate.
 
 ## Explicit stick-to-stick count-in
 
-[count_in.rs](../../crates/drum-engine/src/count_in.rs) uses only retained events
-explicitly interpreted as `CountIn`. It neither guesses from note number alone nor
-adds drum `Hit` entries or synthesized audio. The left hand holds a crossed stick;
-the right hand lifts and taps it at the midpoint of each complete butt-to-tip shaft.
-The two shaft axes are separated by their actual radii, with a 1 µm numerical reserve;
-the tips extend beyond the contact. This is deterministic kinematics, not force simulation.
-Each cue reserves both hands for 0.22 s before and after its original time.
-Accepted cues no more than 1.2 s apart share one held phrase if no real hand hit lies
-between them. An actual hand hit, including an unassigned one, has priority in this
-window. Nonduplicate cues closer than 0.12 s are diagnosed. An unavailable common
-anatomical/tool-equipment candidate retains its source with `COUNT_IN_GESTURE_UNAVAILABLE`.
-
-Preparation tests a bounded body-relative crossing and ordinary 0.05 rad elbow
-candidates. Natural-grip cues reserve 15° toward palm-down within the declared policy,
-so an exactly inward endpoint need not pull the transition outside its policy interval.
-Candidate scoring, inspection and replay share the accepted physical orientations;
-the ordinary path blends into/out of the cue once without a pointwise wrist optimizer.
-Full-cue nodes directly solve this fixed orientation. The right stick's 70 mm lift
-is sampled at 40 phases using complete physical profiles and anatomical checks.
-Underlying equipment corrections blend out at cue contact and back in on exit,
-so a correction cannot displace the intentional contact. Entry/exit interpolation
-remains under temporal inspection; valid pulse endpoints do not certify the whole path.
-
-Inter-stick checks always use both complete butt-to-tip profiles from the shared
-rendered taper. There is no trimmed shaft or terminal exemption. Throughout the
-close cue, tool-pair clearance may be below the ordinary 2 mm margin but must remain
-nonnegative. Intentional-contact inspection is active only during the full cue
-blend and within 2 mm of the closed pulse. Equipment retains its 2 mm margin,
-without an intended drum-surface exception. Arm/body/opposite-hand measurements
-remain advisory.
-
+[count_in.rs](../../crates/drum-engine/src/count_in.rs) uses retained events explicitly
+interpreted as `CountIn`; it neither guesses from note number alone nor adds drum
+`Hit` entries or synthesized audio. The left hand holds a crossed stick; the right
+snaps 12° about its actual wrist, deriving tip and orientation from the same rigid
+mount. Both complete butt-to-tip shafts meet at their midpoints, separated by their
+actual radii and a 1 µm numerical reserve. This is kinematics, not force simulation.
+Each source cue reserves the immediate ±0.22 s interval. Cues at most 1.2 s apart
+share a held phrase when no real hand hit intervenes. Actual hand hits, including
+unassigned hits, have priority; nonduplicate cues closer than 0.12 s are diagnosed.
+The last rebound takes at most 0.11 s. Common settling uses spare time before either
+hand's next preparation, the next cue phrase or the authored ending plus tail. Only each hand's first upcoming hit reserves home-to-target preparation;
+later hits transfer from their preceding strike. An unavailable candidate or already
+started next preparation retains the source with `COUNT_IN_GESTURE_UNAVAILABLE`.
+Preparation tests bounded body-relative crossings and the existing 0.05 rad elbow
+grid. One common swivel per hand must satisfy anatomical and whole-tool checks at
+all 40 pulse phases. The temporal graph retains these witnesses during the held
+phrase; its neutral torso roots are reserved at both bracketing body knots, with
+existing yaw-rate propagation. No post-graph elbow override or bone stretching is
+used. Natural-grip cues reserve 15° toward palm-down within the declared policy.
+The ordinary path blends once into/out of the cue; tip and wrist orientation share
+the same absolute-time pulse. Entry, rebound and settling boundaries enter the hand
+graph. Prepared restore reconstructs them and validates the held roots and swivels.
+Underlying equipment corrections fade out at cue contact and return on exit.
+Pulse witnesses do not certify entry/exit interpolation; actual anatomical/tool
+inspection retains unresolved transition diagnostics.
+Inter-stick checks use complete butt-to-tip profiles from the rendered taper,
+without trimmed shafts or terminal exemptions. During the close cue the ordinary
+2 mm pair margin may shrink to zero, never below. Intentional-contact inspection
+requires full cue blend and an actual contact lever within 2 mm of the closed pulse.
+Equipment retains its 2 mm margin without an intended surface exception;
+arm/body/opposite-hand measurements remain advisory.
 Paired `stickShaft` records retain the common world contact point and source time.
-Adapter measurements use the rendered full-shaft midpoint and both actual shaft axes;
-missing/parallel markers are unavailable. Cue start/contact/end enter the bounded
-timeline even when unavailable. Absolute-time evaluation and prepared-worker restore
-validate both actual shaft contacts without substituting tips or planned points.
+Adapter measurements use rendered full-shaft midpoints and both actual axes;
+missing/parallel markers are unavailable. Source cue start/contact/end remain on the
+bounded timeline even when unavailable. Absolute-time replay and prepared restore
+validate actual shaft contacts, never substituting tips or planned points.
 
 ## Inspection categories
 

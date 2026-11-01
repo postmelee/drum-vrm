@@ -14,6 +14,7 @@ pub const WINDOW: f64 = 0.22;
 const MIN_INTERVAL: f64 = 0.12;
 const MAX_PHRASE_INTERVAL: f64 = 1.2;
 const CONTACT_TOLERANCE: f64 = 0.002;
+const WRIST_SNAP: f64 = std::f64::consts::PI / 15.; // 12 degrees about the actual wrist
 const CONTACT_GAP: f64 = 0.000_001; // conservative pair-query numerical reserve
 
 #[derive(Clone, Debug)]
@@ -26,6 +27,7 @@ pub struct CountInCue {
 struct Phrase {
     start: f64,
     end: f64,
+    exit_start: f64,
     times: Vec<f64>,
 }
 #[derive(Clone, Debug, Default)]
@@ -36,7 +38,10 @@ pub struct CountInTrack {
     contact: Vec3,
     tips: [Vec3; 2],
     rotations: [Quat; 2],
-    opening: [Vec3; 2],
+    swivels: [f64; 2],
+    wrist_pivots: [Vec3; 2],
+    shaft_directions: [Vec3; 2],
+    pulse_axis: Vec3,
     pitches: [f64; 2],
 }
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -116,6 +121,26 @@ fn cross(a: Vec3, b: Vec3) -> Vec3 {
 }
 fn unit(a: Vec3) -> Vec3 {
     mul(a, 1. / distance(a, [0.; 3]).max(1e-12))
+}
+fn axis_rotation(axis: Vec3, angle: f64) -> Quat {
+    let (sin, cos) = (angle * 0.5).sin_cos();
+    [axis[0] * sin, axis[1] * sin, axis[2] * sin, cos]
+}
+fn wrist_pulse(
+    tips: [Vec3; 2],
+    rotations: [Quat; 2],
+    pivot: Vec3,
+    axis: Vec3,
+    opening: f64,
+) -> ([Vec3; 2], [Quat; 2]) {
+    let rotation = axis_rotation(axis, opening * WRIST_SNAP);
+    (
+        [
+            tips[0],
+            add(pivot, crate::rig::rotate(rotation, sub(tips[1], pivot))),
+        ],
+        [rotations[0], multiply(rotation, rotations[1])],
+    )
 }
 fn multiply(a: Quat, b: Quat) -> Quat {
     [
@@ -211,10 +236,11 @@ pub fn shaft_contact_points(profile: &RigProfile, hands: &[HandSolution; 2]) -> 
 
 /// Prepared cue orientation shared by candidate measurement and pose replay.
 /// Entry/exit blends once from the underlying musical orientation; full pulses
-/// retain one physical shaft orientation while the right stick lifts vertically.
+/// retain one elbow plane while the right stick rotates about the wrist.
 #[derive(Clone, Copy, Debug)]
 pub struct CueOrientation {
     pub rotations: [Quat; 2],
+    pub swivels: [f64; 2],
     pub weight: f64,
 }
 impl CueOrientation {
@@ -270,8 +296,95 @@ fn cue_hands(
     (clearance::tool_pair_clearance(profile, &pair[0], &pair[1]) >= 0.).then_some(pair)
 }
 
+/// One elbow witness must support the entire wrist pulse, not independently
+/// selected elbows at each phase. The temporal graph retains this witness.
+fn pulse_swivels(
+    profile: &RigProfile,
+    tips: [Vec3; 2],
+    rotations: [Quat; 2],
+    pivot: Vec3,
+    axis: Vec3,
+    equipment: Option<&equipment_motion::EquipmentContext>,
+) -> Option<[f64; 2]> {
+    let phases: Vec<_> = (0..=40)
+        .map(|step| wrist_pulse(tips, rotations, pivot, axis, step as f64 / 40.))
+        .collect();
+    let mut swivels = [0.; 2];
+    for (limb, swivel) in swivels.iter_mut().enumerate() {
+        let mut best = None;
+        for i in -16..=16 {
+            let angle = i as f64 * 0.05;
+            let mut cost = 0.;
+            let valid = phases.iter().all(|(tips, rotations)| {
+                let hand =
+                    profile.solve_hand_with_rotation(limb, tips[limb], rotations[limb], angle);
+                cost += posture::comfort_cost(profile, limb, tips[limb], &hand);
+                hand.reachable
+                    && posture::anatomical(profile, limb, tips[limb], &hand)
+                    && profile.hand_orientation_policy_valid(limb, hand.rotation)
+                    && equipment.is_none_or(|ctx| {
+                        equipment_motion::tool_clearance(profile, limb, &hand, ctx, None)
+                            >= posture::MARGIN
+                    })
+            });
+            if valid && best.is_none_or(|(old, _)| cost < old) {
+                best = Some((cost, angle));
+            }
+        }
+        *swivel = best?.1;
+    }
+    phases
+        .iter()
+        .all(|(tips, rotations)| {
+            let hands = std::array::from_fn::<_, 2, _>(|i| {
+                profile.solve_hand_with_rotation(i, tips[i], rotations[i], swivels[i])
+            });
+            clearance::tool_pair_clearance(profile, &hands[0], &hands[1]) >= 0.
+        })
+        .then_some(swivels)
+}
+
+fn next_preparation_start(plan: &PerformancePlan, ready: [Vec3; 2], after: f64) -> f64 {
+    let mut next = [None; 2];
+    for hit in plan.hits.iter().filter(|hit| {
+        hit.time > after && !matches!(hit.instrument, Instrument::Kick | Instrument::PedalHat)
+    }) {
+        if let Some(limb) = hit.limb.filter(|limb| *limb < 2) {
+            next[limb].get_or_insert(hit);
+        } else {
+            // An unassigned real hand hit still has source priority. Reserve
+            // any hand whose next action is not already known.
+            for slot in &mut next {
+                slot.get_or_insert(hit);
+            }
+        }
+        if next.iter().all(Option::is_some) {
+            break;
+        }
+    }
+    next.into_iter()
+        .enumerate()
+        .filter_map(|(limb, hit)| {
+            hit.map(|hit| {
+                hit.time
+                    - crate::motion::transfer::hand_transition_duration(
+                        distance(ready[limb], hit.target),
+                        0.22,
+                    )
+            })
+        })
+        .fold(plan.duration + crate::model::TAIL, f64::min)
+}
 impl CountInTrack {
+    #[cfg(test)]
     pub fn prepare(plan: &PerformancePlan, profile: &RigProfile) -> Self {
+        Self::prepare_with_ready(plan, profile, [profile.rest_tips[0], profile.rest_tips[1]])
+    }
+    pub fn prepare_with_ready(
+        plan: &PerformancePlan,
+        profile: &RigProfile,
+        ready: [Vec3; 2],
+    ) -> Self {
         let mut result = Self::default();
         let events = events(plan);
         if events.is_empty() {
@@ -289,6 +402,8 @@ impl CountInTrack {
             let next = hand_times.partition_point(|t| *t < time - WINDOW);
             if hand_times.get(next).is_some_and(|t| *t <= time + WINDOW) {
                 result.unavailable(time, &id, "양손 준비·복귀 구간에 실제 손 타격이 있습니다");
+            } else if next_preparation_start(plan, ready, time) <= time {
+                result.unavailable(time, &id, "다음 실제 타격의 준비 구간이 이미 시작됩니다");
             } else if free
                 .last()
                 .is_some_and(|(_, previous)| time > *previous && time - previous < MIN_INTERVAL)
@@ -366,26 +481,35 @@ impl CountInTrack {
                         {
                             continue;
                         }
-                        let opening = [[0.; 3], mul(normal, 0.070)];
-                        if (1..=40).all(|step| {
-                            cue_hands(
-                                profile,
-                                std::array::from_fn(|i| {
-                                    add(tips[i], mul(opening[i], step as f64 / 40.))
-                                }),
+                        let pivots =
+                            std::array::from_fn(|i| sub(tips[i], profile.offset(i, rotations[i])));
+                        let axis = unit(cross(dirs[1], normal));
+                        if let Some(swivels) = pulse_swivels(
+                            profile,
+                            tips,
+                            rotations,
+                            pivots[1],
+                            axis,
+                            equipment.as_deref(),
+                        ) {
+                            pose = Some((
+                                contact,
+                                tips,
+                                pivots,
+                                axis,
+                                dirs,
                                 rotations,
-                                equipment.as_deref(),
-                            )
-                            .is_some()
-                        }) {
-                            pose = Some((contact, tips, opening, rotations, [-incline.atan(); 2]));
+                                swivels,
+                                [-incline.atan(); 2],
+                            ));
                             break 'search;
                         }
                     }
                 }
             }
         }
-        let Some((contact, tips, opening, rotations, pitches)) = pose else {
+        let Some((contact, tips, pivots, axis, directions, rotations, swivels, pitches)) = pose
+        else {
             for (id, time) in free {
                 result.unavailable(
                     time,
@@ -398,7 +522,10 @@ impl CountInTrack {
         result.contact = contact;
         result.tips = tips;
         result.rotations = rotations;
-        result.opening = opening;
+        result.swivels = swivels;
+        result.wrist_pivots = pivots;
+        result.shaft_directions = directions;
+        result.pulse_axis = axis;
         result.pitches = pitches;
         for (id, time) in free {
             result.cues.push(CountInCue {
@@ -419,11 +546,44 @@ impl CountInTrack {
                 result.phrases.push(Phrase {
                     start: time - WINDOW,
                     end: time + WINDOW,
+                    exit_start: time + WINDOW * 0.5,
                     times: vec![time],
                 });
             }
         }
+        let opened = result.pulse_pose(1.).0;
+        let travel = (0..2)
+            .map(|i| distance(opened[i], ready[i]))
+            .fold(0_f64, f64::max);
+        for index in 0..result.phrases.len() {
+            let last = *result.phrases[index].times.last().unwrap();
+            let deadline = next_preparation_start(plan, ready, last).min(
+                result
+                    .phrases
+                    .get(index + 1)
+                    .map_or(f64::INFINITY, |p| p.start),
+            );
+            let available = (deadline - last).max(0.);
+            let rebound = (WINDOW * 0.5).min(available * 0.25);
+            let settling = crate::motion::transfer::settling_duration(travel, available - rebound)
+                .min(available - rebound);
+            result.phrases[index].exit_start = last + rebound;
+            result.phrases[index].end = last + rebound + settling;
+        }
         result
+    }
+    pub fn transition_times(&self) -> Vec<f64> {
+        self.phrases
+            .iter()
+            .flat_map(|p| [p.start, p.start + WINDOW * 0.5, p.exit_start, p.end])
+            .collect()
+    }
+    /// Protect neutral-facing roots over the entire fixed-wrist interval.
+    pub fn held_intervals(&self) -> Vec<[f64; 2]> {
+        self.phrases
+            .iter()
+            .map(|p| [p.start + WINDOW * 0.5, p.exit_start])
+            .collect()
     }
     fn unavailable(&mut self, time: f64, id: &str, reason: &str) {
         let mut diagnostic = Diagnostic::new(
@@ -455,13 +615,52 @@ impl CountInTrack {
             .filter(|p| time > p.start && time < p.end)
             .map_or(1., |p| {
                 1. - smooth((time - p.start) / (WINDOW * 0.5))
-                    .min(smooth((p.end - time) / (WINDOW * 0.5)))
+                    .min(1. - smooth((time - p.exit_start) / (p.end - p.exit_start)))
             })
+    }
+    fn pulse_opening(&self, time: f64) -> Option<f64> {
+        let at = self.phrases.partition_point(|p| p.end < time);
+        let phrase = self
+            .phrases
+            .get(at)
+            .filter(|p| time > p.start && time < p.end)?;
+        let next = phrase.times.partition_point(|t| *t < time);
+        let previous = next.checked_sub(1).map(|i| phrase.times[i]);
+        let following = phrase.times.get(next).copied();
+        Some(if following == Some(time) {
+            0.
+        } else {
+            match (previous, following) {
+                (Some(a), Some(b)) => ((time - a) / (b - a) * std::f64::consts::PI).sin().powi(2),
+                (Some(a), None) => smooth((time - a) / (phrase.exit_start - a)),
+                (None, Some(b)) => smooth((b - time) / (WINDOW * 0.5)),
+                _ => 1.,
+            }
+        })
+    }
+    fn pulse_pose(&self, opening: f64) -> ([Vec3; 2], [Quat; 2], [f64; 2]) {
+        let (tips, rotations) = wrist_pulse(
+            self.tips,
+            self.rotations,
+            self.wrist_pivots[1],
+            self.pulse_axis,
+            opening,
+        );
+        let direction = crate::rig::rotate(
+            axis_rotation(self.pulse_axis, opening * WRIST_SNAP),
+            self.shaft_directions[1],
+        );
+        (
+            tips,
+            rotations,
+            [self.pitches[0], -direction[1].clamp(-1., 1.).asin()],
+        )
     }
     pub fn orientation(&self, time: f64) -> Option<CueOrientation> {
         let weight = 1. - self.base_weight(time);
-        (weight > 0.).then_some(CueOrientation {
-            rotations: self.rotations,
+        (weight > 0.).then(|| CueOrientation {
+            rotations: self.pulse_pose(self.pulse_opening(time).unwrap_or(0.)).1,
+            swivels: self.swivels,
             weight,
         })
     }
@@ -476,7 +675,7 @@ impl CountInTrack {
             return sample;
         }
         let at = self.phrases.partition_point(|p| p.end < time);
-        let Some(phrase) = self
+        let Some(_) = self
             .phrases
             .get(at)
             .filter(|p| time > p.start && time < p.end)
@@ -484,25 +683,18 @@ impl CountInTrack {
             return sample;
         };
         let blend = 1. - self.base_weight(time);
-        let next = phrase.times.partition_point(|t| *t < time);
-        let previous = next.checked_sub(1).map(|i| phrase.times[i]);
-        let following = phrase.times.get(next).copied();
-        let opening = if following == Some(time) {
-            0.0
-        } else {
-            match (previous, following) {
-                (Some(a), Some(b)) => ((time - a) / (b - a) * std::f64::consts::PI).sin().powi(2),
-                (Some(a), None) => smooth((time - a) / (WINDOW * 0.5)),
-                (None, Some(b)) => smooth((b - time) / (WINDOW * 0.5)),
-                _ => 1.0,
-            }
-        };
+        let opening = self.pulse_opening(time).unwrap_or(0.);
+        let (cue_tips, _, cue_pitches) = self.pulse_pose(opening);
         for limb in 0..2 {
-            let cue = add(self.tips[limb], mul(self.opening[limb], opening));
-            sample.tips[limb] = add(mul(tips[limb], 1.0 - blend), mul(cue, blend));
-            sample.pitches[limb] = pitches[limb] * (1.0 - blend) + self.pitches[limb] * blend;
+            sample.tips[limb] = add(mul(tips[limb], 1.0 - blend), mul(cue_tips[limb], blend));
+            sample.pitches[limb] = pitches[limb] * (1.0 - blend) + cue_pitches[limb] * blend;
         }
-        sample.intended_stick_contact = blend >= 1. - 1e-12 && opening * 0.070 <= CONTACT_TOLERANCE;
+        let midpoint_offset = crate::rig::rotate(
+            axis_rotation(self.pulse_axis, opening * WRIST_SNAP),
+            sub(self.contact, self.wrist_pivots[1]),
+        );
+        let contact_travel = distance(add(self.wrist_pivots[1], midpoint_offset), self.contact);
+        sample.intended_stick_contact = blend >= 1. - 1e-12 && contact_travel <= CONTACT_TOLERANCE;
         sample.contact_point = sample.intended_stick_contact.then_some(self.contact);
         sample
     }
@@ -565,11 +757,22 @@ mod tests {
         let p = profile();
         let track = CountInTrack::prepare(&plan(), &p);
         assert_eq!(track.cues.len(), 3, "{:?}", track.diagnostics);
-        let ready = std::array::from_fn(|i| add(track.tips[i], track.opening[i]));
+        let ready = track.pulse_pose(1.).0;
         for step in 0..=1200 {
             let time = 0.72 + step as f64 * 0.001;
             let sample = track.sample(time, ready, track.pitches);
-            let hands = cue_hands(&p, sample.tips, track.rotations, None)
+            let rotation = track
+                .orientation(time)
+                .map_or(track.pulse_pose(1.).1, |cue| {
+                    std::array::from_fn(|i| {
+                        crate::hand_coordination::interpolate_orientation(
+                            track.pulse_pose(1.).1[i],
+                            cue.rotations[i],
+                            cue.weight,
+                        )
+                    })
+                });
+            let hands = cue_hands(&p, sample.tips, rotation, None)
                 .expect("shaft pulse has a valid physical/anatomical witness");
             assert!(
                 clearance::tool_pair_clearance(&p, &hands[0], &hands[1]) >= 0.,
@@ -601,7 +804,7 @@ mod tests {
         }
     }
     #[test]
-    fn consecutive_half_second_cues_hold_left_stick_and_lift_right_without_reset() {
+    fn consecutive_cues_hold_wrist_pivots_and_snap_right_stick_without_reset() {
         let mut plan = plan();
         for (index, event) in plan.source_events.iter_mut().enumerate() {
             event.time_us = 1_000_000 + index as u64 * 500_000;
@@ -614,9 +817,72 @@ mod tests {
         let lifted = track.sample(1.25, rest, [0.; 2]);
         assert_eq!(track.base_weight(1.25), 0.);
         assert_eq!(contact.tips[0], lifted.tips[0]);
-        assert!((distance(contact.tips[1], lifted.tips[1]) - 0.070).abs() < 1e-12);
+        assert!(distance(contact.tips[1], lifted.tips[1]) > 0.05);
+        for time in [1., 1.125, 1.25, 1.375, 1.5] {
+            let sample = track.sample(time, rest, [0.; 2]);
+            let rotations = track.orientation(time).unwrap().rotations;
+            for (limb, rotation) in rotations.iter().enumerate() {
+                let wrist = sub(sample.tips[limb], p.offset(limb, *rotation));
+                assert!(distance(wrist, track.wrist_pivots[limb]) < 1e-12);
+            }
+        }
         assert!(!lifted.intended_stick_contact);
         assert!(track.sample(1.5, rest, [0.; 2]).intended_stick_contact);
+    }
+    #[test]
+    fn settling_reserves_each_hands_next_preparation_and_ignores_later_targets() {
+        let p = profile();
+        let mut plan = plan();
+        for (i, event) in plan.source_events.iter_mut().enumerate() {
+            event.time_us = i as u64 * 500_000;
+        }
+        let hit = |time: f64, limb, target| crate::model::Hit {
+            id: 0,
+            time,
+            time_us: (time * 1_000_000.) as u64,
+            tick: 0,
+            track: 0,
+            event_index: 9,
+            channel: 9,
+            note: 38,
+            velocity: 100,
+            instrument: Instrument::Snare,
+            piece_id: "snare".into(),
+            articulation: "center".into(),
+            source_event_id: "0:9".into(),
+            limb: Some(limb),
+            target,
+        };
+        plan.hits = vec![hit(2., 1, p.rest_tips[1])];
+        let sources = serde_json::to_string(&plan.source_events).unwrap();
+        let track = CountInTrack::prepare(&plan, &p);
+        let phrase = &track.phrases[0];
+        assert!((phrase.exit_start - 1.11).abs() < 1e-12);
+        assert!((phrase.end - 1.445).abs() < 1e-12);
+        assert_eq!(track.base_weight(1.11), 0.);
+        assert!(track.base_weight(1.22) < 0.5);
+        assert_eq!(track.base_weight(phrase.end), 1.);
+        assert!(phrase.end < 2. - 0.22);
+        // Both hands' first preparations matter, including simultaneous hits.
+        plan.hits
+            .push(hit(2., 0, add(p.rest_tips[0], [0., 0., 0.75])));
+        assert!(CountInTrack::prepare(&plan, &p).phrases[0].end < phrase.end);
+        // A later same-hand target transfers from its preceding contact, so
+        // its hypothetical home preparation must not cancel an earlier cue.
+        plan.hits = vec![
+            hit(1.35, 1, p.rest_tips[1]),
+            hit(1.6, 1, add(p.rest_tips[1], [0., 0., 2.])),
+        ];
+        let tight = CountInTrack::prepare(&plan, &p);
+        assert_eq!(tight.cues.len(), 3);
+        assert!(tight.phrases[0].end <= 1.35 - 0.22);
+        assert_eq!(sources, serde_json::to_string(&plan.source_events).unwrap());
+        // With no next hand action, the authored ending plus tail is the deadline.
+        plan.hits.clear();
+        plan.duration = 1.;
+        let final_phrase = &CountInTrack::prepare(&plan, &p).phrases[0];
+        assert!(final_phrase.end <= plan.duration + crate::model::TAIL);
+        assert!(final_phrase.end > *final_phrase.times.last().unwrap());
     }
     #[test]
     fn cue_base_weight_matches_entry_exit_without_moving_cue_contacts() {
@@ -828,14 +1094,94 @@ mod tests {
             6
         );
         assert_eq!(motion.prepared_json(), restored.prepared_json());
-        for i in (0..=240).rev() {
+        let contact_pose = motion.evaluate_rig(0.);
+        for i in (0..=360).rev() {
             let time = -0.5 + i as f64 / 120.;
             assert_eq!(motion.evaluate_rig(time), restored.evaluate_rig(time));
+            if (0. ..=1.11).contains(&time) {
+                let pose = motion.evaluate_rig(time);
+                assert_eq!(&pose[73..77], &[0., 0., 0., 1.]);
+                for limb in 0..2 {
+                    let vector = |offset: usize| {
+                        std::array::from_fn(|j| pose[limb * 12 + offset + j] as f64)
+                    };
+                    let hand = HandSolution {
+                        middle: vector(3),
+                        end: vector(6),
+                        tip: vector(9),
+                        rotation: std::array::from_fn(|j| pose[57 + limb * 4 + j] as f64),
+                        reachable: true,
+                    };
+                    assert!(posture::anatomical(&profile, limb, hand.tip, &hand));
+                    assert_eq!(
+                        &pose[limb * 12 + 3..limb * 12 + 9],
+                        &contact_pose[limb * 12 + 3..limb * 12 + 9]
+                    );
+                }
+            }
             if time > -WINDOW && time < 1. + WINDOW {
                 let inspection: serde_json::Value =
                     serde_json::from_str(&motion.inspect_pose(time)).unwrap();
                 assert!(inspection["toolPairClearanceMeters"].as_f64().unwrap() >= -1e-6);
             }
+        }
+    }
+    #[test]
+    fn tight_real_hit_then_cue_keeps_a_finite_graph_and_source_contact() {
+        // 221 ticks at 120 BPM / 480 PPQ is 0.230208 s: just outside
+        // the existing +/-0.22 s real-hit priority window.
+        let track = [
+            0, 0x99, 38, 100, 0x81, 0x5d, 0x99, 75, 100, 0x83, 0x60, 0xff, 0x2f, 0,
+        ];
+        let mut bytes = b"MThd\0\0\0\x06\0\0\0\x01\x01\xe0MTrk".to_vec();
+        bytes.extend((track.len() as u32).to_be_bytes());
+        bytes.extend(track);
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-natural-grip30.json")).unwrap();
+        let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        let plan = crate::build_plan(
+            &bytes,
+            &crate::model::Selection {
+                tracks: vec![0],
+                count_in_note75: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let source = serde_json::to_string(&plan.source_events).unwrap();
+        let motion = crate::motion::Motion::with_profile(plan, profile.clone()).unwrap();
+        let restored = crate::motion::Motion::from_prepared_json(
+            &motion.prepared_json(),
+            &motion.plan.midi_hash,
+            &serde_json::to_string(&profile).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            source,
+            serde_json::to_string(&motion.plan.source_events).unwrap()
+        );
+        assert_eq!(
+            motion
+                .plan
+                .contact_events
+                .iter()
+                .filter(|e| e.tool_part == crate::contact_events::ToolPart::StickShaft)
+                .count(),
+            2
+        );
+        for hit in &motion.plan.hits {
+            let limb = hit.limb.unwrap();
+            let pose = motion.evaluate_rig(hit.time);
+            assert!(
+                distance(
+                    std::array::from_fn(|i| pose[limb * 12 + 9 + i] as f64),
+                    hit.target
+                ) < 1e-6
+            );
+        }
+        for i in 0..=120 {
+            let time = -0.5 + i as f64 / 120.;
+            assert_eq!(motion.evaluate_rig(time), restored.evaluate_rig(time));
         }
     }
     #[test]

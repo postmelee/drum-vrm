@@ -169,8 +169,9 @@ reuse, not a cache of arbitrary uploaded files.
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
 7, containing the plan, numeric profile, torso, elbow/orientation and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v19` identifies
-physical mid-shaft count-in contacts and the existing single approach-relative hand orientation; earlier prepared candidates must be rebuilt.
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v20` identifies
+wrist-driven shaft count-in, held arm/body witnesses and gap-aware settling;
+earlier prepared candidates must be rebuilt.
 Installation checks engine/planner versions, expected source/profile
 identity, finite values, ordering, track bounds and mandatory control times. The separate
 `handOrientations` track retains every original swivel-time orientation exactly, stays within
@@ -234,11 +235,14 @@ In the measured-profile path, left/right hands normally wait 3.5 cm above snare/
 Between repetitions on one physical piece, the ready tip stays over that piece.
 If the candidate is unreachable, use the measured reference rest instead. Hand
 preparation/recovery windows use contact-to-ready distance divided by 2.5 m/s,
-clamped to 0.22–0.65 s and 0.18–0.65 s respectively. A gap within their sum plus
-0.02 s uses one direct transfer, preserving the 0.42 s threshold for nearby targets
-while preventing overlapping long moves from interrupting each other. Wider gaps
-join the ready pose between separate windows. These durations are engineering
-heuristics. The legacy primitive comparison retains its generic rest.
+clamped to 0.22–0.65 s and 0.18–0.65 s respectively. When both hands are idle,
+recovery can use half the free interval, capped at 0.65 s, reserving either hand's
+next preparation and the authored ending plus tail. An opposite-hand preparation
+or overlapping recovery retains the distance floor. Count-in shares this settling
+rule after its separate wrist rebound. Tight gaps within the distance windows'
+sum plus 0.02 s retain direct transfer (0.42 s for nearby targets); wider gaps join
+the ready pose. These are engineering heuristics, not source-time changes.
+The legacy primitive comparison retains its generic rest.
 Each `Motion` precomputes immutable ready-pose feasibility, including failed
 queries, keyed by limb, physical piece and exact target bits. Shared assembly
 reconstructs it on prepared restoration; there is no playback-dependent cache.

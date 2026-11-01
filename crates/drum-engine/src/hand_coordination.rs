@@ -446,12 +446,17 @@ fn node_costs(input: &HandCoordinationInput) -> (Vec<f64>, NodeOrientations, Nod
     });
     let costs = (0..STATES)
         .map(|state| {
+            let a = angles(state);
+            if input.cue_orientation.is_some_and(|cue| {
+                cue.weight == 1. && (0..2).any(|i| (a[i] - cue.swivels[i]).abs() > 1e-9)
+            }) {
+                return f64::INFINITY;
+            }
             let (Some((left, lc, lp, _)), Some((right, rc, rp, _))) =
                 (hands[0][state / AXIS_STATES], hands[1][state % AXIS_STATES])
             else {
                 return 2.2e12;
             };
-            let a = angles(state);
             pair_cost_for_pose(
                 &input.profile,
                 &left,

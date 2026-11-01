@@ -4,6 +4,101 @@ This record separates adopted follow-up work from rejected private experiments.
 It does not establish publication or full natural-motion acceptance. Earlier
 checkpoints remain in [elbow/grip revision evidence](elbow-grip-revision.md).
 
+## Wrist snap and gap-aware settling — planner v20
+
+The right stick now rotates 12 degrees around its actual wrist; the left stick
+continues to hold the physical shaft-middle contact. A single elbow witness per
+hand must work through the complete pulse. The existing temporal graph retains
+those witnesses, and the body track reserves neutral shoulder roots throughout
+the held phrase, including off-grid brackets. The original rate limits still
+apply. This fixes the first trial's moving-body/moving-elbow wrist-limit regression
+without a post-graph joint override or another candidate grid.
+
+The shared free-hand settling rule reserves the next preparation first and uses
+up to half the remaining idle interval, capped at 0.65 s. It applies additional
+time only when the opposite hand is not preparing or recovering. Applying it
+unconditionally initially worsened B's whole-study stick-pair samples from 5 to
+14 (minimum gap −3.1 to −7.7 mm); that trial was discarded. Count-in also reserves
+its separate rebound. In Posture Study, the last cue remains at 1.000 s, rebound
+ends at 1.110 s and settling ends at 1.445 s instead of 1.220 s. The following
+musical hit remains at 2.000 s. Each hand's first upcoming action owns its next
+preparation; later transfers cannot invent an earlier home-to-target approach.
+
+Native Rust inspection at 120 Hz uses the four frozen measured profiles. During
+the active 0–1.11 s cue, all four have zero anatomical/palm failures and zero
+right-wrist or elbow translation across the pulse. The former right-wrist travel
+was 70 mm. Maximum wrist angles are native/B/Seed/Twist 34.316/34.356/34.363/34.267°,
+below the unchanged 34.377° bound. Complete count-in entry/pulse/exit has no sampled
+physical stick-pair or equipment penetration. B's exit clearance reaches 0.815 mm,
+below the ordinary 2 mm reserve, so this is not a complete clearance-margin pass.
+All four preserve source facts, 53 assigned hits, six shaft contacts, prepared
+bytes and 361 reverse-order samples. Private evidence is under
+`.local/shaft-count-in-v20/final/`.
+
+**Entry/exit anatomy remains incomplete.** Native passes these sampled transitions;
+B/Seed/Twist entry wrist maxima are 38.83/40.39/41.05° and settling maxima are
+36.29/35.94/37.88°. Settling maxima improve from 48.90/42.44/39.16°, but Seed/Twist
+entry maxima increase from 38.84/36.26°. Longer settling windows have different
+sample counts and must not be compared as equal-duration failure rates. The active
+wrist snap is validated separately from these unresolved connecting paths.
+
+Focused regressions cover the rigid wrist pivot, sparse/tight gaps, simultaneous
+upcoming hands, first-action reservation, the ending tail, opposite-hand activity,
+off-grid neutral reservation, source priority at a 0.230208 s cue/strike boundary,
+and rejection of altered held-body/elbow prepared controls. Source timing is not
+shifted. Planner v20 invalidates old prepared candidates; format 7 is unchanged.
+
+Final validation: 279 Rust and 336 web tests pass, together with Clippy (warnings
+denied), formatting, typecheck, rebuilt WASM/web and documentation checks. Final
+WASM SHA-256 is `24e064964e0aee517c5e5e9c23fd0183e0b49aec1efa76c4915faba49235482b`.
+The frozen four-rig WASM Posture matrix preserves 53/53 assignments, source/hit
+facts, layout, exact seek-order results and prepared restoration. Its 361-sample
+comparison against native Rust differs by at most 1.49e−8 in packed pose values.
+Three original public VRM adapters reproduce their frozen profiles and all six
+shaft contacts; maximum actual errors are B 0.547, Seed 0.479 and Twist 0.525 µm.
+Artifacts: `.local/reference-layout/v20-posture-final/` and
+`.local/wrist-count-in-v20/{rendered/,native-wasm-equivalence.json}`.
+All four full-study temporal acceptance results remain false. This is a local
+review candidate, not a Pages publication or full natural-motion certificate.
+Local production-preview captures are retained privately under
+`.local/wrist-count-in-v20/visual/`; the owner can review the first three displayed
+seconds of Posture Study at `http://127.0.0.1:5195/drum-vrm/?lang=ko`.
+
+## Upper-body clearance and forward placement audit
+
+The implementation already estimates nonzero arm, hand and torso volumes. Mesh
+measurements replace skeleton-proportional fallback volumes when available, but
+all upper-body overlap contributes only a bounded advisory cost. The enforced
+ordinary structural body cores currently cover legs and feet, not the upper body.
+Consequently, a successful static fit does not certify that a crossed-hat or snare
+forearm stays outside the torso. Costume overlap and ordinary-body penetration
+must be distinguished before adding an upper-body acceptance gate.
+
+A single private candidate advances the linked hi-hat/pedal assembly and left
+crash by 8 cm. All four frozen native/public-VRM profiles retain the existing
+static hardware, pedal, lower-body and contact certificates. However, the selected
+right-hand ready-pose torso gap improves for B/Seed/Twist while worsening for
+native, and impact poses remain penetrating. This placement is **not adopted**;
+there is no additional candidate grid or avatar-specific adjustment. The private
+audit retains the source identities, body-relative coordinates and proxy limits
+under `.local/hat-forward-v19-audit/`. Negative proxy gaps are not measured skin
+penetration depths.
+
+The current v19 WASM (`8e3737fd045d8ecbcc2aa380103f68896bee49cbc3f66f293ee8d5203fe862e0`)
+restores all four saved Posture Study motions. At 240 Hz from 2–4 seconds, minimum
+advisory torso gaps remain native −97.0, B −150.1, Seed −77.7 and Twist −151.5 mm.
+The separate ordinary-core comparison also finds forearm overlap without costume
+inflation. The forward-placement test is static only, and its historical input
+and private diagnostic engine identities are retained separately in the audit.
+
+The next shared path repair must separate an ordinary upper-body core from the
+advisory garment envelope, and evaluate elbow, wrist/tool orientation and the
+short approach/contact/rebound path together. Start with crossed-hat/snare and
+left-crash windows on native and the three public VRMs. Reconsider the already
+feasible forward placement only after this common path comparison; changing
+positions alone is insufficient. A separate global-Z versus torso-frame backward
+arm limit also needs correction, but does not explain away the observed crossing.
+
 ## Adopted physical shaft count-in
 
 Planner v19 / prepared format 7 replaces tip-to-tip count-in with tangential

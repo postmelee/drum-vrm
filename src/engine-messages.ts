@@ -292,6 +292,10 @@ export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = 
     "양손 준비·복귀 구간에 실제 손 타격이 있습니다"
   ],
   [
+    "Preparation for the next actual strike has already started",
+    "다음 실제 타격의 준비 구간이 이미 시작됩니다"
+  ],
+  [
     "The performance plan exceeds the size limit.",
     "연주 계획 크기가 한계를 초과합니다."
   ],

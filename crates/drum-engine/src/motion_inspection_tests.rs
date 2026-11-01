@@ -150,3 +150,29 @@ fn final_posture_inspection_reports_a_nonimpact_violation_without_changing_poses
         serde_json::to_string(&motion.plan.source_events).unwrap()
     );
 }
+
+#[test]
+fn spare_settling_requires_both_hands_to_be_idle() {
+    let mut motion = two_strokes();
+    motion.plan.hits[0].limb = Some(0);
+    motion.plan.hits[1].limb = Some(0);
+    motion.plan.hits[1].time = 2.;
+    motion.plan.duration = 2.5;
+    motion.limbs = [vec![0, 1], vec![], vec![], vec![]];
+    let contact = motion.plan.hits[0].target;
+    let resting = rest_tip(0);
+    assert!(distance(motion.raw_stroke_at(0, 0.2).0, resting) > 0.01);
+    assert_eq!(motion.raw_stroke_at(0, 0.).0, contact);
+    // Ongoing opposite-hand preparation keeps the original180ms recovery.
+    let mut opposite = motion.plan.hits[0].clone();
+    opposite.limb = Some(1);
+    opposite.target = rest_tip(1);
+    opposite.time = 0.25;
+    motion.plan.hits.push(opposite);
+    motion.limbs[1] = vec![2];
+    assert_eq!(motion.raw_stroke_at(0, 0.2).0, resting);
+    // A simultaneous opposite-hand contact is also still recovering.
+    motion.plan.hits[2].time = 0.;
+    assert_eq!(motion.raw_stroke_at(0, 0.2).0, resting);
+    assert_eq!(motion.raw_stroke_at(0, 2.).0, motion.plan.hits[1].target);
+}

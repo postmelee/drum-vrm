@@ -44,6 +44,30 @@ pub fn at(samples: &[f64], time: f64) -> f64 {
     samples[i] + (samples[j] - samples[i]) * t * t * (3.0 - 2.0 * t)
 }
 
+/// Keep both bracketing knots neutral so an off-grid held interval has exactly
+/// the roots used by its fixed-wrist witness. Propagate the existing yaw step
+/// bound outwards by reducing neighboring turns, never retiming a contact.
+pub fn reserve_neutral(samples: &mut [f64], intervals: &[[f64; 2]]) {
+    if samples.is_empty() || intervals.is_empty() {
+        return;
+    }
+    for &[start, end] in intervals {
+        let first = (((start + crate::model::PRE_ROLL) / STEP).floor().max(0.) as usize)
+            .min(samples.len() - 1);
+        let last = (((end + crate::model::PRE_ROLL) / STEP).ceil().max(0.) as usize)
+            .min(samples.len() - 1);
+        samples[first..=last].fill(0.);
+    }
+    for i in 1..samples.len() {
+        let limit = samples[i - 1].abs() + 0.06;
+        samples[i] = samples[i].clamp(-limit, limit);
+    }
+    for i in (0..samples.len() - 1).rev() {
+        let limit = samples[i + 1].abs() + 0.06;
+        samples[i] = samples[i].clamp(-limit, limit);
+    }
+}
+
 /// Reach failures reduce only the neighboring time knots, then propagate the
 /// existing yaw-rate bound outward. Other phrases retain useful torso facing.
 /// Every adjustment moves angles toward neutral; final fallback remains explicit
@@ -260,5 +284,22 @@ mod tests {
         let first = samples.clone();
         preserve_contacts(&mut samples, &profile, &[(0.0, 0, target, 0.0, None)], None);
         assert_eq!(samples, first);
+    }
+    #[test]
+    fn neutral_reservation_covers_off_grid_interval_and_survives_contact_preservation() {
+        let mut profile = RigProfile::primitive();
+        profile.torso_pivot = Some([0., 0.9, -0.1]);
+        let mut samples = vec![0.24; 80];
+        reserve_neutral(&mut samples, &[[0.123, 0.917]]);
+        let target = [-1.079, 1.26, 0.2];
+        preserve_contacts(&mut samples, &profile, &[(1.23, 0, target, 0., None)], None);
+        for time in [0.123 - 1e-9, 0.123, 0.5, 0.917, 0.917 + 1e-9] {
+            assert_eq!(at(&samples, time), 0.);
+        }
+        assert!(samples
+            .windows(2)
+            .all(|p| (p[1] - p[0]).abs() <= 0.06 + 1e-12));
+        assert!(profile.turned(at(&samples, 1.23)).reachable(0, target));
+        assert_eq!(samples[79], 0.24);
     }
 }

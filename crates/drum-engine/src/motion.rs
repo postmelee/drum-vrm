@@ -15,8 +15,8 @@ mod sticking;
 #[path = "tool_pair_path.rs"]
 mod tool_pair_path;
 #[path = "motion_transfer.rs"]
-mod transfer;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v19";
+pub(crate) mod transfer;
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v20";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -761,7 +761,15 @@ impl Motion {
         let ready_poses =
             ready_pose::ReadyPoses::for_plan(&plan, &limbs, profile.as_ref(), equipment.as_deref());
         let cue_profile = profile.clone().unwrap_or_else(RigProfile::primitive);
-        let count_in = crate::count_in::CountInTrack::prepare(&plan, &cue_profile);
+        let count_in = crate::count_in::CountInTrack::prepare_with_ready(
+            &plan,
+            &cue_profile,
+            std::array::from_fn(|limb| {
+                ready_poses
+                    .home(limb)
+                    .unwrap_or(cue_profile.rest_tips[limb])
+            }),
+        );
         crate::contact::append_count_in_events(&mut plan, &count_in.cues);
         let mut motion = Self {
             plan,
@@ -831,6 +839,10 @@ impl Motion {
                     .iter()
                     .map(|c| (c.0, c.1, c.2, c.3, c.4.as_deref()))
                     .collect();
+                crate::body_motion::reserve_neutral(
+                    &mut motion.body_turns,
+                    &motion.count_in.held_intervals(),
+                );
                 crate::body_motion::preserve_contacts(
                     &mut motion.body_turns,
                     profile,
@@ -861,7 +873,8 @@ impl Motion {
                             .intended_stick_contact,
                     }
                 };
-                let control_times = prepared::control_times(&motion.plan)?;
+                let control_times =
+                    prepared::control_times(&motion.plan, &motion.count_in.transition_times())?;
                 let inputs: Vec<_> = control_times.into_iter().map(make_input).collect();
                 let check_count =
                     ((motion.plan.duration + PRE_ROLL + TAIL) * 30.0).ceil() as usize + 1;
@@ -970,6 +983,7 @@ impl Motion {
     fn inspection_times(&self) -> Vec<f64> {
         let mut times = tool_pair_path::check_times(&self.equipment_path);
         times.extend(crate::count_in::control_times_for_plan(&self.plan));
+        times.extend(self.count_in.transition_times());
         times.extend(self.hand_swivels.iter().map(|sample| sample.time));
         times.extend(self.hand_orientations.iter().map(|sample| sample.time));
         times.extend(
@@ -1378,18 +1392,61 @@ impl Motion {
         // Long moves to/from the ready position need time. If both windows
         // would overlap, connect the two source contacts directly instead of
         // abruptly abandoning an unfinished recovery for the next preparation.
-        let recovery = previous.map_or(0.18, |hit| {
-            if foot {
-                0.18
-            } else {
-                (distance(hit.target, rest) / 2.5).clamp(0.18, 0.65)
-            }
-        });
         let preparation = next.map_or(0.22, |hit| {
             if foot {
                 0.22
             } else {
-                (distance(rest, hit.target) / 2.5).clamp(0.22, 0.65)
+                transfer::hand_transition_duration(distance(rest, hit.target), 0.22)
+            }
+        });
+        let recovery = previous.map_or(0.18, |hit| {
+            if foot {
+                0.18
+            } else {
+                let mut deadline =
+                    next.map_or(self.plan.duration + TAIL, |next| next.time - preparation);
+                let other = 1 - limb;
+                let other_hits = &self.limbs[other];
+                let at = other_hits.partition_point(|id| self.plan.hits[*id].time <= hit.time);
+                let other_previous = at.checked_sub(1).map(|i| &self.plan.hits[other_hits[i]]);
+                let other_next = other_hits.get(at).map(|id| &self.plan.hits[*id]);
+                let other_rest = other_previous
+                    .zip(other_next)
+                    .filter(|(a, b)| a.piece_id == b.piece_id)
+                    .and_then(|(previous, _)| self.ready_poses.repeated(other, previous))
+                    .or_else(|| self.ready_poses.home(other))
+                    .unwrap_or_else(|| {
+                        self.profile
+                            .as_ref()
+                            .map_or_else(|| rest_tip(other), |p| p.rest_tips[other])
+                    });
+                let other_recovering = other_previous.is_some_and(|previous| {
+                    previous.time
+                        + transfer::hand_transition_duration(
+                            distance(previous.target, other_rest),
+                            0.18,
+                        )
+                        > hit.time
+                });
+                if let Some(next) = other_next {
+                    deadline = deadline.min(
+                        next.time
+                            - transfer::hand_transition_duration(
+                                distance(other_rest, next.target),
+                                0.22,
+                            ),
+                    );
+                }
+                // Spare-time easing belongs to a genuinely idle pair of hands;
+                // ongoing opposite-hand groove strokes keep the old floor.
+                transfer::settling_duration(
+                    distance(hit.target, rest),
+                    if other_recovering {
+                        0.
+                    } else {
+                        deadline - hit.time
+                    },
+                )
             }
         });
         match (previous, next) {

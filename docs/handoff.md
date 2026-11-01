@@ -7,9 +7,12 @@ own measured results and publication evidence.
 
 The kit/grip batch on `codex/kit-grip-refinement` remains **local/draft, not
 published**. The [shaft count-in and path follow-up](verification/shaft-count-in-and-path-followup.md)
-adds physical midpoint stick contact: the left hand holds a crossed stick while
-the right taps it, with one held phrase across adjacent count-in beats. Planning,
-replay, actual rendered markers and prepared restoration use the same contact.
+adds physical midpoint stick contact and a wrist-driven count-in: the left hand
+holds a crossed stick while the right snaps around its wrist. Held arm/body
+witnesses keep the pulse stationary, and common idle-time settling reserves the
+next action before easing back. Entry/exit wrist warnings remain distinct from the
+validated pulse. Planning, replay, rendered markers and prepared restoration use
+the same contact and transition boundaries.
 The existing stand-phase search now handles equipment obstructions as well as
 structural-leg obstructions before moving a drum. It does not add candidate grids.
 
@@ -21,8 +24,13 @@ tom elevation, so it was rejected. Bounded orientation continuation, alternative
 interpolation and adjacent-edge witness replacement also fail temporal acceptance;
 none was adopted. Do not repeat isolated weights or angle sweeps.
 
-Next repair actual tool orientation and arm witnesses together with the short
-preparation→impact→rebound→next-target path. Separately fixing tip/pitch first and
+Next repair ordinary upper-body clearance, actual tool orientation and arm witnesses
+together with the short preparation→impact→rebound→next-target path. Crossed-hat
+and snare forearms can pass the torso even without inflated costume measurements.
+The single 8 cm forward hi-hat/left-crash trial passes static geometry but does not
+resolve this; the production kit remains fixed. Separate ordinary body cores from
+garment advisories before introducing any new upper-body acceptance gate.
+Separately fixing tip/pitch first and
 retaining one static hand witness per swivel has not solved the transitions.
 Preserve original MIDI times, bone lengths, deterministic seek and prepared restore.
 Do not equate exact shaft contact, static fit or passing unit tests with natural
