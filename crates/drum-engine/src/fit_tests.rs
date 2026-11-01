@@ -399,6 +399,85 @@ fn unchanged_pedal_fit_requires_knee_posture_as_well_as_reach_and_clearance() {
 }
 
 #[test]
+fn stand_phase_repairs_equipment_without_requiring_a_leg_collision() {
+    // An authored snare tripod enters the kick footprint. The playing surfaces
+    // and seated legs already clear; translating a drum is unnecessary.
+    let mut profile = RigProfile::primitive();
+    profile.roots[2] = [-0.08, 0.73, 0.22];
+    profile.roots[3] = [0.08, 0.73, 0.22];
+    let mut kit: Vec<_> = default_kit()
+        .into_iter()
+        .filter(|p| matches!(p.instrument, Instrument::Kick | Instrument::Snare))
+        .collect();
+    let index = kit
+        .iter()
+        .position(|p| p.instrument == Instrument::Snare)
+        .unwrap();
+    kit[index].position = [-0.075, 0.81, 0.70];
+    let original = kit.clone();
+    let geometry = crate::equipment::kit_geometry(&kit);
+    assert!(geometry.unresolved_piece_ids.contains(&kit[index].id));
+    assert!(lower_limb::structural_violations(&profile, &kit, &geometry).is_empty());
+    let locked = vec![kit
+        .iter()
+        .position(|p| p.instrument == Instrument::Kick)
+        .unwrap()];
+    let cache = FitCache::default();
+    assert!(choose_clear_stand_phase(
+        &profile, &mut kit, index, &locked, &cache
+    ));
+    assert!((1..=24).contains(&cache.candidates.get()));
+    assert!(kit[index].stand_rotation.is_some());
+    let accepted = crate::equipment::kit_geometry(&kit);
+    assert!(accepted.unresolved_piece_ids.is_empty());
+    assert!(lower_limb::structural_violations(&profile, &kit, &accepted).is_empty());
+    for (before, after) in original.iter().zip(&kit) {
+        assert_eq!(before.position, after.position);
+        assert_eq!(before.radius, after.radius);
+        assert_eq!(
+            serde_json::to_value(&before.geometry).unwrap(),
+            serde_json::to_value(&after.geometry).unwrap()
+        );
+    }
+    let once = serde_json::to_string(&kit).unwrap();
+    let probes = cache.candidates.get();
+    assert!(choose_clear_stand_phase(
+        &profile, &mut kit, index, &locked, &cache
+    ));
+    assert_eq!(cache.candidates.get(), probes);
+    assert_eq!(serde_json::to_string(&kit).unwrap(), once);
+
+    // Exercise the placement call order as well: rejecting unresolved hardware
+    // before trying the phase would translate an otherwise usable surface.
+    let placement_cache = FitCache::default();
+    let repaired = repair_posture(
+        &profile,
+        proposal(&profile, original.clone(), 1., [0.; 3]),
+        &placement_cache,
+    );
+    assert!(repaired.complete);
+    assert!(repaired.piece_adjustments.is_empty());
+    assert_eq!(repaired.kit[index].position, original[index].position);
+    assert!(repaired.kit[index].stand_rotation.is_some());
+
+    let mut rejected = original.clone();
+    let exhausted = FitCache::default();
+    exhausted.candidates.set(MAX_FIT_LAYOUT_CANDIDATES);
+    assert!(!choose_clear_stand_phase(
+        &profile,
+        &mut rejected,
+        index,
+        &locked,
+        &exhausted
+    ));
+    assert_eq!(exhausted.candidates.get(), MAX_FIT_LAYOUT_CANDIDATES);
+    assert_eq!(
+        serde_json::to_string(&rejected).unwrap(),
+        serde_json::to_string(&original).unwrap()
+    );
+}
+
+#[test]
 fn stand_phase_pruning_preserves_invariant_shell_rejection_without_spending_budget() {
     // An independently authored negative case places the upper thigh axes in
     // the snare shell. Turning the tripod cannot move that shell or either hip.
@@ -440,7 +519,7 @@ fn stand_phase_pruning_preserves_invariant_shell_rejection_without_spending_budg
     }
 
     let cache = FitCache::default();
-    assert!(!choose_leg_clear_stand_phase(
+    assert!(!choose_clear_stand_phase(
         &profile,
         &mut kit,
         0,

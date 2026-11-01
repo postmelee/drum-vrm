@@ -894,9 +894,9 @@ fn place_rack_group(
 
 /// Tripod phase is a real hardware degree of freedom, stored in the accepted
 /// kit so runtime reconstruction cannot silently choose another leg direction.
-/// Try it only when the current piece's support intersects the lower body;
+/// Try it when the current piece's support obstructs equipment or the lower body;
 /// moving an unrelated obstruction or weakening an envelope is not a repair.
-fn choose_leg_clear_stand_phase(
+fn choose_clear_stand_phase(
     profile: &RigProfile,
     candidate: &mut [KitPiece],
     index: usize,
@@ -915,7 +915,7 @@ fn choose_leg_clear_stand_phase(
     let kit = fixed(candidate);
     let geometry = crate::equipment::kit_geometry(&kit);
     let failures = lower_limb::structural_violations(profile, &kit, &geometry);
-    if failures.is_empty() {
+    if failures.is_empty() && geometry.unresolved_piece_ids.is_empty() {
         return true;
     }
     let rotatable = matches!(
@@ -924,6 +924,10 @@ fn choose_leg_clear_stand_phase(
     ) || (candidate[index].instrument == Instrument::TomLow
         && candidate[index].mount.is_none());
     if !rotatable
+        || !piece_clear(kit.len() - 1, &kit)
+        || !layout::violations(profile, &kit).is_empty()
+        || (!geometry.unresolved_piece_ids.is_empty()
+            && !geometry.unresolved_piece_ids.contains(&candidate[index].id))
         || failures
             .iter()
             .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
@@ -931,7 +935,8 @@ fn choose_leg_clear_stand_phase(
         return false;
     }
     // This piece's shell, footboards and leg IK do not change with its stand
-    // phase. The guard above already excludes failures owned by other pieces.
+    // phase. Only its supports may resolve a leg or equipment obstruction;
+    // unrelated failures cannot justify moving an already accepted stand.
     // Reject these exact invariant obstructions before spending phase probes.
     let mut invariant_geometry = geometry.clone();
     invariant_geometry
@@ -1021,7 +1026,7 @@ fn repair_posture_order(
                     kit.push(hat.clone());
                     let index = kit.len() - 1;
                     let fixed: Vec<_> = (0..index).collect();
-                    if !choose_leg_clear_stand_phase(profile, &mut kit, index, &fixed, cache) {
+                    if !choose_clear_stand_phase(profile, &mut kit, index, &fixed, cache) {
                         return None;
                     }
                     let hat = kit[index].clone();
@@ -1231,12 +1236,11 @@ fn repair_posture_order(
             {
                 return false;
             }
-            if !against_locked(candidate) {
-                return false;
-            }
-            let phase = candidate[index].stand_rotation;
-            choose_leg_clear_stand_phase(profile, candidate, index, &locked, cache)
-                && (phase == candidate[index].stand_rotation || against_locked(candidate))
+            // A tripod may block another instrument while the seated legs are
+            // already clear. Try its existing physical phases before rejecting
+            // the placement, then validate the actual resulting tool paths.
+            choose_clear_stand_phase(profile, candidate, index, &locked, cache)
+                && against_locked(candidate)
         };
         let mut initial = result.kit.clone();
         if piece_posture_fits(profile, &initial[index], cache) && placement_fits(&mut initial) {

@@ -6,32 +6,29 @@ own measured results and publication evidence.
 ## Current review and next work
 
 The kit/grip batch on `codex/kit-grip-refinement` remains **local/draft, not
-published**. The [v18 revision evidence](verification/elbow-grip-revision.md)
-records a shared 30-degree physical shaft/hand-forward grip, 25-degree
-player-facing rack toms, a 4 cm closer left crash and an 8 cm lower right crash.
-Fingers, thumb, socket and tool offsets use the same newly measured grip.
-Prepared format 7 stores one orientation quaternion; pointwise replay projection
-and independently interpolated orientation components were rejected after they
-caused rapid flips. Earlier [v13 evidence](verification/common-motion-fit.md#prepared-roll-review-candidate--final-v13-boundary)
-and the [elbow audit](verification/elbow-motion-audit.md) remain historical.
-The preceding v17 four-demo matrix assigned all 6,144 public-model hits and
-preserved source facts, seek order and prepared restore in all 16 native/public
-runs. **None passed full temporal tool/posture acceptance.** Do not relabel that
-matrix as a v18 result. The v18 grip/layout comparison retains all three public
-static fits and all 53 Posture Study hits, but B/Twist still pronate at the first
-high tom and all models retain temporal tool/posture failures. Native/Seed high
-toms improve; this does not establish all-model natural-motion completion.
-An exact route cache reduces the isolated native Studio benchmark from 33.03 to
-11.05 seconds with identical prepared bytes; public fitting and long-song latency
-remain severe. The focused follow-up also finds that B/Twist rack targets are
-near maximum arm-plus-stick reach: inward contact alone cannot provide a dropped
-elbow. Independent pitch-ranking, arm-cost, compact-rack lowering and seat-only
-changes each retain or worsen physical failures and were not adopted. Next
-reconcile comfortable rack/crash approach distance with snare/leg clearance and
-preserve feasible arm/tool witnesses through transitions, before expanding the
-model matrix. Do not repeat isolated weight or angle sweeps.
-Keep the owner review before VRM 0.0/FBX handoff. Fast-fill choice explanations
-also remain unfinished. Do not add another fitting grid or force paradiddles into every fill. The
+published**. The [shaft count-in and path follow-up](verification/shaft-count-in-and-path-followup.md)
+adds physical midpoint stick contact: the left hand holds a crossed stick while
+the right taps it, with one held phrase across adjacent count-in beats. Planning,
+replay, actual rendered markers and prepared restoration use the same contact.
+The existing stand-phase search now handles equipment obstructions as well as
+structural-leg obstructions before moving a drum. It does not add candidate grids.
+
+The [v18 revision evidence](verification/elbow-grip-revision.md) owns the earlier
+shared 30-degree grip, 25-degree player-facing rack toms, closer left crash and
+lower right crash. That baseline kit remains unchanged in this increment. A new
+coordinated layout passes static geometry but barely improves B/Twist thumb-up
+tom elevation, so it was rejected. Bounded orientation continuation, alternative
+interpolation and adjacent-edge witness replacement also fail temporal acceptance;
+none was adopted. Do not repeat isolated weights or angle sweeps.
+
+Next repair actual tool orientation and arm witnesses together with the short
+preparation→impact→rebound→next-target path. Separately fixing tip/pitch first and
+retaining one static hand witness per swivel has not solved the transitions.
+Preserve original MIDI times, bone lengths, deterministic seek and prepared restore.
+Do not equate exact shaft contact, static fit or passing unit tests with natural
+motion. Complete short native/three-public-VRM windows before expanding to four
+full demos. Keep owner visual review before VRM 0.0/FBX handoff. Fast-fill choice
+explanations remain unfinished; do not force paradiddles into every fill. The
 [ergonomics/sticking research](research/ergonomics-and-sticking.md) records why
 opposite-hand contact feasibility comes before retuning the existing vocabulary.
 
@@ -89,7 +86,7 @@ layout checkpoint, not proof of this candidate's public-model acceptance.
 [ergonomics/sticking](research/ergonomics-and-sticking.md) retain the rationale.
 
 Record subsequent checks and browser evidence against the exact candidate in the
-[elbow/grip revision](verification/elbow-grip-revision.md); preserve the older
+[shaft count-in/path follow-up](verification/shaft-count-in-and-path-followup.md); preserve the older
 [public VRM review](verification/public-vrm-fit.md) as its own measurement.
 The earlier Pages authorization covers the published PR #64 batch. A subsequent
 candidate needs its own reviewed scope and approval under the

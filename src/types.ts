@@ -100,7 +100,7 @@ export interface HihatControl { kind: 'hihatClose'; sourceEventId: string; openS
 export interface ContactEvent {
   version: 1; id: string; sourceEventId: string; hitId: number | null;
   time: number; timeUs: number; velocity: number; limb: number | null;
-  toolPart: 'stickTip' | 'sole' | 'beater'; role: 'primary' | 'mechanism' | 'pairedTool';
+  toolPart: 'stickTip' | 'stickShaft' | 'sole' | 'beater'; role: 'primary' | 'mechanism' | 'pairedTool';
   pieceId: string | null; surfaceId: string; frame: 'pieceReference' | 'world';
   localPoint: Vec3; localNormal: Vec3 | null; mechanismOffset: Vec3;
   status: 'planned' | 'unassigned';

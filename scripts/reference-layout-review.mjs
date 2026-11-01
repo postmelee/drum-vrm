@@ -277,7 +277,10 @@ if (mode === 'fit') {
             const impactMeasurements = [], missingImpactMarkers = [];
             for (const event of planned) {
               rig.applyPose(run.evaluate_rig_at(event.time));
-              const actual = rig.getContactSamples().find(sample => sample.limb === event.limb)?.actual;
+              const markers = rig.getContactSamples();
+              const actual = event.toolPart === 'stickShaft'
+                ? contacts.pairedShaftContact(markers, event.limb)
+                : markers.find(sample => sample.limb === event.limb)?.actual;
               const measured = actual && contacts.measurePlannedContact(event, plan.kit, [-actual[0], actual[1], actual[2]], plan.hihatMotion);
               if (measured) impactMeasurements.push(measured);
               else missingImpactMarkers.push(event.id);

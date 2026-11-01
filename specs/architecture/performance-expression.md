@@ -74,7 +74,7 @@ alternate available hands during rapid snare/tom repetitions and mixed fills (T0
 [MIDI interpretation](midi-interpretation.md) contracts own their precise behavior.
 
 [Equipment/contact](equipment-contact.md) adds deterministic articulation regions,
-whole-stick equipment checks and an explicit tip-to-tip count-in gesture. These
+whole-stick equipment checks and an explicit mid-shaft count-in gesture. These
 are bounded contact approximations, not complete T08 shaft/rim mechanics or the
 proposed expression budget. [Primary contact research](../../docs/research/articulation-and-tool-contact.md)
 explains why a relaxed setup and region-specific approach take precedence over

@@ -369,6 +369,17 @@ impl RigProfile {
         })
     }
 
+    /// Fixed physical orientation for an authored paired-tool cue.
+    pub(crate) fn solve_hand_with_rotation(
+        &self,
+        limb: usize,
+        tip: Vec3,
+        rotation: Quat,
+        swivel: f64,
+    ) -> HandSolution {
+        hand_solver::solve_with_rotation(self, limb, tip, rotation, swivel)
+    }
+
     /// Static first frontier: preserve the ordinary arm at this pitch/swivel.
     /// No witness means its exact wrist-to-tip twist family is infeasible.
     pub(crate) fn solve_hand_preserving_arm_with_swivel(

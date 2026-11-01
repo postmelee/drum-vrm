@@ -232,14 +232,14 @@ motion targets, then supply feedback and inspection through
 | Contact field | Contract |
 | --- | --- |
 | `sourceEventId`, `hitId`, `timeUs`, `time`, `velocity` | Original event identity and timing; count-in has no invented hit ID |
-| `limb`, `toolPart`, `role` | Assigned limb and `stickTip`, `sole` or `beater`; primary, mechanism or paired-tool role |
+| `limb`, `toolPart`, `role` | Assigned limb and `stickTip`, `stickShaft`, `sole` or `beater`; primary, mechanism or paired-tool role |
 | `pieceId`, `surfaceId` | Physical piece and intended head, bow, bell, edge, pedal or batter surface; paired tools have no instrument |
-| `frame`, `localPoint`, `localNormal` | Reference-scaled piece point and unit normal, or a world point for paired tools; paired tips do not invent a surface normal |
+| `frame`, `localPoint`, `localNormal` | Reference-scaled piece point and unit normal, or a world point for paired tools; paired tools do not invent an instrument surface normal |
 | `mechanismOffset` | Full translation vector already included at impact, in absolute metres |
 | `status` | `planned` or `unassigned`; neither asserts measured mesh contact |
 
 Kick events distinguish the sole on the footboard from the beater at the batter
-head. A count-in supplies two paired stick-tip contacts at one common world point.
+head. A count-in supplies two paired shaft-surface contacts at one common world point.
 Only assigned stick/beater surface events create instrument feedback. An unassigned
 note, foot pressure or paired-stick cue cannot produce a misleading drum impact ring.
 The ring follows the resolved point and normal, with a 3 mm display offset to avoid
@@ -437,40 +437,40 @@ can retain diagnostics; refined samples are not a continuous-path certificate.
 
 [count_in.rs](../../crates/drum-engine/src/count_in.rs) uses only retained events
 explicitly interpreted as `CountIn`. It neither guesses from note number alone nor
-adds drum `Hit` entries or synthesized audio. Its current gesture brings both
-actual stick tips together in front of the body; it is not a simulation of one
-stick striking the other shaft.
-
+adds drum `Hit` entries or synthesized audio. The left hand holds a crossed stick;
+the right hand lifts and taps it at the midpoint of each complete butt-to-tip shaft.
+The two shaft axes are separated by their actual radii, with a 1 µm numerical reserve;
+the tips extend beyond the contact. This is deterministic kinematics, not force simulation.
 Each cue reserves both hands for 0.22 s before and after its original time.
-Overlapping accepted cues share an approach/recovery phrase. An actual hand-played
-hit, including an unassigned one, takes priority in this window. Nonduplicate cue
-times closer than 0.12 s are diagnosed rather than forcing a faster gesture.
-Without a feasible common anatomical/tool-equipment contact candidate, the cue remains in the
-source and receives `COUNT_IN_GESTURE_UNAVAILABLE`.
-If a hand has no valid coarse candidate, the cue reuses the existing 0.05 rad
-swivel refinement before failing; anatomical and physical-tool limits stay unchanged.
+Accepted cues no more than 1.2 s apart share one held phrase if no real hand hit lies
+between them. An actual hand hit, including an unassigned one, has priority in this
+window. Nonduplicate cues closer than 0.12 s are diagnosed. An unavailable common
+anatomical/tool-equipment candidate retains its source with `COUNT_IN_GESTURE_UNAVAILABLE`.
 
-Opposing stick inclines are derived from the actual terminal taper and measured
-horizontal opening between the hands. The cue contact point and time stay fixed.
-Preparation checks 40 approach/rebound phases against actual tool geometry.
+Preparation tests a bounded body-relative crossing and ordinary 0.05 rad elbow
+candidates. Natural-grip cues reserve 15° toward palm-down within the declared policy,
+so an exactly inward endpoint need not pull the transition outside its policy interval.
+Candidate scoring, inspection and replay share the accepted physical orientations;
+the ordinary path blends into/out of the cue once without a pointwise wrist optimizer.
+Full-cue nodes directly solve this fixed orientation. The right stick's 70 mm lift
+is sampled at 40 phases using complete physical profiles and anatomical checks.
 Underlying equipment corrections blend out at cue contact and back in on exit,
-so a correction cannot displace the intentional contact.
+so a correction cannot displace the intentional contact. Entry/exit interpolation
+remains under temporal inspection; valid pulse endpoints do not certify the whole path.
 
-Inter-stick checks use both complete butt-to-tip profiles from the shared rendered
-taper, including during count-in. Conservative capsule bounds subdivide uncertain
-terminal bands within a finite budget; an unresolved bound does not become a pass.
-The thinner terminal geometry introduces no new contact exception.
+Inter-stick checks always use both complete butt-to-tip profiles from the shared
+rendered taper. There is no trimmed shaft or terminal exemption. Throughout the
+close cue, tool-pair clearance may be below the ordinary 2 mm margin but must remain
+nonnegative. Intentional-contact inspection is active only during the full cue
+blend and within 2 mm of the closed pulse. Equipment retains its 2 mm margin,
+without an intended drum-surface exception. Arm/body/opposite-hand measurements
+remain advisory.
 
-Contact is intentional only when the tips meet within 2 mm and each lies within
-2 mm of the cue contact point. Only the terminal 40 mm of both sticks receives
-that exception: each remaining shaft still requires 2 mm from the other complete
-stick. During the close approach/rebound, tool-pair clearance may be below the
-ordinary 2 mm margin but must remain nonnegative; penetration is never allowed.
-Arm/body/opposite-hand measurements remain advisory. Equipment retains its 2 mm
-margin throughout the cue, with no intended drum surface or playing-surface
-exception. Cue start/contact/end times enter the same bounded timeline even when
-a body cannot perform the gesture. Evaluation and prepared-worker restoration use
-absolute song time.
+Paired `stickShaft` records retain the common world contact point and source time.
+Adapter measurements use the rendered full-shaft midpoint and both actual shaft axes;
+missing/parallel markers are unavailable. Cue start/contact/end enter the bounded
+timeline even when unavailable. Absolute-time evaluation and prepared-worker restore
+validate both actual shaft contacts without substituting tips or planned points.
 
 ## Inspection categories
 

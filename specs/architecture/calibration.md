@@ -125,11 +125,9 @@ in height. Before locking a snare candidate, the search requires a feasible
 hi-hat height and a clear snare/hi-hat pair, including both complete-tool approaches.
 This avoids using the hi-hat mast corridor for a locally convenient snare.
 
-The two rack toms are placed as a group: one shallow left/right row with shared height/depth and bounded
-spacing. Individual reach cannot split them into front/back rows. Floor-tom candidates remain on the right
-flank; the measured shell and its supports must also clear the structural seated thigh, shin and foot cores
-described below. The optional suspended preset places its host stand before the supported floor tom.
-Physical mount metadata, including an accepted `standRotation`, is retained in the resulting kit.
+The two rack toms are placed as a group: one shallow left/right row with shared height/depth and bounded spacing. Individual reach cannot split them into front/back rows. Floor-tom candidates remain on the right flank; the measured shell and its supports must also clear the structural seated thigh, shin and foot cores described below. The optional suspended preset places its host stand before the supported floor tom. Physical mount metadata, including an accepted `standRotation`, is retained in the resulting kit.
+
+Before translating an otherwise usable supported piece, local repair tries the existing 24 tripod phases when its supports obstruct equipment or structural leg cores. A clear leg pose does not bypass an equipment obstruction. Body overlap, arrangement violations and unchanged leg/foot obstructions are rejected before phase probes; unrelated equipment failures do not trigger this search. Each phase is charged to the same request budget. The accepted phase must clear both equipment and structural legs, and the resulting placement still passes the ordinary whole-tool, posture and required-pair checks. Failed attempts restore the preceding phase; instrument positions, radii and measured bodies are unchanged by this step.
 
 Lower-limb checks evaluate board pitches `0, −0.09, −0.18` rad using real bone lengths, yawed pedal contacts
 and sole offsets. The hard structural test uses thigh radius `clamp(0.14 × upperLegLength, 0.025, 0.09)`,

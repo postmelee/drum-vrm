@@ -33,6 +33,7 @@ pub(crate) fn check_control_budget(count: usize) -> Result<(), String> {
 
 pub struct HandCoordinationInput {
     pub time: f64,
+    pub cue_orientation: Option<crate::count_in::CueOrientation>,
     pub profile: RigProfile,
     pub tips: [Vec3; 2],
     pub pitches: [f64; 2],
@@ -146,7 +147,7 @@ fn interpolate_control(
 ) -> OrientationControl {
     interpolate_orientation(a, b, weight)
 }
-fn interpolate_orientation(a: Quat, mut b: Quat, weight: f64) -> Quat {
+pub(crate) fn interpolate_orientation(a: Quat, mut b: Quat, weight: f64) -> Quat {
     let mut cosine = rotation_dot(a, b);
     if cosine < 0. {
         b = b.map(|v| -v);
@@ -233,7 +234,7 @@ fn pair_cost_for_pose(
     collision_cost(
         equipment,
         crate::count_in::contact_tool_clearance(profile, left, right, intended_contact),
-        close_approach && !intended_contact,
+        close_approach,
     ) + clearance::body_penalty(pair.arms.min(pair.cross))
 }
 fn hand_cost_for_pose(
@@ -286,13 +287,26 @@ struct CheckedPose {
 
 fn checked_pose(input: &HandCoordinationInput, control: SwivelSample) -> CheckedPose {
     let hands = std::array::from_fn::<_, 2, _>(|limb| {
-        input.profile.solve_hand_with_swivel_and_orientation(
-            limb,
-            input.tips[limb],
-            input.pitches[limb],
-            control.angles[limb],
-            control.orientations[limb],
-        )
+        input
+            .profile
+            .solve_hand_with_swivel_and_orientation(
+                limb,
+                input.tips[limb],
+                input.pitches[limb],
+                control.angles[limb],
+                control.orientations[limb],
+            )
+            .map(|hand| {
+                input.cue_orientation.map_or(hand, |cue| {
+                    cue.apply(
+                        &input.profile,
+                        limb,
+                        input.tips[limb],
+                        control.angles[limb],
+                        hand,
+                    )
+                })
+            })
     });
     let [Some(left), Some(right)] = hands else {
         return CheckedPose {
@@ -361,21 +375,44 @@ fn node_costs(input: &HandCoordinationInput) -> (Vec<f64>, NodeOrientations, Nod
     let hands: [Vec<_>; 2] = std::array::from_fn(|limb| {
         (0..AXIS_STATES)
             .map(|i| {
-                crate::equipment_motion::HandEnvironment {
-                    equipment: input.equipment.as_deref(),
-                    intended_piece: input.intended_pieces[limb].as_deref(),
-                }
-                .solve(
-                    &input.profile,
-                    limb,
-                    input.tips[limb],
-                    input.pitches[limb],
-                    i as f64 * ANGLE_STEP - MAX_SWIVEL,
-                    false,
-                )
-                .map(|h| {
+                let swivel = i as f64 * ANGLE_STEP - MAX_SWIVEL;
+                let base = if let Some(cue) = input.cue_orientation.filter(|cue| cue.weight == 1.) {
+                    // At a full shaft cue the fixed physical orientation owns
+                    // feasibility. Do not search an unrelated drum approach
+                    // only to discard its orientation immediately afterward.
+                    Some(input.profile.solve_hand_with_rotation(
+                        limb,
+                        input.tips[limb],
+                        cue.rotations[limb],
+                        swivel,
+                    ))
+                } else {
+                    crate::equipment_motion::HandEnvironment {
+                        equipment: input.equipment.as_deref(),
+                        intended_piece: input.intended_pieces[limb].as_deref(),
+                    }
+                    .solve(
+                        &input.profile,
+                        limb,
+                        input.tips[limb],
+                        input.pitches[limb],
+                        swivel,
+                        false,
+                    )
+                };
+                base.map(|h| {
+                    let rotation = h.rotation;
+                    let h = input.cue_orientation.map_or(h, |cue| {
+                        cue.apply(
+                            &input.profile,
+                            limb,
+                            input.tips[limb],
+                            i as f64 * ANGLE_STEP - MAX_SWIVEL,
+                            h,
+                        )
+                    });
                     let (c, p) = hand_cost_for_pose(input, limb, &h);
-                    (h, c, p)
+                    (h, c, p, rotation)
                 })
             })
             .collect()
@@ -393,7 +430,7 @@ fn node_costs(input: &HandCoordinationInput) -> (Vec<f64>, NodeOrientations, Nod
             .map(|candidate| {
                 candidate
                     .as_ref()
-                    .and_then(|(hand, _, _)| bounded.then_some(hand.rotation))
+                    .and_then(|(_, _, _, rotation)| bounded.then_some(*rotation))
             })
             .collect()
     });
@@ -403,13 +440,13 @@ fn node_costs(input: &HandCoordinationInput) -> (Vec<f64>, NodeOrientations, Nod
             .map(|candidate| {
                 candidate
                     .as_ref()
-                    .map(|(hand, _, _)| hand_kinematics(&input.profile, limb, hand))
+                    .map(|(hand, _, _, _)| hand_kinematics(&input.profile, limb, hand))
             })
             .collect()
     });
     let costs = (0..STATES)
         .map(|state| {
-            let (Some((left, lc, lp)), Some((right, rc, rp))) =
+            let (Some((left, lc, lp, _)), Some((right, rc, rp, _))) =
                 (hands[0][state / AXIS_STATES], hands[1][state % AXIS_STATES])
             else {
                 return 2.2e12;
@@ -924,6 +961,7 @@ mod tests {
         let inputs: Vec<_> = [0., 0.1, 0.2]
             .into_iter()
             .map(|time| HandCoordinationInput {
+                cue_orientation: None,
                 time,
                 profile: p.clone(),
                 tips: [[-0.35 + time * 0.01, 1.25, 0.7], [0.35, 1.25, 0.7]],
@@ -1017,6 +1055,7 @@ mod tests {
             .map(|t| {
                 let crossing = (t * std::f64::consts::PI / 3.0).sin();
                 HandCoordinationInput {
+                    cue_orientation: None,
                     time: t,
                     profile: p.clone(),
                     tips: [
@@ -1151,6 +1190,7 @@ mod tests {
         let p = profile();
         let inputs: Vec<_> = (0..3)
             .map(|i| HandCoordinationInput {
+                cue_orientation: None,
                 time: i as f64 * STEP,
                 profile: p.clone(),
                 tips: [[-0.25, 1.0, 0.5], [0.25, 1.0, 0.5]],
@@ -1246,6 +1286,7 @@ mod tests {
         let inputs: Vec<_> = [0., 0.001, 0.026, 0.126, 0.926]
             .into_iter()
             .map(|time| HandCoordinationInput {
+                cue_orientation: None,
                 time,
                 profile: p.clone(),
                 tips: [[-0.25, 1., 0.5], [0.25, 1., 0.5]],
@@ -1320,6 +1361,7 @@ mod tests {
         let inputs: Vec<_> = [0., 1.]
             .into_iter()
             .map(|time| HandCoordinationInput {
+                cue_orientation: None,
                 time,
                 profile: p.clone(),
                 tips: [[-0.25, 1., 0.5], [0.25, 1., 0.5]],
@@ -1366,6 +1408,7 @@ mod tests {
         let inputs: Vec<_> = [0.0, 0.037, 0.13, 0.21]
             .into_iter()
             .map(|time| HandCoordinationInput {
+                cue_orientation: None,
                 time,
                 profile: p.clone(),
                 tips: [[-0.25, 1.0, 0.5], [0.25, 1.0, 0.5]],
@@ -1466,6 +1509,7 @@ mod tests {
         let snare = kit.kit.iter().find(|p| p.id == "snare").unwrap();
         let hat = kit.kit.iter().find(|p| p.id == "hihat").unwrap();
         let input = HandCoordinationInput {
+            cue_orientation: None,
             time: -0.5,
             profile: p.clone(),
             tips: crate::posture::ready_pair(&p, snare, hat),

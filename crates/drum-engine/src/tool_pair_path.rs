@@ -24,6 +24,7 @@ pub(super) fn check_times(path: &[PathSample]) -> Vec<f64> {
 
 pub(super) struct Input {
     pub time: f64,
+    pub cue_orientation: Option<count_in::CueOrientation>,
     pub profile: RigProfile,
     /// Affine base of the additive path; `weight` is zero at full cue contact.
     pub tips: [Vec3; 2],
@@ -73,6 +74,9 @@ fn measure_hand(
         .solve(&input.profile, limb, target, angle, swivel, false) else {
             continue;
         };
+        let hand = input.cue_orientation.map_or(hand, |cue| {
+            cue.apply(&input.profile, limb, target, swivel, hand)
+        });
         let error = posture::anatomical_violation(&input.profile, limb, target, &hand);
         let body_cost = anatomy_penalty(error);
         if body_cost >= score {
@@ -187,7 +191,7 @@ fn measure_changed(input: &Input, old: Metrics, limb: usize, value: HandMeasurem
     next
 }
 fn pair_margin(input: &Input) -> f64 {
-    if input.close_tool_approach && !input.intentional_contact {
+    if input.close_tool_approach {
         0.
     } else {
         posture::MARGIN
@@ -524,6 +528,7 @@ mod tests {
     #[test]
     fn hand_memo_is_exact_bounded_and_recombines_the_current_other_hand() {
         let input = Input {
+            cue_orientation: None,
             time: 0.,
             profile: profile(),
             tips: [[-0.1, 0.95, 0.65], [-0.25, 1.03, 0.5]],
@@ -620,6 +625,7 @@ mod tests {
         let inputs: Vec<_> = original
             .iter()
             .map(|s| Input {
+                cue_orientation: None,
                 time: s.time,
                 profile: profile.clone(),
                 tips: [[-0.1, 0.95, 0.65], [0.1, 0.95, 0.65]],
@@ -686,6 +692,7 @@ mod tests {
         let equipment = Arc::new(EquipmentContext::new(vec![], geometry));
         for (time, nearest) in [(1. / 120., 0), (7. / 120., 2)] {
             let input = Input {
+                cue_orientation: None,
                 time,
                 profile: profile.clone(),
                 tips: [target, [0.25, 0.95, 0.65]],
@@ -760,6 +767,7 @@ mod tests {
         let equipment = Arc::new(EquipmentContext::new(vec![], geometry));
         assert!(equipment_motion::tool_clearance(&profile, 0, &initial, &equipment, None) < 0.);
         let input = Input {
+            cue_orientation: None,
             time: 0.,
             profile,
             tips: [target, [0.1, 0.95, 0.65]],
@@ -797,6 +805,7 @@ mod tests {
         let inputs: Vec<_> = path
             .iter()
             .map(|s| Input {
+                cue_orientation: None,
                 time: s.time,
                 profile: profile.clone(),
                 tips: [[-0.1, 0.95, 0.65], [-0.25, 1.03, 0.5]],
@@ -849,6 +858,7 @@ mod tests {
         let inputs: Vec<_> = path
             .iter()
             .map(|s| Input {
+                cue_orientation: None,
                 time: s.time,
                 profile: profile.clone(),
                 tips: [[-0.1, 0.95, 0.65], [0.1, 0.95, 0.65]],

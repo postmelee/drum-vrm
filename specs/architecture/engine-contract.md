@@ -169,8 +169,8 @@ reuse, not a cache of arbitrary uploaded files.
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
 7, containing the plan, numeric profile, torso, elbow/orientation and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v18` identifies
-single actual-orientation controls relative to the geometric approach; earlier prepared candidates must be rebuilt.
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v19` identifies
+physical mid-shaft count-in contacts and the existing single approach-relative hand orientation; earlier prepared candidates must be rebuilt.
 Installation checks engine/planner versions, expected source/profile
 identity, finite values, ordering, track bounds and mandatory control times. The separate
 `handOrientations` track retains every original swivel-time orientation exactly, stays within
@@ -178,8 +178,9 @@ the original endpoints and has at most 6,000 sorted anchors. Each
 `SwivelSample.orientations` / `OrientationSample.orientations` value is a single finite unit quaternion (squared norm within
 `1e-8` of one), or consistently `None` for a hand without a bounded palm policy. Decoded
 orientations at control times must satisfy that policy. Assigned hand impacts and retained
-count-in contacts are rechecked with stored/interpolated swivel and approach-relative actual
-orientation, torso yaw and equipment/stroke pitch. Pedal feasibility is also retained. A reachable
+count-in contacts are rechecked with stored/interpolated swivel and actual
+orientation, including the deterministic cue overlay, torso yaw and equipment/stroke pitch.
+Count-in validates both measured shaft surfaces and full physical stick clearance. Pedal feasibility is also retained. A reachable
 alternative pose cannot validate an unreachable stored impact. Equipment tracks additionally require bounded lift/pitch,
 rate limits and zero lift at each source impact. All mandatory equipment times must
 survive exactly; sorted extra controls may lie only within the original endpoints.

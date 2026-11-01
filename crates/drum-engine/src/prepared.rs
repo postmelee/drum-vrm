@@ -420,6 +420,14 @@ impl Motion {
                                 controls.angles[limb],
                                 controls.orientations[limb],
                             )
+                            .map(|hand| {
+                                motion
+                                    .count_in
+                                    .orientation(sample.time)
+                                    .map_or(hand, |cue| {
+                                        cue.apply(&turned, limb, tip, controls.angles[limb], hand)
+                                    })
+                            })
                             .is_none_or(|hand| {
                                 !turned.hand_orientation_policy_valid(limb, hand.rotation)
                             })
@@ -435,9 +443,9 @@ impl Motion {
                     &motion.hand_orientations,
                     cue.time,
                 );
-                for limb in 0..2 {
+                let hands = std::array::from_fn::<_, 2, _>(|limb| {
                     let (tip, pitch) = motion.stroke_at(limb, cue.time);
-                    if turned
+                    turned
                         .solve_hand_with_swivel_and_orientation(
                             limb,
                             tip,
@@ -445,12 +453,23 @@ impl Motion {
                             controls.angles[limb],
                             controls.orientations[limb],
                         )
-                        .is_none_or(|hand| {
-                            !hand.reachable || super::distance(hand.tip, cue.contact_point) > 1e-5
+                        .map(|hand| {
+                            motion.count_in.orientation(cue.time).map_or(hand, |cue| {
+                                cue.apply(&turned, limb, tip, controls.angles[limb], hand)
+                            })
                         })
-                    {
-                        return Err("준비된 연주의 카운트인 접촉이 보존되지 않았습니다.".into());
-                    }
+                });
+                let [Some(left), Some(right)] = hands else {
+                    return Err("준비된 연주의 카운트인 접촉이 보존되지 않았습니다.".into());
+                };
+                if !left.reachable
+                    || !right.reachable
+                    || crate::count_in::shaft_contact_points(&turned, &[left, right])
+                        .iter()
+                        .any(|point| super::distance(*point, cue.contact_point) > 1e-5)
+                    || crate::count_in::contact_tool_clearance(&turned, &left, &right, true) < 0.
+                {
+                    return Err("준비된 연주의 카운트인 접촉이 보존되지 않았습니다.".into());
                 }
             }
         }

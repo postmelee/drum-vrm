@@ -16,7 +16,7 @@ mod sticking;
 mod tool_pair_path;
 #[path = "motion_transfer.rs"]
 mod transfer;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v18";
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v19";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -846,6 +846,7 @@ impl Motion {
                     let samples = [motion.stroke_at(0, time), motion.stroke_at(1, time)];
                     crate::hand_coordination::HandCoordinationInput {
                         time,
+                        cue_orientation: motion.count_in.orientation(time),
                         profile: profile.turned(crate::body_motion::at(&motion.body_turns, time)),
                         tips: samples.map(|s| s.0),
                         pitches: samples.map(|s| -s.1),
@@ -1006,6 +1007,11 @@ impl Motion {
                         controls.angles[limb],
                         controls.orientations[limb],
                     )
+                    .map(|hand| {
+                        self.count_in.orientation(time).map_or(hand, |cue| {
+                            cue.apply(&turned, limb, tip, controls.angles[limb], hand)
+                        })
+                    })
                     .is_none_or(|hand| {
                         !crate::posture::anatomical(&turned, limb, tip, &hand)
                             || !turned.hand_orientation_policy_valid(limb, hand.rotation)
@@ -1222,6 +1228,7 @@ impl Motion {
                 }
                 tool_pair_path::Input {
                     time,
+                    cue_orientation: self.count_in.orientation(time),
                     profile: profile.turned(crate::body_motion::at(&self.body_turns, time)),
                     tips,
                     pitches,
@@ -1590,6 +1597,9 @@ impl Motion {
                         hands.angles[limb],
                         hands.orientations[limb],
                     ) {
+                        let solution = self.count_in.orientation(time).map_or(solution, |cue| {
+                            cue.apply(profile, limb, tip, hands.angles[limb], solution)
+                        });
                         *rotation = solution.rotation;
                         for point in [
                             profile.roots[limb],

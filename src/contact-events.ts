@@ -1,3 +1,4 @@
+import { STICK_PROFILE } from './stick-geometry';
 import type { ContactEvent, HihatMotionTrack, KitPiece, PerformancePlan, Vec3 } from './types';
 
 export interface WorldContact { position: Vec3; normal: Vec3 | null; }
@@ -59,4 +60,21 @@ export function measurePlannedContact(event: ContactEvent, kit: readonly KitPiec
     errorMeters, normalErrorMeters,
     tangentErrorMeters: normalErrorMeters === null ? null : Math.sqrt(Math.max(0, errorMeters ** 2 - normalErrorMeters ** 2)),
     scope: 'actual-marker-to-planned-contact' as const };
+}
+
+/** Surface marker at the actual full-shaft midpoint, using both rendered axes.
+ * The contact normal is measured from the crossed shafts, never copied from the plan. */
+export function pairedShaftContact(samples: readonly { limb: number; shaftMidpoint?: Vec3; shaftDirection?: Vec3 }[], limb: number): Vec3 | null {
+  if (limb !== 0 && limb !== 1) return null;
+  const left = samples.find(sample => sample.limb === 0), right = samples.find(sample => sample.limb === 1);
+  if (!left?.shaftMidpoint || !left.shaftDirection || !right?.shaftMidpoint || !right.shaftDirection) return null;
+  const a = left.shaftDirection, b = right.shaftDirection;
+  let normal: Vec3 = [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+  const length = Math.hypot(...normal);
+  if (length < 1e-8) return null;
+  normal = normal.map(v => v / length) as Vec3;
+  if (normal.reduce((sum, v, i) => sum + v * (right.shaftMidpoint![i] - left.shaftMidpoint![i]), 0) < 0) normal = normal.map(v => -v) as Vec3;
+  const midpoint = limb === 0 ? left.shaftMidpoint : right.shaftMidpoint;
+  const radius = STICK_PROFILE.terminal.at(-1)![1];
+  return midpoint.map((v, i) => v + normal[i] * radius * (limb === 0 ? 1 : -1)) as Vec3;
 }

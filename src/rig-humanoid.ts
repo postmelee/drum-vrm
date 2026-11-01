@@ -1,6 +1,6 @@
 import { msg } from './i18n';
 import { fitThumbToShaft } from './shaft-grip';
-import { createStickGeometry } from './stick-geometry';
+import { createStickGeometry, STICK_PROFILE } from './stick-geometry';
 import { DEFAULT_KIT, DEFAULT_PEDALS, NATIVE_REFERENCE_SEAT } from './kit-default';
 import { pedalForwardDirection, pedalToolRotation } from './pedal-frame';
 import * as THREE from 'three';
@@ -30,6 +30,8 @@ export interface RigContactSample {
   elbowInteriorDegrees?: number;
   /** Measured raw-hand palm normal in renderer world coordinates (+Y up). */
   palmNormal?: Vec3;
+  /** Actual rendered full butt-to-tip shaft, for paired-tool contact. */
+  shaftMidpoint?: Vec3; shaftDirection?: Vec3;
 }
 export interface HumanoidRigAdapter extends RigAdapter {
   getProfile(): RigProfile;
@@ -386,7 +388,12 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       const actual = chain.contact.getWorldPosition(new THREE.Vector3());
       let wristSwingDegrees: number | undefined, upperArmElevationDegrees: number | undefined, elbowInteriorDegrees: number | undefined;
       let palmNormal: Vec3 | undefined;
+      let shaftMidpoint: Vec3 | undefined, shaftDirection: Vec3 | undefined;
       if (limb < 2) {
+        const tipLength = new THREE.Vector3(...this.profile.tipOffsets[limb]).length();
+        const shaft = chain.stick!;
+        shaftMidpoint = tuple(shaft.localToWorld(new THREE.Vector3(0, 0, (tipLength - STICK_PROFILE.buttLength) * .5)));
+        shaftDirection = tuple(new THREE.Vector3(0, 0, 1).transformDirection(shaft.matrixWorld));
         const hand = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][2])!;
         const lower = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][1])!;
         const upper = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][0])!;
@@ -400,7 +407,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
       }
       return { limb, expected: tuple(this.expected[limb]), actual: tuple(actual), errorMeters: actual.distanceTo(this.expected[limb]),
         source: limb < 2 ? 'hand-local-stick-tip' as const : 'foot-local-sole-contact' as const,
-        ...(wristSwingDegrees === undefined ? {} : { wristSwingDegrees, upperArmElevationDegrees, elbowInteriorDegrees, palmNormal }),
+        ...(wristSwingDegrees === undefined ? {} : { wristSwingDegrees, upperArmElevationDegrees, elbowInteriorDegrees, palmNormal, shaftMidpoint, shaftDirection }),
       };
     });
   }
