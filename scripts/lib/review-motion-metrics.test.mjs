@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { KINEMATIC_HALF_WINDOW_SECONDS as h, motionValidity, summarizeMotionSamples } from './review-motion-metrics.mjs';
+import { KINEMATIC_HALF_WINDOW_SECONDS as h, motionValidity, sampledUpperBodyPathsPassed, summarizeMotionSamples } from './review-motion-metrics.mjs';
 
 const cuePlan = () => ({
   sourceEvents: [{ id: 'count', timeUs: 1000000, message: { kind: 'noteOn', velocity: 80 } }],
@@ -35,7 +35,7 @@ test('same contact count cannot conceal duplicate limbs, shifted cues or unknown
   assert.equal(motionValidity(plan).passed, true);
 });
 test('posture, pitch and unavailable cues block validity while advisory body overlap does not', () => {
-  for (const code of ['POSTURE_LIMIT', 'CONTACT_PITCH_LIMIT', 'COUNT_IN_GESTURE_UNAVAILABLE']) {
+  for (const code of ['POSTURE_LIMIT', 'CONTACT_PITCH_LIMIT', 'COUNT_IN_GESTURE_UNAVAILABLE', 'UPPER_BODY_PATH_CLEARANCE']) {
     const plan = cuePlan(); plan.diagnostics.push({ code, time: 1 });
     assert.equal(motionValidity(plan).passed, false);
   }
@@ -53,6 +53,28 @@ test('planner-only physical failures remain blocking when ordinary review sample
     assert.equal(result.passed, false);
     assert.deepEqual(result.blockingDiagnostics, plan.diagnostics);
   }
+});
+
+test('ordinary torso review requires complete measured evidence and rejects external-only crossings', () => {
+  const sequence = () => ({ samples: 3, proxy: {
+    upperBodyCoreSamples: 3, upperBodyCoreIntersectingSamples: 0, upperBodyCoreMinimumMeters: .01,
+  } });
+  assert.equal(sampledUpperBodyPathsPassed(sequence()), true);
+  assert.equal(sampledUpperBodyPathsPassed({ samples: 3, proxy: {} }), false);
+  for (const change of [
+    value => { value.proxy.upperBodyCoreSamples = 2; },
+    value => { delete value.proxy.upperBodyCoreSamples; },
+    value => { delete value.proxy.upperBodyCoreMinimumMeters; },
+    value => { value.proxy.upperBodyCoreMinimumMeters = NaN; },
+    value => { value.proxy.upperBodyCoreMinimumMeters = -.001; },
+    value => { value.proxy.upperBodyCoreIntersectingSamples = 1; },
+    value => { value.samples = 0; value.proxy.upperBodyCoreSamples = 0; },
+  ]) {
+    const value = sequence(); change(value);
+    assert.equal(sampledUpperBodyPathsPassed(value), false);
+  }
+  const packed = sequence(); packed.proxy.upperBodyCoreMinimumMeters = -.5e-6;
+  assert.equal(sampledUpperBodyPathsPassed(packed), true, 'same f32 packing tolerance as the engine');
 });
 
 function poseAt(time) {

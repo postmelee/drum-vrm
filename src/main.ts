@@ -668,7 +668,7 @@ function renderDiagnostics() {
   const countIn = interpretations.filter(event=>event.kind==='countIn').length;
   const unmapped = interpretations.filter(event=>event.kind==='unmapped').length;
   const omitted=interpretations.filter(event=>event.kind==='omitted').length;
-  const pathWarnings=plan.diagnostics.filter(d=>['BODY_PATH_CLEARANCE','EQUIPMENT_PATH_CLEARANCE','EQUIPMENT_LAYOUT_CLEARANCE','COUNT_IN_GESTURE_UNAVAILABLE','POSTURE_LIMIT','CONTACT_PITCH_LIMIT','HIHAT_SURFACE_STATIC'].includes(d.code)).length;
+  const pathWarnings=plan.diagnostics.filter(d=>['BODY_PATH_CLEARANCE','UPPER_BODY_PATH_CLEARANCE','EQUIPMENT_PATH_CLEARANCE','EQUIPMENT_LAYOUT_CLEARANCE','COUNT_IN_GESTURE_UNAVAILABLE','POSTURE_LIMIT','CONTACT_PITCH_LIMIT','HIHAT_SURFACE_STATIC'].includes(d.code)).length;
   const warnings=unmapped+unresolved+pathWarnings;bindText(get('analysis-badge'), warnings?` ${warnings}`:'');get('analysis-badge').hidden=!warnings;
   bindText(get('analysis-summary'), warnings?msg("{0} unmapped · {1} unassigned motions · {2} motion diagnostics", "미매핑 {0}개 · 동작 미배정 {1}개 · 동작 진단 {2}개", unmapped, unresolved, pathWarnings):msg("All strikes have assigned motion. Run a separate path review.", "모든 타격에 동작이 배정되었습니다. 경로 검수는 별도로 실행하세요."));
   bindText(get('source-summary'), warnings?msg("{0} items need attention · see Analysis.", "확인할 항목 {0}개 · 분석에서 확인하세요.", warnings):'');get('source-analysis').hidden=!warnings;

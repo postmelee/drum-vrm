@@ -169,7 +169,7 @@ reuse, not a cache of arbitrary uploaded files.
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
 7, containing the plan, numeric profile, torso, elbow/orientation and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v20` identifies
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v21` identifies
 wrist-driven shaft count-in, held arm/body witnesses and gap-aware settling;
 earlier prepared candidates must be rebuilt.
 Installation checks engine/planner versions, expected source/profile
@@ -280,9 +280,9 @@ collision-free motion.
 
 `inspect_pose_at` reports `scope: "skeletal-proxies"`, `torsoClearanceMeters`,
 `armClearanceMeters`, `stickClearanceMeters`, `crossClearanceMeters`,
-`geometrySource`, `boneLengthErrorMeters` and `poseFloats`. Cross clearance is the
+`geometrySource`, `boneLengthErrorMeters`, `upperBodyCoreClearanceMeters` and `poseFloats`. Cross clearance is the
 minimum stick-to-opposite-arm/hand clearance; own-hand grip attachment is permitted.
-Negative measured-body clearance is an advisory numeric overlap. The historical
+Negative measured-body clearance is an advisory numeric overlap. `upperBodyCoreClearanceMeters` separately measures ordinary torso versus arms/hands/tools; measured clothing cannot enlarge it. The historical
 `equipmentClearanceMeters` remains the combined arm/hand/tool minimum; it must not
 be interpreted as the physical-stick acceptance result. Optional fields
 `toolEquipmentClearanceMeters` and `toolPairClearanceMeters` separately report
@@ -310,7 +310,7 @@ collision or posture certificates.
 The [reference-layout review](../../scripts/reference-layout-review.mjs) separately
 gates assignment coverage, tool paths and motion validity. `POSTURE_LIMIT`,
 `CONTACT_PITCH_LIMIT`, `COUNT_IN_GESTURE_UNAVAILABLE`, `TOOL_EQUIPMENT_PATH_CLEARANCE`
-and `TOOL_PAIR_PATH_CLEARANCE` block motion validity: clear review-grid samples
+`TOOL_PAIR_PATH_CLEARANCE` and `UPPER_BODY_PATH_CLEARANCE` block motion validity: clear review-grid samples
 cannot erase a physical failure found at an internal refined time. Each source
 count-in must retain two planned hand contacts at its original time, so omitting
 an unavailable cue cannot pass. Successful fit and full hit assignment alone do
@@ -323,7 +323,7 @@ Actual adapter bone angles and these motion metrics are summarized globally and
 around semantic landmarks. Missing angle measurements remain unmeasured. The script
 still requires separate textured visual review of posture, skin and clothing.
 
-`BODY_PATH_CLEARANCE` reports advisory body overlap.
+`BODY_PATH_CLEARANCE` reports advisory body overlap. `UPPER_BODY_PATH_CLEARANCE` reports ordinary-core intersections, using a 1 µm packing tolerance on evaluated f32 poses. Browser aggregation retains its own minimum, measured/intersecting counts and first time; missing legacy fields remain unmeasured.
 `TOOL_EQUIPMENT_PATH_CLEARANCE` and `TOOL_PAIR_PATH_CLEARANCE` identify sampled
 physical-tool intersections; `EQUIPMENT_PATH_CLEARANCE` retains the combined
 historical report. These diagnostics preserve source hits/times and expose an

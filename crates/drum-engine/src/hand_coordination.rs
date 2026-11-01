@@ -246,8 +246,21 @@ fn hand_cost_for_pose(
     let body = clearance::hand_clearance(&input.profile, limb, hand).min(equipment.body);
     (
         equipment.tool,
-        clearance::body_penalty(body) + posture_cost(&input.profile, limb, input.tips[limb], hand),
+        clearance::body_penalty(body)
+            + core_cost(&input.profile, limb, hand)
+            + posture_cost(&input.profile, limb, input.tips[limb], hand),
     )
+}
+fn core_cost(profile: &RigProfile, limb: usize, hand: &crate::rig::HandSolution) -> f64 {
+    let depth = clearance::core_penetration(profile, limb, hand);
+    // Ordinary body volume is a physical path constraint; garment measurements
+    // retain their bounded visual cost. Keep a finite diagnostic fallback when
+    // the fixed endpoints admit no clear candidate, as for tool obstructions.
+    if depth > 0. {
+        4. + 10_000. * depth.powi(2)
+    } else {
+        0.
+    }
 }
 fn posture_cost(
     profile: &RigProfile,

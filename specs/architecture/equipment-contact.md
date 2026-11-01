@@ -155,7 +155,7 @@ contact anchor. A mismatch above 3 mm remains unresolved; no long lateral linkag
 or implicit remote hi-hat conceals it. Common fitting keeps this relationship.
 
 Native appearance defaults tilt the snare 4°, rack toms 25°, ride 10°, left crash
-12° and right crash 15° toward the player; floor tom and hi-hat remain level. Seed anchors place the right crash at Y = 1.30 m, left crash at Z = 0.65 m, and high/mid toms at Y = 1.105/1.075 m; rack height is retained while its tilt changes. These are editable
+12° and right crash 15° toward the player; floor tom and hi-hat remain level. Seed anchors place the right crash at Y = 1.30 m, left crash at Z = 0.73 m, and high/mid toms at Y = 1.105/1.075 m; rack height is retained while its tilt changes. The linked hi-hat/open-hat/pedal and left crash advance 8 cm together along +Z; hi-hat anchor Z is 0.43 m and pedal Z is 0.4466294836 m. These are editable
 engineering defaults, not prescribed technique angles. The appearance limit is
 ±30°. Body measurement includes the actual tilt, and project files retain it;
 older projects without a tilt field retain 0°. Same-assembly self-collision beyond
@@ -438,9 +438,9 @@ can retain diagnostics; refined samples are not a continuous-path certificate.
 [count_in.rs](../../crates/drum-engine/src/count_in.rs) uses retained events explicitly
 interpreted as `CountIn`; it neither guesses from note number alone nor adds drum
 `Hit` entries or synthesized audio. The left hand holds a crossed stick; the right
-snaps 12° about its actual wrist, deriving tip and orientation from the same rigid
+snaps 30° about its actual wrist, deriving tip and orientation from the same rigid
 mount. Both complete butt-to-tip shafts meet at their midpoints, separated by their
-actual radii and a 1 µm numerical reserve. This is kinematics, not force simulation.
+actual radii and a 1 µm numerical reserve. A cubic rebound, short raised hold and accelerating downswing make contact with nonzero approach speed; this is kinematics, not force simulation.
 Each source cue reserves the immediate ±0.22 s interval. Cues at most 1.2 s apart
 share a held phrase when no real hand hit intervenes. Actual hand hits, including
 unassigned hits, have priority; nonduplicate cues closer than 0.12 s are diagnosed.
@@ -449,7 +449,7 @@ hand's next preparation, the next cue phrase or the authored ending plus tail. O
 later hits transfer from their preceding strike. An unavailable candidate or already
 started next preparation retains the source with `COUNT_IN_GESTURE_UNAVAILABLE`.
 Preparation tests bounded body-relative crossings and the existing 0.05 rad elbow
-grid. One common swivel per hand must satisfy anatomical and whole-tool checks at
+grid. One common swivel per hand must satisfy anatomical, ordinary torso-core and whole-tool checks at
 all 40 pulse phases. The temporal graph retains these witnesses during the held
 phrase; its neutral torso roots are reserved at both bracketing body knots, with
 existing yaw-rate propagation. No post-graph elbow override or bone stretching is
@@ -465,7 +465,7 @@ without trimmed shafts or terminal exemptions. During the close cue the ordinary
 2 mm pair margin may shrink to zero, never below. Intentional-contact inspection
 requires full cue blend and an actual contact lever within 2 mm of the closed pulse.
 Equipment retains its 2 mm margin without an intended surface exception;
-arm/body/opposite-hand measurements remain advisory.
+measured garment/opposite-hand envelopes remain advisory; the ordinary torso core is checked separately.
 Paired `stickShaft` records retain the common world contact point and source time.
 Adapter measurements use rendered full-shaft midpoints and both actual axes;
 missing/parallel markers are unavailable. Source cue start/contact/end remain on the

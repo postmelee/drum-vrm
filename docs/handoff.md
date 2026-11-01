@@ -5,40 +5,32 @@ own measured results and publication evidence.
 
 ## Current review and next work
 
-The kit/grip batch on `codex/kit-grip-refinement` remains **local/draft, not
-published**. The [shaft count-in and path follow-up](verification/shaft-count-in-and-path-followup.md)
-adds physical midpoint stick contact and a wrist-driven count-in: the left hand
-holds a crossed stick while the right snaps around its wrist. Held arm/body
-witnesses keep the pulse stationary, and common idle-time settling reserves the
-next action before easing back. Entry/exit wrist warnings remain distinct from the
-validated pulse. Planning, replay, rendered markers and prepared restoration use
-the same contact and transition boundaries.
-The existing stand-phase search now handles equipment obstructions as well as
-structural-leg obstructions before moving a drum. It does not add candidate grids.
+The kit/grip batch on `codex/kit-grip-refinement` remains **draft, not published**.
+The owner authorized pushing this branch. The [shaft-count-in/path evidence](verification/shaft-count-in-and-path-followup.md)
+records planner v21: a 30° wrist-driven shaft-middle count-in, common gap-aware
+settling, ordinary upper-body cores independent of costume, and an 8 cm forward
+move of the linked hi-hat/pedal and left crash. The existing solver now considers
+body clearance before accepting an arm-preserving route. No avatar-name rules,
+bone stretching or MIDI retiming are introduced. Earlier v18 kit/grip and v19
+stand-phase work remain part of the draft; their measured evidence is preserved.
 
-The [v18 revision evidence](verification/elbow-grip-revision.md) owns the earlier
-shared 30-degree grip, 25-degree player-facing rack toms, closer left crash and
-lower right crash. That baseline kit remains unchanged in this increment. A new
-coordinated layout passes static geometry but barely improves B/Twist thumb-up
-tom elevation, so it was rejected. Bounded orientation continuation, alternative
-interpolation and adjacent-edge witness replacement also fail temporal acceptance;
-none was adopted. Do not repeat isolated weights or angle sweeps.
+All four frozen native/public VRM profiles retain static fit and 53-hit assignment.
+Short crossed-hat/snare windows are ordinary-core clear, but full temporal motion
+still fails, including some new tool-path regressions. Do not call this batch
+collision-free. `UPPER_BODY_PATH_CLEARANCE` and separate core review fields expose
+remaining overlap; a strict review requires complete measured samples. Clothing
+remains advisory. The blanket static core filter and pointwise midpoint repair
+were rejected because they lost notes or worsened the opposite hand/rates.
 
-Next repair ordinary upper-body clearance, actual tool orientation and arm witnesses
-together with the short preparation→impact→rebound→next-target path. Crossed-hat
-and snare forearms can pass the torso even without inflated costume measurements.
-The single 8 cm forward hi-hat/left-crash trial passes static geometry but does not
-resolve this; the production kit remains fixed. Separate ordinary body cores from
-garment advisories before introducing any new upper-body acceptance gate.
-Separately fixing tip/pitch first and
-retaining one static hand witness per swivel has not solved the transitions.
-Preserve original MIDI times, bone lengths, deterministic seek and prepared restore.
-Do not equate exact shaft contact, static fit or passing unit tests with natural
-motion. Complete short native/three-public-VRM windows before expanding to four
-full demos. Keep owner visual review before VRM 0.0/FBX handoff. Fast-fill choice
-explanations remain unfinished; do not force paradiddles into every fill. The
-[ergonomics/sticking research](research/ergonomics-and-sticking.md) records why
-opposite-hand contact feasibility comes before retuning the existing vocabulary.
+Next repair a complete short preparation→impact→rebound→next-target segment with
+compatible elbow, wrist and actual tool orientation, starting with Twist's snare
+recovery at 2.75–2.80 s and count-in entry/exit. Preserve original source contacts,
+fixed bones, deterministic seek and prepared restoration. Do not repeat isolated
+angle/weight sweeps or treat static fit as a continuous-motion certificate. Keep
+owner visual review of the larger count-in and forward left kit before broader
+VRM 0.0/FBX validation. Fast-fill choice explanations and full-demo expansion
+remain unfinished; do not force paradiddles into every fill. The
+[ergonomics/sticking research](research/ergonomics-and-sticking.md) preserves the rationale.
 
 [PR #64](https://github.com/postmelee/drum-vrm/pull/64) carries the reviewed
 common-fitting/motion checkpoint on top of PR #58's FBX/VRM 0.0 work. The owner

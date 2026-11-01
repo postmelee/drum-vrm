@@ -7,6 +7,8 @@ export interface PoseReview {
   nonfiniteValues: number;
   durationSeconds: number;
   proxy?: { scope: 'skeletal-proxies'; samples: number; torsoMinimumMeters: number;
+    upperBodyCoreMinimumMeters?: number; upperBodyCoreSamples?: number;
+    upperBodyCoreIntersectingSamples?: number; firstUpperBodyCoreIntersectionSeconds?: number|null;
     equipmentMinimumMeters?:number; crossMinimumMeters?:number; armsMinimumMeters: number; sticksMinimumMeters: number; boneLengthMaximumErrorMeters: number;
     toolEquipmentMinimumMeters?:number; toolPairMinimumMeters?:number;
     toolSamples?:number; toolIntersectingSamples?:number; firstToolIntersectionSeconds?:number|null;
@@ -65,6 +67,14 @@ export function summarizeProxyReview(times: number[], inspections: readonly Pose
     const values=[sample.torsoClearanceMeters,sample.armClearanceMeters,sample.stickClearanceMeters,sample.boneLengthErrorMeters];
     if (!values.every(Number.isFinite)) throw new Error(msg("Invalid clearance measurement.", "유효하지 않은 간격 계측값입니다."));
     result.torsoMinimumMeters=Math.min(result.torsoMinimumMeters,sample.torsoClearanceMeters);
+    if(sample.upperBodyCoreClearanceMeters!==undefined){
+      const core=sample.upperBodyCoreClearanceMeters;
+      if(!Number.isFinite(core))throw new Error(msg('Invalid clearance measurement.', '유효하지 않은 간격 계측값입니다.'));
+      result.upperBodyCoreMinimumMeters=Math.min(result.upperBodyCoreMinimumMeters??Infinity,core);
+      result.upperBodyCoreSamples=(result.upperBodyCoreSamples??0)+1;
+      result.upperBodyCoreIntersectingSamples??=0;result.firstUpperBodyCoreIntersectionSeconds??=null;
+      if(core < -1e-6){result.upperBodyCoreIntersectingSamples++;result.firstUpperBodyCoreIntersectionSeconds??=times[index];}
+    }
     result.armsMinimumMeters=Math.min(result.armsMinimumMeters,sample.armClearanceMeters);
     result.sticksMinimumMeters=Math.min(result.sticksMinimumMeters,sample.stickClearanceMeters);
     result.boneLengthMaximumErrorMeters=Math.max(result.boneLengthMaximumErrorMeters,sample.boneLengthErrorMeters);

@@ -5,6 +5,13 @@ import type { PerformancePlan, PoseInspection, RigProfile } from '../src/types';
 const plan = { schemaVersion: 2, duration: .2, hits: [{ id: 0, time: .123456, limb: null, tick: 10, track: 0, channel: 9, note: 38, velocity: 80, instrument: 'snare', target: [0, 1, 0] }], sourceEvents: [{ id: 'private-note', track: 0, eventIndex: 0, tick: 0, timeUs: 0, channel: 9, message: { kind: 'noteOn', key: 75, velocity: 90 } }], interpretations: [{ sourceEventId: 'private-note', kind: 'unmapped' }], kit: [], tempoCount: 1, diagnostics: [{ code: 'unmapped', message: 'Private source detail' }] } as PerformancePlan;
 
 describe('local performance review', () => {
+  it('keeps ordinary torso penetration separate from large costume advisories and missing old evidence', () => {
+    const sample:PoseInspection={scope:'skeletal-proxies',torsoClearanceMeters:-.2,armClearanceMeters:-.1,stickClearanceMeters:.01,boneLengthErrorMeters:0,poseFloats:77};
+    expect(summarizeProxyReview([0],[sample]).upperBodyCoreSamples).toBeUndefined();
+    const clear={...sample,upperBodyCoreClearanceMeters:.003};
+    expect(summarizeProxyReview([0,.1],[clear,{...clear,upperBodyCoreClearanceMeters:-.01}])).toMatchObject({upperBodyCoreSamples:2,upperBodyCoreIntersectingSamples:1,upperBodyCoreMinimumMeters:-.01,firstUpperBodyCoreIntersectionSeconds:.1});
+    expect(()=>summarizeProxyReview([0],[{...clear,upperBodyCoreClearanceMeters:NaN}])).toThrow(/Invalid/);
+  });
   it('samples exact impacts/preparation as well as regular times', () => {
     const times = reviewTimes(plan);
     expect(times).toContain(.123456);

@@ -9,6 +9,7 @@ export function diagnosticTitle(code: string): string {
     UNMAPPED_NOTE: ['Instrument unmapped', '악기 미매핑'],
     HAND_OVERRIDE_INFEASIBLE: ['Hand assignment unavailable', '지정한 손으로 연주 불가'],
     BODY_PATH_CLEARANCE: ['Body path overlap', '신체 경로 겹침'],
+    UPPER_BODY_PATH_CLEARANCE: ['Arm–torso overlap', '팔·몸통 겹침'],
     EQUIPMENT_PATH_CLEARANCE: ['Equipment path overlap', '악기 경로 겹침'],
     TOOL_EQUIPMENT_PATH_CLEARANCE: ['Stick–equipment overlap', '스틱·악기 겹침'],
     TOOL_PAIR_PATH_CLEARANCE: ['Stick–stick overlap', '스틱 간 겹침'],
@@ -27,6 +28,10 @@ export function diagnosticTitle(code: string): string {
  * Keep exact templates covered by the Rust-message coverage test until the
  * engine exposes structured diagnostic arguments at this boundary. */
 export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = [
+  [
+    '{0} sampled arm/tool paths intersect the ordinary torso core (minimum signed clearance {1} mm). Clothing is advisory; inspect the marked interval.',
+    '팔·도구 경로 표본 {0}개가 일반적인 몸통 두께와 겹칩니다(최소 간격 {1} mm). 옷 겹침은 참고 정보입니다. 표시된 구간을 확인하세요.'
+  ],
   [
     'The grip policy changed within the hand motion track.',
     '양손 경로의 그립 정책이 시간에 따라 변경되었습니다.'

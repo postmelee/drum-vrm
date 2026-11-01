@@ -380,30 +380,6 @@ impl RigProfile {
         hand_solver::solve_with_rotation(self, limb, tip, rotation, swivel)
     }
 
-    /// Static first frontier: preserve the ordinary arm at this pitch/swivel.
-    /// No witness means its exact wrist-to-tip twist family is infeasible.
-    pub(crate) fn solve_hand_preserving_arm_with_swivel(
-        &self,
-        limb: usize,
-        tip: Vec3,
-        pitch: f64,
-        swivel: f64,
-    ) -> Option<HandSolution> {
-        if limb >= 2 {
-            return None;
-        }
-        self.hand_frames.as_ref().and_then(|frames| {
-            hand_solver::solve_preserving_arm_with_swivel(
-                self,
-                limb,
-                tip,
-                pitch,
-                &frames[limb],
-                swivel,
-            )
-        })
-    }
-
     /// Evaluate physical constraints before the static solver discards its
     /// bounded alternatives. A full search still returns its diagnostic pose
     /// when no candidate is accepted; the caller's existing hard gate remains.

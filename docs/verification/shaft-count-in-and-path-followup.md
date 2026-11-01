@@ -4,6 +4,114 @@ This record separates adopted follow-up work from rejected private experiments.
 It does not establish publication or full natural-motion acceptance. Earlier
 checkpoints remain in [elbow/grip revision evidence](elbow-grip-revision.md).
 
+## Stronger wrist count-in and ordinary upper-body routing — v21
+
+The right wrist pulse increases from 12° to 30°. Physical tip travel is now
+183–193 mm instead of 74–78 mm, while the held left stick, fixed wrist/elbow
+witnesses, shaft-middle tangency and original MIDI times remain unchanged.
+Cubic rebound, a brief raised hold and accelerating descent preserve nonzero
+approach speed at contact. Forty pulse phases must clear the ordinary torso core,
+anatomy and complete tools; this does not certify its connecting entry/exit paths.
+Planner v21 invalidates earlier prepared candidates; prepared format remains 7.
+
+A separate ordinary upper-body core now uses semantic shoulders, pelvis and bone
+lengths regardless of measured costume. The existing hand solver tests this core
+before accepting an arm-preserving witness, allowing its existing shaft-yaw
+fallback to avoid crossing the torso. Invalid fallbacks rank continuous core
+penetration before style; the temporal graph also prices that deficit. Body
+forward limits now rotate with the shoulder frame. Measured garment envelopes
+retain their advisory role. New `UPPER_BODY_PATH_CLEARANCE` diagnostics and
+separate measured/missing review fields expose unresolved crossings; reprepare
+replaces this planner-owned diagnostic rather than accumulating stale warnings.
+This is preferred-path selection and explicit failure reporting, not a new static
+fit certificate or skin-triangle collision guarantee.
+
+The linked hi-hat/open-hat/pedal assembly and left crash advance 8 cm along +Z.
+All four frozen native/B/Seed/Twist inputs retain complete static certificates:
+no layout, hardware or structural-leg failures and both pedals reachable. Every
+53-hit assignment, source fact, prepared restoration and reverse-order pose
+remains exact in the same runtime. Ordinary-core minima below are signed proxy
+gaps, not measured skin penetration. The short 1.5–4.0 s window uses 301 frames
+at 120 Hz; the baseline is commit `5c5891b` remeasured with the same core geometry.
+
+| Profile | Worst RH forearm gap, baseline → v21 (mm) | Minimum any core component (mm) | Physical tool/equipment minimum (mm) |
+| --- | ---: | ---: | ---: |
+| native | −98.342 → 33.017 | 4.144 | 0.577 |
+| B | 46.703 → 141.413 | 98.813 | 0.118 |
+| Seed | −24.202 → 0.226 | 0.226 | 0.637 |
+| Twist | −77.902 → 36.620 | 32.925 | −2.859 |
+
+All sampled short-window ordinary-core crossings are removed; physical tool paths
+are **not** all clear. Twist's left stick dips into the intended snare during
+recovery between safe 2.75/2.80 s endpoints, reaching −2.859 mm at 2.766667 s.
+Whole-study equipment/pair failing-frame counts change native (1,0)→(0,2),
+B (11,5)→(6,0), Seed (2,0)→(3,0), Twist (6,1)→(34,2). These are mixed results,
+including regressions; all four remain below complete temporal acceptance.
+B/Seed/Twist retain short-window wrist-limit failures. Active count-in pulses
+remain separate from unresolved entry/exit wrist and ordinary-core crossings.
+
+A blanket static core filter was rejected: it removed all 16 native hi-hat hits
+although the preferred temporal path supplies a clear witness. A private bounded
+midpoint-orientation refinement was also rejected. It did not remove Twist's dip;
+a candidate doubled wrist speed from 0.876 to 1.727 m/s, and modifying one common
+orientation anchor also worsened the opposite hand. No extra angular grid, hand
+retiming, avatar-name branch or pointwise replay override was adopted.
+
+Private inputs, source/binary identities and native measurements are under
+`.local/common-arm-v21-audit/`; the rejected refinement is under
+`.local/orientation-route-v21-shadow/`. Whole-study native planning initially grew
+from 2.39/20.29/8.64/10.39 s to 2.94/34.13/12.65/14.53 s for native/B/Seed/Twist.
+A conservative analytic broad phase now skips only provably nonnegative core
+queries, retaining the full golden-search reserve and a roundoff allowance. Exact
+negative costs and all inspection distances are preserved. Regressions compare
+4,000 mixed crossing/clear/rotated cases; 240,800 actual short-window hand queries
+also agree exactly. Query-only speedups are 2.82–4.16×; this is not a claim about
+whole preparation. Final built-WASM and visual checks follow below.
+
+### Final v21 validation
+
+Final WASM SHA-256:
+`7fc5b3f6944b58b8338d8ec933eabedd4690d216dc909143944bb8a88e64d3e8`.
+The optimized build preserves complete prepared structures, all 1,561 sampled
+poses and inspections exactly against the pre-optimization build for each matched
+input. Actual B/Seed/Twist adapters measured against the forward kit change only
+the expected linked left-pedal rest target; fresh preparations keep 53/53 hits,
+all 59 rendered contacts (six count-in contacts), source facts and reverse/restore
+equality. Maximum actual contact errors are 0.547/0.479/0.525 µm. Evidence:
+`.local/wrist-count-in-v21/actual-calibrated-optimized/` and
+`.local/common-arm-v21-audit/optimized-actual-identity.json`.
+
+| Profile | WASM preparation, before → optimized (s) | Full-study core minimum (mm) | Equipment / pair penetrating frames |
+| --- | ---: | ---: | ---: |
+| native | 10.81 → 7.82 | −5.613 | 0 / 2 |
+| B | 126.35 → 83.99 | −17.456 | 6 / 0 |
+| Seed | 46.15 → 32.05 | −1.015 | 3 / 0 |
+| Twist | 54.29 → 36.60 | 32.925 | 34 / 2 |
+
+Timings are single sequential runs, not controlled latency guarantees. Preparation
+remains too slow for a general responsiveness pass. Every full motion acceptance
+result is still false. Independent native and WASM planning can select different
+B tracks (maximum packed-pose difference 0.01643); replaying the **same** native
+prepared tracks in WASM is exact for all four at 301 times. Same-runtime seeking
+and restoration are exact. Do not claim independent cross-platform planning is
+bit-identical.
+
+The conservative query proof, stale-diagnostic cleanup and missing-core-evidence
+rejection have focused regressions. Final checks pass: 288 Rust tests, 337 web
+tests, nine review-helper tests, warnings-denied Clippy, formatting, typecheck,
+WASM/web builds, documentation and whitespace checks. The first pre-optimization
+web run timed out on the 60-second reference-demo check; the optimized complete
+run passes without raising that limit.
+
+Local production-preview review covers native playback/seeking, Seed-san
+textured count-in raised/contact views, final native player-view rebound, and
+English/Korean ordinary-core diagnostics. Captures are private under
+`.local/wrist-count-in-v21/visual/`; the Seed captures precede the exact-equivalent
+query optimization, while the native final view uses the final build. This is
+limited visual evidence, not uninterrupted three-model full-motion approval.
+Local preview remains at `http://127.0.0.1:5195/drum-vrm/?lang=ko`. No merge or
+Pages publication is included.
+
 ## Wrist snap and gap-aware settling — planner v20
 
 The right stick now rotates 12 degrees around its actual wrist; the left stick
@@ -64,9 +172,9 @@ Local production-preview captures are retained privately under
 `.local/wrist-count-in-v20/visual/`; the owner can review the first three displayed
 seconds of Posture Study at `http://127.0.0.1:5195/drum-vrm/?lang=ko`.
 
-## Upper-body clearance and forward placement audit
+## Earlier upper-body audit — v19/v20
 
-The implementation already estimates nonzero arm, hand and torso volumes. Mesh
+At the v19/v20 checkpoint, the implementation already estimated nonzero arm, hand and torso volumes. Mesh
 measurements replace skeleton-proportional fallback volumes when available, but
 all upper-body overlap contributes only a bounded advisory cost. The enforced
 ordinary structural body cores currently cover legs and feet, not the upper body.

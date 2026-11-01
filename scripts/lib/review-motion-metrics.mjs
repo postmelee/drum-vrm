@@ -5,6 +5,7 @@ const blockingCodes = new Set([
   // The planner also inspects refined times absent from the review grid.
   // A clear outer sample cannot erase a measured physical failure there.
   'TOOL_EQUIPMENT_PATH_CLEARANCE', 'TOOL_PAIR_PATH_CLEARANCE',
+  'UPPER_BODY_PATH_CLEARANCE',
 ]);
 
 /** Count-in has no ordinary Hit: compare source intent to both planned contacts. */
@@ -38,6 +39,17 @@ export function motionValidity(plan) {
   };
   countIn.passed = invalidSourceEventIds.length === 0 && incompleteCues.length === 0 && unexpectedContactIds.length === 0 && contacts.length === expected.length * 2;
   return { passed: blockingDiagnostics.length === 0 && countIn.passed, blockingDiagnostics, countIn };
+}
+
+/** Legacy or mixed inspection results cannot certify an unmeasured torso core.
+ * External review times can also expose a crossing between planner samples. */
+export function sampledUpperBodyPathsPassed(sequence) {
+  const proxy = sequence?.proxy;
+  return Number.isInteger(sequence?.samples) && sequence.samples > 0
+    && proxy?.upperBodyCoreSamples === sequence.samples
+    && proxy.upperBodyCoreIntersectingSamples === 0
+    && Number.isFinite(proxy.upperBodyCoreMinimumMeters)
+    && proxy.upperBodyCoreMinimumMeters >= -1e-6;
 }
 
 const peak = () => ({ value: null, time: null, limb: null });

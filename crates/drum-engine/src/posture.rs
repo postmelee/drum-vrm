@@ -91,13 +91,21 @@ pub fn anatomical_violation(
     let root = profile.roots[limb];
     let [upper, lower] = profile.lengths[limb];
     let posture = arm_posture(profile, limb, hand);
+    let forward = clearance::body_axes(profile)[1];
+    let ahead = |point| {
+        crate::motion::sub(point, root)
+            .iter()
+            .zip(forward)
+            .map(|(a, b)| a * b)
+            .sum::<f64>()
+    };
     let values = [
         profile.wrist_deviation(limb, hand) - MAX_WRIST_SWING,
         posture.elevation - (70.0 + 45.0 * elevation_allowance(profile, limb, target)).to_radians(),
         55_f64.to_radians() - posture.elbow,
         posture.elbow - MAX_ELBOW_ANGLE,
-        (root[2] - upper * 0.35 - hand.middle[2]) / upper,
-        (root[2] + lower * 0.15 - hand.end[2]) / lower,
+        (-upper * 0.35 - ahead(hand.middle)) / upper,
+        (lower * 0.15 - ahead(hand.end)) / lower,
     ];
     if values.iter().any(|v| !v.is_finite()) {
         return f64::INFINITY;
@@ -568,6 +576,51 @@ pub fn ready_pose(profile: &RigProfile, kit: &[KitPiece]) -> Result<Vec<f32>, St
 mod tests {
     use super::*;
     #[test]
+    fn anatomical_forward_limits_follow_the_body_instead_of_world_z() {
+        let mut p = RigProfile::primitive();
+        p.torso_pivot = Some([0., 1., 0.]);
+        p.roots[0] = [-0.18, 1.2, 0.];
+        p.roots[1] = [0.18, 1.2, 0.];
+        p.lengths[0] = [0.30, 0.27];
+        let neutral = HandSolution {
+            middle: [-0.23, 0.905, 0.02],
+            end: [-0.15, 0.93, 0.29],
+            tip: [-0.15, 0.93, 0.60],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        assert!(anatomical(&p, 0, neutral.tip, &neutral));
+        let rear = HandSolution {
+            end: [-0.15, 0.93, -0.10],
+            tip: [-0.15, 0.93, 0.21],
+            ..neutral
+        };
+        assert!(!anatomical(&p, 0, rear.tip, &rear));
+        for h in [neutral, rear] {
+            let expected = anatomical_violation(&p, 0, h.tip, &h);
+            for yaw in [-2.4_f64, -1.4, 0.6, 1.4, 2.4] {
+                let q = [0., (yaw * 0.5).sin(), 0., (yaw * 0.5).cos()];
+                let pivot = p.torso_pivot.unwrap();
+                let turn = |v| {
+                    crate::motion::add(pivot, crate::rig::rotate(q, crate::motion::sub(v, pivot)))
+                };
+                let turned = p.turned(yaw);
+                let hand = HandSolution {
+                    middle: turn(h.middle),
+                    end: turn(h.end),
+                    tip: turn(h.tip),
+                    rotation: q,
+                    ..h
+                };
+                let got = anatomical_violation(&turned, 0, hand.tip, &hand);
+                assert!(
+                    (got - expected).abs() < 1e-10,
+                    "yaw {yaw}: {got} vs {expected}"
+                );
+            }
+        }
+    }
+    #[test]
     fn dual_crash_retains_full_fallback_when_arm_preserving_pair_is_unavailable() {
         let fixture: serde_json::Value =
             serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
@@ -671,6 +724,7 @@ mod tests {
     fn relaxed_low_target_is_preferred_without_banning_high_accents() {
         let mut p = RigProfile::primitive();
         p.roots[0] = [0.0, 1.2, 0.0];
+        p.roots[1] = [0.38, 1.2, 0.0];
         p.lengths[0] = [0.3, 0.27];
         let low = HandSolution {
             middle: [0.0, 0.9, 0.0],

@@ -353,68 +353,37 @@ mod tests {
     }
 
     #[test]
-    fn later_pitch_preserves_the_arm_before_an_earlier_pitch_moves_it() {
+    fn body_crossing_legacy_arm_does_not_hide_the_tool_approach_search() {
         let (profile, kit) = native_reference();
         let ctx = EquipmentContext::for_kit(&kit).unwrap();
         let hihat = kit.iter().find(|piece| piece.id == "hihat").unwrap();
         let observer = std::array::from_fn(|i| (profile.roots[0][i] + profile.roots[1][i]) * 0.5);
         let target = crate::contact::target(hihat, "edge", observer);
-        let limb = 1;
-        let (index, preserving) = PITCH_OFFSETS
-            .iter()
-            .enumerate()
-            .find_map(|(index, &pitch)| {
-                at_pitch_search(
-                    &profile,
-                    limb,
-                    target,
-                    pitch,
-                    Some(&ctx),
-                    Some("hihat"),
-                    true,
-                    posture::HandSearch::PreserveArm,
-                )
-                .map(|hand| (index, hand))
-            })
-            .expect("an existing later pitch has an exact arm-preserving witness");
-        assert!(
-            index > 0,
-            "this regression must exercise priority across pitches"
-        );
-        let earlier = at_pitch(&profile, limb, target, 0., Some(&ctx), Some("hihat"))
-            .expect("the earlier pitch has a full orientation fallback");
-        let selected = candidate(&profile, limb, target, 0., Some(&ctx), Some("hihat")).unwrap();
-        assert_eq!(selected.middle, preserving.middle);
-        assert_eq!(selected.end, preserving.end);
-        assert_eq!(selected.rotation, preserving.rotation);
-        assert!(crate::motion::distance(earlier.middle, selected.middle) > 0.01);
-        let mut legacy = profile.clone();
-        for frame in legacy.hand_frames.as_mut().unwrap() {
-            let x = frame.desired_palm[0];
-            let length = (x * x + 1.).sqrt();
-            frame.palm_roll_range = None;
-            frame.palm_reference = None;
-            frame.desired_palm = [x / length, -1. / length, 0.];
-        }
-        assert!(
-            (-16..=16).any(|step| {
-                let old = legacy
-                    .solve_hand_with_swivel(limb, target, PITCH_OFFSETS[index], step as f64 * 0.05)
-                    .unwrap();
-                old.middle == selected.middle && old.end == selected.end && old.tip == selected.tip
-            }),
-            "the selected hand must preserve actual legacy arm joints and contact"
-        );
-        assert!(profile.hand_orientation_policy_valid(limb, selected.rotation));
-        assert!(posture::anatomical(&profile, limb, target, &selected));
+        // This older lateral hat fixture had an exact arm-preserving witness,
+        // but its forearm passed through the ordinary torso. It must no longer
+        // prevent the existing bounded orientation fallback from being tried.
+        assert!(PITCH_OFFSETS.iter().all(|&pitch| at_pitch_search(
+            &profile,
+            1,
+            target,
+            pitch,
+            Some(&ctx),
+            Some("hihat"),
+            true,
+            posture::HandSearch::PreserveArm,
+        )
+        .is_none()));
+        let selected = candidate(&profile, 1, target, 0., Some(&ctx), Some("hihat")).unwrap();
+        assert!(profile.hand_orientation_policy_valid(1, selected.rotation));
+        assert!(posture::anatomical(&profile, 1, target, &selected));
         assert!(
             crate::motion::distance(
-                crate::motion::add(selected.end, profile.offset(limb, selected.rotation)),
+                crate::motion::add(selected.end, profile.offset(1, selected.rotation)),
                 target
             ) < 1e-10
         );
         assert!(
-            crate::equipment_motion::tool_clearance(&profile, limb, &selected, &ctx, Some("hihat"))
+            crate::equipment_motion::tool_clearance(&profile, 1, &selected, &ctx, Some("hihat"))
                 >= posture::MARGIN
         );
     }

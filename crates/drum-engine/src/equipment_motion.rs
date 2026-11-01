@@ -57,16 +57,12 @@ impl HandEnvironment<'_> {
         swivel: f64,
         preserve_arm: bool,
     ) -> Option<HandSolution> {
-        let Some(equipment) = self.equipment else {
-            return if preserve_arm {
-                profile.solve_hand_preserving_arm_with_swivel(limb, tip, pitch, swivel)
-            } else {
-                profile.solve_hand_with_swivel(limb, tip, pitch, swivel)
-            };
-        };
         profile.solve_hand_with_swivel_where(limb, tip, pitch, swivel, preserve_arm, &|hand| {
-            tool_clearance(profile, limb, hand, equipment, self.intended_piece)
-                >= crate::posture::MARGIN
+            clearance::core_penetration(profile, limb, hand) == 0.
+                && self.equipment.is_none_or(|equipment| {
+                    tool_clearance(profile, limb, hand, equipment, self.intended_piece)
+                        >= crate::posture::MARGIN
+                })
         })
     }
 }

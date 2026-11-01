@@ -5,6 +5,12 @@ use crate::rig::{HandSolution, RigProfile};
 use serde::Serialize;
 #[path = "tool_pair.rs"]
 mod tool_pair;
+#[path = "upper_body_core.rs"]
+mod upper_body_core;
+pub use upper_body_core::{
+    body_axes, core_arm_radii, core_penetration, core_torso, core_torso_clearance, upper_body_core,
+    UpperBodyCoreClearance,
+};
 fn dot(a: Vec3, b: Vec3) -> f64 {
     a.iter().zip(b).map(|(a, b)| a * b).sum()
 }
@@ -96,28 +102,24 @@ pub fn hand_volume(profile: &RigProfile, limb: usize, hand: &HandSolution) -> (V
         )
 }
 pub fn torso_clearance(profile: &RigProfile, a: Vec3, b: Vec3, radius: f64) -> f64 {
-    let width = distance(profile.roots[0], profile.roots[1]);
-    let low = profile.pelvis[1] + 0.04;
-    let high = (profile.roots[0][1] + profile.roots[1][1]) * 0.5 - 0.025;
-    let (center, extents) = profile.body_geometry.as_ref().map_or(
-        (
-            [
-                (profile.roots[0][0] + profile.roots[1][0]) * 0.5,
-                (low + high) * 0.5,
-                (profile.roots[0][2] + profile.roots[1][2]) * 0.5,
-            ],
-            [
-                (width * 0.44).clamp(0.055, 0.30),
-                ((high - low) * 0.5).max(0.01),
-                (width * 0.29).clamp(0.045, 0.20),
-            ],
-        ),
-        |body| (body.torso.center, body.torso.half_extents),
-    );
-    let right = sub(profile.roots[1], profile.roots[0]);
-    let horizontal = right[0].hypot(right[2]).max(1e-9);
-    let right = [right[0] / horizontal, 0.0, right[2] / horizontal];
-    let forward = [-right[2], 0.0, right[0]];
+    let torso = profile
+        .body_geometry
+        .as_ref()
+        .map_or_else(|| core_torso(profile), |body| body.torso.clone());
+    torso_clearance_with_geometry(profile, &torso, a, b, radius)
+}
+const TORSO_QUERY_STEPS: i32 = 16;
+const TORSO_QUERY_RATIO: f64 = 0.618_033_988_749_894_9;
+fn torso_clearance_with_geometry(
+    profile: &RigProfile,
+    torso: &crate::rig::TorsoGeometry,
+    a: Vec3,
+    b: Vec3,
+    radius: f64,
+) -> f64 {
+    let center = torso.center;
+    let extents = torso.half_extents;
+    let [right, forward] = body_axes(profile);
     let delta = sub(b, a);
     // A convex 1-Lipschitz lower bound on distance to a capped elliptical
     // cylinder. Minimize over the complete segment, not 13 isolated points.
@@ -133,10 +135,10 @@ pub fn torso_clearance(profile: &RigProfile, a: Vec3, b: Vec3, radius: f64) -> f
         return value(0.0) - radius;
     }
     let (mut lo, mut hi) = (0.0, 1.0);
-    const R: f64 = 0.618_033_988_749_894_9;
+    const R: f64 = TORSO_QUERY_RATIO;
     let (mut x, mut y) = (hi - R * (hi - lo), lo + R * (hi - lo));
     let (mut vx, mut vy) = (value(x), value(y));
-    for _ in 0..16 {
+    for _ in 0..TORSO_QUERY_STEPS {
         if vx < vy {
             hi = y;
             y = x;
@@ -289,6 +291,8 @@ pub fn hand_cost(profile: &RigProfile, limb: usize, target: Vec3) -> f64 {
 pub struct PoseInspection {
     pub scope: &'static str,
     pub torso_clearance_meters: f64,
+    /// Ordinary semantic body core; measured envelope metrics stay separate.
+    pub upper_body_core_clearance_meters: f64,
     pub arm_clearance_meters: f64,
     pub stick_clearance_meters: f64,
     pub cross_clearance_meters: f64,
@@ -299,6 +303,7 @@ pub struct PoseInspection {
 pub fn inspect(profile: &RigProfile, pose: &[f32]) -> PoseInspection {
     let point = |o: usize| [pose[o] as f64, pose[o + 1] as f64, pose[o + 2] as f64];
     let mut torso = f64::INFINITY;
+    let mut core = f64::INFINITY;
     let mut bones: f64 = 0.0;
     for limb in 0..4 {
         let o = limb * 12;
@@ -313,6 +318,7 @@ pub fn inspect(profile: &RigProfile, pose: &[f32]) -> PoseInspection {
                 reachable: true,
             };
             torso = torso.min(hand_clearance(profile, limb, &s));
+            core = core.min(upper_body_core(profile, limb, &s).minimum());
         }
     }
     let hands: [HandSolution; 2] = std::array::from_fn(|i| HandSolution {
@@ -326,6 +332,7 @@ pub fn inspect(profile: &RigProfile, pose: &[f32]) -> PoseInspection {
     PoseInspection {
         scope: "skeletal-proxies",
         torso_clearance_meters: torso,
+        upper_body_core_clearance_meters: core,
         arm_clearance_meters: pair.arms,
         stick_clearance_meters: pair.sticks,
         cross_clearance_meters: pair.cross,

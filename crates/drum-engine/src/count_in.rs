@@ -14,7 +14,7 @@ pub const WINDOW: f64 = 0.22;
 const MIN_INTERVAL: f64 = 0.12;
 const MAX_PHRASE_INTERVAL: f64 = 1.2;
 const CONTACT_TOLERANCE: f64 = 0.002;
-const WRIST_SNAP: f64 = std::f64::consts::PI / 15.; // 12 degrees about the actual wrist
+const WRIST_SNAP: f64 = std::f64::consts::PI / 6.; // 30 degrees about the actual wrist
 const CONTACT_GAP: f64 = 0.000_001; // conservative pair-query numerical reserve
 
 #[derive(Clone, Debug)]
@@ -58,6 +58,22 @@ fn mul(v: Vec3, s: f64) -> Vec3 {
 fn smooth(t: f64) -> f64 {
     let t = t.clamp(0.0, 1.0);
     t * t * (3.0 - 2.0 * t)
+}
+/// A struck stick rebounds quickly and slows at the top. The matching
+/// downswing starts gently, then accelerates into the authored contact instant;
+/// zero velocity at contact would read as placing the two sticks together.
+fn rebound(t: f64) -> f64 {
+    1. - (1. - t.clamp(0., 1.)).powi(3)
+}
+fn beat_opening(phase: f64) -> f64 {
+    let phase = phase.clamp(0., 1.);
+    if phase < 0.4 {
+        rebound(phase / 0.4)
+    } else if phase < 0.6 {
+        1.
+    } else {
+        1. - ((phase - 0.6) / 0.4).powi(3)
+    }
 }
 fn events(plan: &PerformancePlan) -> Vec<(String, f64)> {
     let wanted: BTreeSet<_> = plan
@@ -279,6 +295,7 @@ fn cue_hands(
             if !h.reachable
                 || !posture::anatomical(profile, limb, tips[limb], &h)
                 || !profile.hand_orientation_policy_valid(limb, h.rotation)
+                || clearance::upper_body_core(profile, limb, &h).minimum() < 0.
                 || equipment.is_some_and(|ctx| {
                     equipment_motion::tool_clearance(profile, limb, &h, ctx, None) < posture::MARGIN
                 })
@@ -322,6 +339,7 @@ fn pulse_swivels(
                 hand.reachable
                     && posture::anatomical(profile, limb, tips[limb], &hand)
                     && profile.hand_orientation_policy_valid(limb, hand.rotation)
+                    && clearance::upper_body_core(profile, limb, &hand).minimum() >= 0.
                     && equipment.is_none_or(|ctx| {
                         equipment_motion::tool_clearance(profile, limb, &hand, ctx, None)
                             >= posture::MARGIN
@@ -631,9 +649,9 @@ impl CountInTrack {
             0.
         } else {
             match (previous, following) {
-                (Some(a), Some(b)) => ((time - a) / (b - a) * std::f64::consts::PI).sin().powi(2),
-                (Some(a), None) => smooth((time - a) / (phrase.exit_start - a)),
-                (None, Some(b)) => smooth((b - time) / (WINDOW * 0.5)),
+                (Some(a), Some(b)) => beat_opening((time - a) / (b - a)),
+                (Some(a), None) => rebound((time - a) / (phrase.exit_start - a)),
+                (None, Some(b)) => rebound((b - time) / (WINDOW * 0.5)),
                 _ => 1.,
             }
         })
@@ -817,7 +835,10 @@ mod tests {
         let lifted = track.sample(1.25, rest, [0.; 2]);
         assert_eq!(track.base_weight(1.25), 0.);
         assert_eq!(contact.tips[0], lifted.tips[0]);
-        assert!(distance(contact.tips[1], lifted.tips[1]) > 0.05);
+        assert!(
+            distance(contact.tips[1], lifted.tips[1]) > 0.14,
+            "the count-in needs a visible backswing, not a small tip tremor"
+        );
         for time in [1., 1.125, 1.25, 1.375, 1.5] {
             let sample = track.sample(time, rest, [0.; 2]);
             let rotations = track.orientation(time).unwrap().rotations;
@@ -828,6 +849,74 @@ mod tests {
         }
         assert!(!lifted.intended_stick_contact);
         assert!(track.sample(1.5, rest, [0.; 2]).intended_stick_contact);
+    }
+    #[test]
+    fn forceful_pulse_accelerates_into_exact_midshaft_contact_and_rebounds() {
+        let mut plan = plan();
+        for (index, event) in plan.source_events.iter_mut().enumerate() {
+            event.time_us = 1_000_000 + index as u64 * 500_000;
+        }
+        let p = profile();
+        let track = CountInTrack::prepare(&plan, &p);
+        let rest = [p.rest_tips[0], p.rest_tips[1]];
+        let tip = |time| track.sample(time, rest, [0.; 2]).tips[1];
+        let early_down = distance(tip(1.31), tip(1.32));
+        let impact_speed = distance(tip(1.49), tip(1.5));
+        assert!(impact_speed > early_down * 10.);
+        assert!(
+            impact_speed > 0.015,
+            "a decisive contact keeps approach speed"
+        );
+        assert!(distance(tip(1.5), tip(1.51)) > 0.015);
+        assert!(distance(tip(1.2), tip(1.3)) < 1e-12);
+        for cue in &track.cues {
+            let sample = track.sample(cue.time, rest, [0.; 2]);
+            let orientation = track.orientation(cue.time).unwrap();
+            let hands = std::array::from_fn(|limb| {
+                p.solve_hand_with_rotation(
+                    limb,
+                    sample.tips[limb],
+                    orientation.rotations[limb],
+                    orientation.swivels[limb],
+                )
+            });
+            assert!(clearance::tool_pair_clearance(&p, &hands[0], &hands[1]) >= 0.);
+            for marker in shaft_contact_points(&p, &hands) {
+                assert!(distance(marker, cue.contact_point) < 1e-6);
+            }
+        }
+    }
+    #[test]
+    fn held_cue_cannot_lock_a_witness_inside_the_ordinary_torso() {
+        let mut p = profile();
+        // Short arms with a normal shoulder span admit wrist/shaft contact
+        // while a stick butt crosses the torso. A feasible hand alone must
+        // not lock that invalid paired-tool witness for every cue.
+        p.roots[0][0] = -0.175;
+        p.roots[1][0] = 0.175;
+        p.lengths[0] = [0.15, 0.135];
+        p.lengths[1] = [0.15, 0.135];
+        let plan = plan();
+        let before = serde_json::to_string(&plan).unwrap();
+        let track = CountInTrack::prepare(&plan, &p);
+        if track.cues.is_empty() {
+            assert_eq!(track.diagnostics.len(), 3);
+        } else {
+            assert_eq!(track.cues.len(), 3);
+            for step in 0..=100 {
+                let (tips, rotations, _) = track.pulse_pose(step as f64 / 100.);
+                for limb in 0..2 {
+                    let hand = p.solve_hand_with_rotation(
+                        limb,
+                        tips[limb],
+                        rotations[limb],
+                        track.swivels[limb],
+                    );
+                    assert!(clearance::upper_body_core(&p, limb, &hand).minimum() >= 0.);
+                }
+            }
+        }
+        assert_eq!(before, serde_json::to_string(&plan).unwrap());
     }
     #[test]
     fn settling_reserves_each_hands_next_preparation_and_ignores_later_targets() {

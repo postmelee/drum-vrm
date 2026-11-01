@@ -158,7 +158,7 @@ Worker에서 실행합니다. 후보를 검증하여 적용할 때까지 기존 
 
 [prepared.rs](../../crates/drum-engine/src/prepared.rs)가 내부 전달 형식 7을 정의합니다.
 계획, 수치 프로필, 몸통·팔꿈치/방향·장비 접근 곡선과 FNV-1a 무결성 체크섬을 포함합니다.
-계획기 버전 `phrase-beam-8-beat-horizon-24-posture-v20`은 손목 회전으로 만드는 스틱 중앙부
+계획기 버전 `phrase-beam-8-beat-horizon-24-posture-v21`은 손목 회전으로 만드는 스틱 중앙부
 카운트인, 유지하는 팔·몸통 자세와 여유 시간에 따른 복귀를 식별합니다. 이전 준비 후보는 다시 계산해야 합니다. 적용할 때
 엔진·계획기 버전, 예상 원본·프로필 식별 정보, 유한 값, 순서, 곡선 범위와 필수 제어
 시각을 검사합니다. 별도 `handOrientations` 곡선은 원래 선회 시각의 방향을 정확히
@@ -280,7 +280,7 @@ Velocity는 들어 올리는 높이와 손목 피치를 조절하며 짧은 간�
 [기준 배치 검수](../../scripts/reference-layout-review.mjs)는 타격 배정, 도구 경로와
 동작 유효성을 구분하여 검사합니다. `POSTURE_LIMIT`, `CONTACT_PITCH_LIMIT`,
 `COUNT_IN_GESTURE_UNAVAILABLE`, `TOOL_EQUIPMENT_PATH_CLEARANCE`,
-`TOOL_PAIR_PATH_CLEARANCE`가 있으면 동작 유효성을 통과하지 못합니다. 검수 격자
+`TOOL_PAIR_PATH_CLEARANCE`, `UPPER_BODY_PATH_CLEARANCE`가 있으면 동작 유효성을 통과하지 못합니다. 검수 격자
 표본이 깨끗해도 내부 세분화 시각에서 발견한 물리적 실패를 지울 수 없습니다.
 원본 카운트인마다 원래 시각의 양손 접촉 계획 두 개도 필요하므로 구현하지 못한
 cue를 생략해서 통과할 수 없습니다. 맞춤 성공과 전체 타격 배정만으로 시간축 검증을
@@ -292,7 +292,10 @@ cue를 생략해서 통과할 수 없습니다. 맞춤 성공과 전체 타격 �
 각도 측정값이 없으면 미측정으로 남깁니다. 자세·피부·의상은 텍스처가 적용된
 화면에서 별도로 시각 검수해야 합니다.
 
-`BODY_PATH_CLEARANCE`는 검수용 신체 겹침을 알립니다.
+`BODY_PATH_CLEARANCE`는 검수용 신체 겹침을 알립니다. 별도 `upperBodyCoreClearanceMeters`는
+의상 크기와 독립적인 몸통 대 팔·손·도구 간격입니다. `UPPER_BODY_PATH_CLEARANCE`는 f32
+자세의 양자화 여유 1 µm를 넘는 일반 상체 침범을 알립니다. 브라우저도 별도의 최솟값,
+측정·겹침 표본 수와 첫 시각을 집계하며, 옛 결과에 필드가 없으면 미측정으로 남깁니다.
 `TOOL_EQUIPMENT_PATH_CLEARANCE`와 `TOOL_PAIR_PATH_CLEARANCE`는 표본의
 물리 도구 겹침을 구분하며 `EQUIPMENT_PATH_CLEARANCE`는 기존 통합 보고를
 유지합니다. 원본 타격·시각을 보존하며 모든 경로가 겹치지 않는다고 주장하는 대신

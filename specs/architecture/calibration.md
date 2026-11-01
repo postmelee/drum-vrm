@@ -321,6 +321,12 @@ its elbow capsule must be clear: convexity then bounds one proximal attachment i
 arbitrary fraction of the arm is removed. This remains an attachment-proxy approximation, not a skin
 certificate. Inward/cross-body upper arms, forearms, hands and sticks retain full checks. This geometric
 rule does not discard measured sleeves or branch on model identity.
+The separate [ordinary upper-body core](rig-contract.md#ordinary-upper-body-core) participates before
+an arm-preserving candidate can hide the existing shaft-yaw fallback. Among invalid yaw candidates,
+continuous core penetration ranks before stylistic displacement. Temporal nodes and interpolated edges
+use `4 + 10000 × depth²` when core penetration is positive, rather than the garment cost cap.
+Failed search still retains a finite diagnostic pose: this is not a new static fit certificate.
+`UPPER_BODY_PATH_CLEARANCE` reports final sampled core intersections and blocks motion review.
 
 Negative measured-body clearance is an advisory proxy overlap, not a measured
 skin penetration depth or a failed physical-tool certificate. Nonnegative clearance
@@ -462,7 +468,6 @@ without changing bone lengths. The renderer reads the evaluated foot quaternion
 for its board rotation. Kick beater contact is a separate surface event, not the
 sole target. [Equipment and contact](equipment-contact.md) owns the numerical
 hinge, travel and marker definitions.
-
 Literal open/close notes and explicit short-open/close interpretation feed one
 absolute-time hi-hat state used by the left foot, upper cymbal and stick target.
 Source meaning remains in [MIDI interpretation](midi-interpretation.md).
@@ -474,12 +479,10 @@ A sole socket is not the full shoe mesh; support and skin clearance still requir
 visible inspection.
 
 ## Stable mounts and replaceable drum bodies
-
 The kit separates a calibrated contact/mount from the replaceable shell, head or
 cymbal. Presets and local body-only GLB swaps preserve common stands/pedals; intentional
 layout changes may reposition the associated hardware. Source-specific mesh extraction
 is an appearance adapter concern and never changes the avatar solver.
-
 Model, appearance-scale and rotation changes measure the displayed body again and
 prepare a matching layout/plan before continuing. Kit fitting updates physical
 positions, radii and associated hardware; articulation regions follow the measured
@@ -487,7 +490,6 @@ playing surface. Finish alone remains cosmetic. Neither operation scales the ava
 or its bones. See the [shared geometry contract](equipment-contact.md).
 
 ## Historical evidence and remaining design
-
 Read the [calibration evidence](../../docs/verification/calibration-unreleased.md)
 and [palm follow-up](../../docs/verification/palm-orientation-unreleased.md)
 for their original executed scope and observed wrist/skin limits. The

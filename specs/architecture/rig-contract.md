@@ -87,6 +87,25 @@ ranking and warnings rather than rejecting an otherwise valid physical-tool pose
 Rendering/visual checks remain separate; [calibration](calibration.md) defines
 hard structural/tool constraints and the advisory-body policy.
 
+## Ordinary upper-body core
+
+`clearance::upper_body_core` derives a separate torso from semantic shoulders and pelvis,
+regardless of measured sleeves or body mesh. Half-width is `clamp(0.44 × shoulderSpan, .055, .30)` m;
+half-depth is `clamp(0.29 × shoulderSpan, .045, .20)` m. The cap extends from pelvis Y + .04 m
+to mean shoulder Y − .025 m. Upper-arm radius is `clamp(.085 × upperLength, .015, .035)` m,
+forearm radius is 80% of it, and wrist-to-grip hand radius is `clamp(.10 × lowerLength, .015, .030)` m.
+The complete butt-to-tip stick uses its maximum physical profile radius.
+
+Only a connected shoulder socket may overlap. An upper arm moving monotonically outward
+on its own side has one proximal intersection interval in the convex torso; its elbow
+must certify exit. Other directions exclude only the local socket of two upper-arm radii,
+then check the entire remaining arm. Forearms, hands and tools have no socket exemption.
+Body-relative forward/backward arm limits rotate with the shoulder frame. Core-aware
+candidate selection and temporal diagnostics are separate from static fit completion;
+failed finite fallback paths remain visible. The core is an engineering approximation,
+not anatomical segmentation or skin collision. Measured garment fields are unchanged.
+Hot candidate checks use analytic radial/vertical lower bounds only to prove a nonnegative result, including the full query’s Lipschitz/roundoff reserve. Possible intersections retain the exact refined query; inspection distances and negative costs are unchanged.
+
 ## Model import
 
 [vrm-import.ts](../../src/vrm-import.ts) and

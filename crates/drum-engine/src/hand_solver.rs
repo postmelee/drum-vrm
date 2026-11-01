@@ -251,6 +251,7 @@ fn legacy_reference(reference: &HandControlFrame) -> HandControlFrame {
 /// First search the existing pitch/swivel family without changing its arm
 /// joints. An infeasible rigid twist returns no witness; it never substitutes
 /// a yaw/reach correction or an out-of-policy legacy hand.
+#[cfg(test)]
 pub fn solve_preserving_arm_with_swivel(
     profile: &RigProfile,
     limb: usize,
@@ -540,7 +541,7 @@ fn style_score(
     target: Vec3,
     old: &HandSolution,
     hand: &HandSolution,
-) -> (bool, f64, f64) {
+) -> (bool, f64, f64, f64) {
     let reach = profile.lengths[limb][0] + profile.lengths[limb][1];
     // Feasibility remains first. Among feasible approaches, retain the old
     // elbow/wrist locations instead of trading a raised arm for minimum wrist.
@@ -558,6 +559,7 @@ fn style_score(
     (
         !hand.reachable,
         crate::posture::anatomical_violation(profile, limb, target, hand),
+        crate::clearance::core_penetration(profile, limb, hand),
         displacement
             + 0.01 * (1. - agreement)
             // A pose selected exactly at the wrist limit loses feasibility
@@ -613,6 +615,7 @@ fn solve_approach_yaw(
                 score.0,
                 score.1,
                 score.2,
+                score.3,
             )
         };
         let mut score = rank(&hand);
@@ -632,11 +635,12 @@ fn solve_approach_yaw(
         }
         // Each immutable candidate is compared repeatedly by golden refinement.
         // Retain its exact score instead of recalculating posture trigonometry.
-        score.3 += 0.001 * yaw.powi(2);
+        score.4 += 0.001 * yaw.powi(2);
         (yaw, hand, score)
     };
-    let better = |a: &(f64, HandSolution, (bool, bool, f64, f64)),
-                  b: &(f64, HandSolution, (bool, bool, f64, f64))| { a.2 < b.2 };
+    let better =
+        |a: &(f64, HandSolution, (bool, bool, f64, f64, f64)),
+         b: &(f64, HandSolution, (bool, bool, f64, f64, f64))| { a.2 < b.2 };
     let mut best = evaluate(0.);
     let (mut lo, mut hi) = (-MAX_APPROACH_YAW, MAX_APPROACH_YAW);
     for yaw in [lo, hi] {

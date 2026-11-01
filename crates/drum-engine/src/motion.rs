@@ -16,7 +16,7 @@ mod sticking;
 mod tool_pair_path;
 #[path = "motion_transfer.rs"]
 pub(crate) mod transfer;
-pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v20";
+pub(crate) const PLANNER_VERSION: &str = "phrase-beam-8-beat-horizon-24-posture-v21";
 
 // Rig calibration is independent of any Three.js object/bone names.
 pub const ARM_ROOTS: [Vec3; 2] = [[-0.22, 1.35, -0.10], [0.22, 1.35, -0.10]];
@@ -632,6 +632,7 @@ impl Motion {
                     | "RIG_UNREACHABLE_PEDAL"
                     | "HAND_OVERRIDE_INFEASIBLE"
                     | "BODY_PATH_CLEARANCE"
+                    | "UPPER_BODY_PATH_CLEARANCE"
                     | "EQUIPMENT_PATH_CLEARANCE"
                     | "TOOL_EQUIPMENT_PATH_CLEARANCE"
                     | "TOOL_PAIR_PATH_CLEARANCE"
@@ -897,6 +898,7 @@ impl Motion {
             .extend(motion.count_in.diagnostics.clone());
         motion.inspect_equipment_path();
         motion.inspect_posture_path();
+        motion.inspect_upper_body_path();
         // Assignment/reach success does not certify collision-free motion.
         // Aggregate remaining actual impact-pose proxy failures without changing
         // source notes or flooding the plan with one warning per mesh segment.
@@ -1037,6 +1039,35 @@ impl Motion {
         }
         if failures > 0 {
             let mut diagnostic = Diagnostic::new("POSTURE_LIMIT", format!("{failures} sampled hand poses exceed the common posture limits during preparation, contact, recovery or rest. Original contact times are preserved; inspect the marked interval."));
+            diagnostic.time = first;
+            self.plan.diagnostics.push(diagnostic);
+        }
+    }
+    fn inspect_upper_body_path(&mut self) {
+        let Some(profile) = self.profile.as_ref().filter(|p| p.hand_frames.is_some()) else {
+            return;
+        };
+        let (mut failures, mut first, mut minimum) = (0usize, None, 0_f64);
+        for time in self.inspection_times() {
+            let turned = profile.turned(crate::body_motion::at(&self.body_turns, time));
+            let pose = self.evaluate_rig(time);
+            let clearance = pose_hands(&pose)
+                .iter()
+                .enumerate()
+                .map(|(limb, hand)| {
+                    crate::clearance::upper_body_core(&turned, limb, hand).minimum()
+                })
+                .fold(f64::INFINITY, f64::min);
+            // Float32 pose output is the inspection boundary; ignore only its
+            // sub-micrometre packing noise, never a garment-dependent margin.
+            if clearance < -1e-6 {
+                failures += 1;
+                minimum = minimum.min(clearance);
+                first.get_or_insert(time.max(0.));
+            }
+        }
+        if failures > 0 {
+            let mut diagnostic = Diagnostic::new("UPPER_BODY_PATH_CLEARANCE", format!("{failures} sampled arm/tool paths intersect the ordinary torso core (minimum signed clearance {:.1} mm). Clothing is advisory; inspect the marked interval.", minimum * 1000.));
             diagnostic.time = first;
             self.plan.diagnostics.push(diagnostic);
         }
