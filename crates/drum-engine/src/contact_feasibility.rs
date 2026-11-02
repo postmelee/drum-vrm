@@ -21,7 +21,7 @@ fn impact_rank(
     pitch: f64,
 ) -> ImpactRank {
     let preference = pitch * pitch * 0.005;
-    if let Some(hand) = at_pitch(
+    if let Some(hand) = source_at_pitch(
         profile,
         limb,
         hit.target,
@@ -55,7 +55,8 @@ fn impact_rank(
             );
             (
                 usize::from(!hand.reachable),
-                (posture::MARGIN - tool_clearance).max(0.).powi(2),
+                (posture::MARGIN - tool_clearance).max(0.).powi(2)
+                    + crate::clearance::core_penetration(profile, limb, &hand).powi(2),
                 posture::anatomical_violation(profile, limb, hit.target, &hand),
                 posture::comfort_cost(profile, limb, hit.target, &hand),
             )
@@ -81,6 +82,30 @@ pub fn at_pitch(
 ) -> Option<HandSolution> {
     at_pitch_mode(profile, limb, target, pitch, equipment, piece, true)
 }
+/// Source anchors are retained by all later phase curves. Their certificate
+/// must include the same ordinary-core constraint as the hand graph, while
+/// intermediate approach searches retain their existing diagnostic fallback.
+pub(crate) fn source_at_pitch(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+) -> Option<HandSolution> {
+    at_pitch_search_with_core(
+        profile,
+        limb,
+        target,
+        pitch,
+        equipment,
+        piece,
+        true,
+        posture::HandSearch::Full,
+        true,
+    )
+}
+
 pub(crate) fn at_pitch_mode(
     profile: &RigProfile,
     limb: usize,
@@ -113,11 +138,29 @@ fn at_pitch_search(
     refine: bool,
     search: posture::HandSearch,
 ) -> Option<HandSolution> {
+    at_pitch_search_with_core(
+        profile, limb, target, pitch, equipment, piece, refine, search, false,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn at_pitch_search_with_core(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+    refine: bool,
+    search: posture::HandSearch,
+    require_core: bool,
+) -> Option<HandSolution> {
     let valid = |hand: &HandSolution| {
-        equipment.is_none_or(|ctx| {
-            crate::equipment_motion::tool_clearance(profile, limb, hand, ctx, piece)
-                >= posture::MARGIN
-        })
+        (!require_core || crate::clearance::core_penetration(profile, limb, hand) == 0.)
+            && equipment.is_none_or(|ctx| {
+                crate::equipment_motion::tool_clearance(profile, limb, hand, ctx, piece)
+                    >= posture::MARGIN
+            })
     };
     let environment = crate::equipment_motion::HandEnvironment {
         equipment,
@@ -178,6 +221,41 @@ pub fn hand_probe_fits(
 ) -> bool {
     hand_probe_mode(profile, limb, target, equipment, piece, true)
 }
+
+/// Prefer a hand with complete ordinary-body approach witnesses before musical
+/// sticking costs. A bounded neutral-body miss is not a physical impossibility:
+/// retain it as a diagnosed fallback when the other hand is unavailable (torso
+/// coordination may still clear it). In particular, never drop source hits or
+/// reject a whole kit merely because this additional preference has no witness.
+pub fn has_clear_body_approach(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    equipment: Option<&EquipmentContext>,
+    piece: Option<&str>,
+) -> bool {
+    if limb >= 2 || profile.hand_frames.is_none() || equipment.is_none() {
+        return true;
+    }
+    PROBES.into_iter().all(|(lift, pitch)| {
+        posture::HAND_SEARCHES.into_iter().any(|search| {
+            PITCH_OFFSETS.into_iter().any(|delta| {
+                at_pitch_search_with_core(
+                    profile,
+                    limb,
+                    [target[0], target[1] + lift, target[2]],
+                    pitch + delta,
+                    equipment,
+                    piece,
+                    true,
+                    search,
+                    true,
+                )
+                .is_some()
+            })
+        })
+    })
+}
 pub(crate) fn hand_probe_mode(
     profile: &RigProfile,
     limb: usize,
@@ -193,16 +271,15 @@ pub(crate) fn hand_probe_mode(
         return profile.reachable(limb, target);
     }
     PROBES.into_iter().all(|(lift, pitch)| {
-        candidate_mode(
-            profile,
-            limb,
-            [target[0], target[1] + lift, target[2]],
-            pitch,
-            equipment,
-            piece,
-            refine,
-        )
-        .is_some()
+        let point = [target[0], target[1] + lift, target[2]];
+        // Rotation cannot place the contact outside the arm-plus-held-tool
+        // triangle envelope. Reject that impossible probe before enumerating
+        // wrist approaches; a positive envelope result still needs the exact
+        // existing posture/equipment witness below.
+        if !profile.may_reach_contact(limb, point) {
+            return false;
+        }
+        candidate_mode(profile, limb, point, pitch, equipment, piece, refine).is_some()
     })
 }
 
@@ -216,6 +293,114 @@ pub fn impact_comfort_cost(
     candidate(profile, limb, target, 0., equipment, piece).map_or(0., |hand| {
         posture::comfort_cost(profile, limb, target, &hand)
     })
+}
+
+// Refine only the transitions between a certified and unsupported coarse
+// pitch. Three bisections add at most 24 certified candidates to the nine-value
+// baseline; unsupported midpoints never become new diagnostic fallbacks.
+const IMPACT_PITCH_BOUNDARY_STEPS: usize = 3;
+const MAX_IMPACT_PITCH_CANDIDATES: usize =
+    PITCH_OFFSETS.len() + (PITCH_OFFSETS.len() - 1) * IMPACT_PITCH_BOUNDARY_STEPS;
+type ContactKey<'a> = ([u64; 3], &'a str);
+struct ImpactPitches<'a> {
+    hit: &'a crate::model::Hit,
+    values: Vec<(f64, ImpactRank)>,
+}
+fn contact_key(hit: &crate::model::Hit) -> ContactKey<'_> {
+    (hit.target.map(f64::to_bits), hit.piece_id.as_str())
+}
+fn refine_impact_pitch_boundaries(
+    candidates: &mut ImpactPitches<'_>,
+    profile: &RigProfile,
+    equipment: &EquipmentContext,
+    limb: usize,
+) {
+    let mut coarse = candidates.values.clone();
+    coarse.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for pair in coarse.windows(2) {
+        let [(mut lo, left), (mut hi, right)] = [pair[0], pair[1]];
+        let supported_left = left.0 == 0;
+        if supported_left == (right.0 == 0) {
+            continue;
+        }
+        for _ in 0..IMPACT_PITCH_BOUNDARY_STEPS {
+            let pitch = (lo + hi) * 0.5;
+            let rank = impact_rank(profile, equipment, candidates.hit, limb, pitch);
+            if rank.0 == 0 && candidates.values.len() < MAX_IMPACT_PITCH_CANDIDATES {
+                candidates.values.push((pitch, rank));
+            }
+            // This locates a sampled boundary, not an assumed monotone safe
+            // interval: every retained pitch has its own complete witness.
+            if (rank.0 == 0) == supported_left {
+                lo = pitch;
+            } else {
+                hi = pitch;
+            }
+        }
+    }
+}
+fn impact_pitch_schedule(
+    hits: &[&crate::model::Hit],
+    ranks: &HashMap<ContactKey<'_>, ImpactPitches<'_>>,
+) -> Option<(Vec<f64>, Vec<f64>)> {
+    let choices: Vec<_> = hits
+        .iter()
+        .map(|hit| &ranks[&contact_key(hit)].values)
+        .collect();
+    let unreachable = (
+        usize::MAX,
+        usize::MAX,
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::INFINITY,
+    );
+    let mut costs = Vec::new();
+    let mut parents: Vec<Vec<usize>> = choices.iter().map(|values| vec![0; values.len()]).collect();
+    for (i, values) in choices.iter().enumerate() {
+        let mut next = vec![unreachable; values.len()];
+        for (j, &(pitch, rank)) in values.iter().enumerate() {
+            if i == 0 {
+                next[j] = rank;
+                continue;
+            }
+            let limit =
+                crate::equipment_motion::PITCH_RATE * (hits[i].time - hits[i - 1].time) + 1e-9;
+            for (k, &(previous, _)) in choices[i - 1].iter().enumerate() {
+                let cost: ImpactRank = costs[k];
+                if !cost.4.is_finite() || (pitch - previous).abs() > limit {
+                    continue;
+                }
+                let candidate = (
+                    cost.0 + rank.0,
+                    cost.1 + rank.1,
+                    cost.2 + rank.2,
+                    cost.3 + rank.3,
+                    cost.4 + rank.4 + (pitch - previous).powi(2) * 0.01,
+                );
+                if candidate < next[j] {
+                    next[j] = candidate;
+                    parents[i][j] = k;
+                }
+            }
+        }
+        if next.iter().all(|v| !v.4.is_finite()) {
+            return None;
+        }
+        costs = next;
+    }
+    let mut state = (0..costs.len()).min_by(|&a, &b| costs[a].partial_cmp(&costs[b]).unwrap())?;
+    let mut anchors = vec![0.; hits.len()];
+    let mut unsupported = Vec::new();
+    for i in (0..hits.len()).rev() {
+        let (pitch, rank) = choices[i][state];
+        anchors[i] = pitch;
+        if rank.0 != 0 {
+            unsupported.push(hits[i].time);
+        }
+        state = parents[i][state];
+    }
+    unsupported.reverse();
+    Some((anchors, unsupported))
 }
 
 /// Preserve the maximum number of feasible neutral impact witnesses within the
@@ -233,77 +418,34 @@ pub fn preserve_impact_pitches(
         return Vec::new();
     }
     let failed = || hits.iter().map(|h| h.time).collect();
-    let mut costs = [(
-        usize::MAX,
-        usize::MAX,
-        f64::INFINITY,
-        f64::INFINITY,
-        f64::INFINITY,
-    ); 9];
-    let mut parents = vec![[0usize; 9]; hits.len()];
-    let mut supported = vec![[false; 9]; hits.len()];
-    // Repeated notes share exactly the same neutral contact query. Cache its
-    // bounded pitch ranks rather than resolving every swivel for every hit.
-    let mut ranks: HashMap<([u64; 3], &str), [ImpactRank; 9]> = HashMap::new();
-    for (i, hit) in hits.iter().enumerate() {
+    // Repeated notes share one neutral contact query, including any bounded
+    // refinement. The ordinary schedule retains its original nine candidates
+    // and ordering; successful songs do not pay for another search.
+    let mut ranks = HashMap::new();
+    for &hit in hits {
         if !profile.may_reach_contact(limb, hit.target) {
             return failed();
         }
-        let ranks = ranks
-            .entry((hit.target.map(f64::to_bits), hit.piece_id.as_str()))
-            .or_insert_with(|| {
-                PITCH_OFFSETS.map(|pitch| impact_rank(profile, equipment, hit, limb, pitch))
+        ranks
+            .entry(contact_key(hit))
+            .or_insert_with(|| ImpactPitches {
+                hit,
+                values: PITCH_OFFSETS
+                    .map(|pitch| (pitch, impact_rank(profile, equipment, hit, limb, pitch)))
+                    .to_vec(),
             });
-        let mut next = [(
-            usize::MAX,
-            usize::MAX,
-            f64::INFINITY,
-            f64::INFINITY,
-            f64::INFINITY,
-        ); 9];
-        for (j, &pitch) in PITCH_OFFSETS.iter().enumerate() {
-            let rank = ranks[j];
-            supported[i][j] = rank.0 == 0;
-            if i == 0 {
-                next[j] = rank;
-                continue;
-            }
-            let limit = crate::equipment_motion::PITCH_RATE * (hit.time - hits[i - 1].time) + 1e-9;
-            for (k, &previous) in PITCH_OFFSETS.iter().enumerate() {
-                if !costs[k].4.is_finite() || (pitch - previous).abs() > limit {
-                    continue;
-                }
-                let candidate = (
-                    costs[k].0 + rank.0,
-                    costs[k].1 + rank.1,
-                    costs[k].2 + rank.2,
-                    costs[k].3 + rank.3,
-                    costs[k].4 + rank.4 + (pitch - previous).powi(2) * 0.01,
-                );
-                if candidate < next[j] {
-                    next[j] = candidate;
-                    parents[i][j] = k;
-                }
-            }
-        }
-        if next.iter().all(|v| !v.4.is_finite()) {
-            return failed();
-        }
-        costs = next;
     }
-    let mut state = (0..9)
-        .min_by(|&a, &b| costs[a].partial_cmp(&costs[b]).unwrap())
-        .unwrap();
-    let mut anchors = vec![0.; hits.len()];
-    let mut unsupported = Vec::new();
-    for i in (0..hits.len()).rev() {
-        anchors[i] = PITCH_OFFSETS[state];
-        if !supported[i][state] {
-            unsupported.push(hits[i].time);
+    let Some((mut anchors, mut unsupported)) = impact_pitch_schedule(hits, &ranks) else {
+        return failed();
+    };
+    if !unsupported.is_empty() {
+        for candidates in ranks.values_mut() {
+            refine_impact_pitch_boundaries(candidates, profile, equipment, limb);
         }
-        state = parents[i][state];
+        if let Some(refined) = impact_pitch_schedule(hits, &ranks) {
+            (anchors, unsupported) = refined;
+        }
     }
-    unsupported.reverse();
     let mut lower = vec![-0.60f64; track.len()];
     let mut upper = vec![0.60f64; track.len()];
     for (hit, &pitch) in hits.iter().zip(&anchors) {
@@ -350,6 +492,40 @@ mod tests {
             serde_json::from_value(fixture["profile"].clone()).unwrap(),
             serde_json::from_value(fixture["kit"].clone()).unwrap(),
         )
+    }
+
+    #[test]
+    fn source_pitch_certificate_rejects_body_crossing_while_retaining_safe_existing_pitch() {
+        let (_, mut kit) = native_reference();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-natural-grip30.json")).unwrap();
+        let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        // Authored open-hat contact on the current forward left-kit layout.
+        // The old pitch certificate admitted a reachable/tool-clear wrist
+        // whose upper arm traversed the ordinary torso.
+        for piece in &mut kit {
+            if matches!(
+                piece.instrument,
+                crate::model::Instrument::Hihat
+                    | crate::model::Instrument::OpenHat
+                    | crate::model::Instrument::PedalHat
+            ) {
+                piece.position[2] += 0.08;
+            }
+        }
+        let ctx = EquipmentContext::for_kit(&kit).unwrap();
+        let hat = kit.iter().find(|p| p.id == "hihat").unwrap();
+        let observer = std::array::from_fn(|i| (profile.roots[0][i] + profile.roots[1][i]) * 0.5);
+        let mut target = crate::contact::target(hat, "bow", observer);
+        target[1] += 0.025;
+        let old = at_pitch(&profile, 1, target, -0.6, Some(&ctx), Some("openHat")).unwrap();
+        assert!(crate::clearance::core_penetration(&profile, 1, &old) > 0.01);
+        assert!(source_at_pitch(&profile, 1, target, -0.6, Some(&ctx), Some("openHat")).is_none());
+        let safe = source_at_pitch(&profile, 1, target, 0., Some(&ctx), Some("openHat")).unwrap();
+        assert_eq!(crate::clearance::core_penetration(&profile, 1, &safe), 0.);
+        assert!(posture::anatomical(&profile, 1, target, &safe));
+        assert!(profile.hand_orientation_policy_valid(1, safe.rotation));
+        assert!(crate::motion::distance(safe.tip, target) < 1e-9);
     }
 
     #[test]
@@ -538,6 +714,55 @@ mod tests {
             None
         ));
     }
+
+    #[test]
+    fn probe_envelope_preserves_rotated_tool_witnesses_and_only_rejects_impossible_reach() {
+        let (base, _) = native_reference();
+        let mut witnessed = 0;
+        let mut outside = 0;
+        let mut inside_but_unplayable = 0;
+        for grip in [[0.; 3], [0.08, -0.03, 0.12]] {
+            let mut profile = base.clone();
+            profile.grip_offsets[0] = grip;
+            for relative in [
+                [0., -0.35, 0.45],
+                [0.15, -0.25, 0.60],
+                [0., -0.25, 0.82],
+                [-0.35, -0.10, 0.55],
+                [0.35, -0.10, 0.55],
+                [0., 0., 0.],
+                [0., 0.80, 0.80],
+                [0., -0.05, 1.15],
+            ] {
+                let target = crate::motion::add(profile.roots[0], relative);
+                // Compare against actual bounded wrist witnesses, not the
+                // default orientation or a bare-bone length approximation.
+                let mut exact = true;
+                for (lift, pitch) in PROBES {
+                    let point = [target[0], target[1] + lift, target[2]];
+                    let hand = candidate_mode(&profile, 0, point, pitch, None, None, true);
+                    let envelope = profile.may_reach_contact(0, point);
+                    if let Some(hand) = hand {
+                        witnessed += 1;
+                        assert!(envelope);
+                        assert!(crate::motion::distance(hand.tip, point) < 1e-9);
+                    } else {
+                        exact = false;
+                        if envelope {
+                            inside_but_unplayable += 1;
+                        } else {
+                            outside += 1;
+                        }
+                    }
+                }
+                assert_eq!(
+                    hand_probe_mode(&profile, 0, target, None, None, true),
+                    exact
+                );
+            }
+        }
+        assert!(witnessed > 0 && outside > 0 && inside_but_unplayable > 0);
+    }
     #[test]
     fn impact_anchors_survive_rate_projection_with_exact_times_and_safe_poses() {
         let mut p = RigProfile::primitive();
@@ -618,6 +843,124 @@ mod tests {
             track, before,
             "no fabricated trajectory when no reachable pitch exists"
         );
+    }
+
+    #[test]
+    fn off_grid_safe_pitch_boundaries_preserve_fast_contacts_without_relaxing_rates() {
+        let (profile, mut kit) = native_reference();
+        kit.retain(|piece| matches!(piece.id.as_str(), "tomLow" | "crashRight"));
+        kit.iter_mut()
+            .find(|piece| piece.id == "crashRight")
+            .unwrap()
+            .position[1] = 1.30;
+        let ctx = EquipmentContext::for_kit(&kit).unwrap();
+        let observer = std::array::from_fn(|i| (profile.roots[0][i] + profile.roots[1][i]) * 0.5);
+        // An original numeric fixture: two repeated 60 ms floor-to-crash moves.
+        // The coarse safe sets cannot meet the existing 2 rad/s limit, although
+        // a certified pitch near the floor's boundary can. Repetition also
+        // exercises reuse of the same contact's refined candidates.
+        let hits: Vec<_> = [
+            ("tomLow", 0.20),
+            ("crashRight", 0.26),
+            ("tomLow", 0.80),
+            ("crashRight", 0.86),
+        ]
+        .into_iter()
+        .enumerate()
+        .map(|(id, (piece_id, time))| {
+            let piece = kit.iter().find(|piece| piece.id == piece_id).unwrap();
+            let articulation = if piece_id == "tomLow" {
+                "center"
+            } else {
+                "crash"
+            };
+            crate::model::Hit {
+                id,
+                time,
+                time_us: (time * 1e6) as u64,
+                tick: id as u64 * 120,
+                track: 0,
+                event_index: id,
+                channel: 9,
+                note: if piece_id == "tomLow" { 43 } else { 57 },
+                velocity: 100,
+                instrument: piece.instrument,
+                piece_id: piece.id.clone(),
+                articulation: articulation.into(),
+                source_event_id: format!("0:{id}"),
+                limb: Some(1),
+                target: crate::contact::target(piece, articulation, observer),
+            }
+        })
+        .collect();
+        let coarse: Vec<Vec<_>> = hits[..2]
+            .iter()
+            .map(|hit| {
+                PITCH_OFFSETS
+                    .into_iter()
+                    .filter(|&pitch| {
+                        at_pitch(
+                            &profile,
+                            1,
+                            hit.target,
+                            pitch,
+                            Some(&ctx),
+                            Some(&hit.piece_id),
+                        )
+                        .is_some()
+                    })
+                    .collect()
+            })
+            .collect();
+        assert!(coarse.iter().all(|pitches| !pitches.is_empty()));
+        let limit = crate::equipment_motion::PITCH_RATE * (hits[1].time - hits[0].time);
+        assert!(!coarse[0]
+            .iter()
+            .any(|a| coarse[1].iter().any(|b| (a - b).abs() <= limit)));
+
+        let mut track: Vec<_> = [0., 0.20, 0.23, 0.26, 0.50, 0.80, 0.83, 0.86, 1.]
+            .into_iter()
+            .map(|time| crate::equipment_motion::PathSample {
+                time,
+                lift: [0.; 2],
+                pitch: [0.; 2],
+            })
+            .collect();
+        let source = serde_json::to_string(&hits).unwrap();
+        let times: Vec<_> = track.iter().map(|sample| sample.time).collect();
+        assert!(preserve_impact_pitches(
+            &mut track,
+            &profile,
+            &ctx,
+            &hits.iter().collect::<Vec<_>>(),
+            1
+        )
+        .is_empty());
+        assert_eq!(source, serde_json::to_string(&hits).unwrap());
+        assert_eq!(
+            times,
+            track.iter().map(|sample| sample.time).collect::<Vec<_>>()
+        );
+        assert!(track.windows(2).all(|pair| {
+            (pair[1].pitch[1] - pair[0].pitch[1]).abs()
+                <= crate::equipment_motion::PITCH_RATE * (pair[1].time - pair[0].time) + 1e-9
+        }));
+        for hit in &hits {
+            let pitch = crate::equipment_motion::sample(&track, hit.time, 1).1;
+            assert!(at_pitch(
+                &profile,
+                1,
+                hit.target,
+                pitch,
+                Some(&ctx),
+                Some(&hit.piece_id)
+            )
+            .is_some());
+        }
+        let first = crate::equipment_motion::sample(&track, hits[0].time, 1).1;
+        assert!(PITCH_OFFSETS
+            .iter()
+            .all(|coarse| (first - coarse).abs() > 1e-8));
     }
 
     #[test]

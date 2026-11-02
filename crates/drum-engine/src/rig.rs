@@ -118,6 +118,10 @@ pub struct RigProfile {
     pub head: Vec3,
 }
 
+#[path = "rig_query_key.rs"]
+mod query_key;
+pub(crate) use query_key::NumericProfileKey;
+
 pub fn rotate(q: Quat, v: Vec3) -> Vec3 {
     let u = [q[0], q[1], q[2]];
     let cross = |a: Vec3, b: Vec3| {
@@ -417,6 +421,15 @@ impl RigProfile {
     /// Shared policy check for prepared knots and evaluated interpolation.
     pub fn hand_orientation_policy_valid(&self, limb: usize, rotation: Quat) -> bool {
         limb < 2 && hand_solver::orientation_policy_valid(self, limb, rotation)
+    }
+
+    /// Continuous residual of the same declared palm policy used by final validation.
+    pub(crate) fn hand_orientation_policy_deficit(&self, limb: usize, rotation: Quat) -> f64 {
+        if limb < 2 {
+            hand_solver::orientation_policy_deficit(self, limb, rotation)
+        } else {
+            f64::INFINITY
+        }
     }
 
     /// Encode the selected actual tool orientation relative to its approach.

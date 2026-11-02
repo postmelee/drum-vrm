@@ -866,13 +866,13 @@ fn place_rack_group(
         }
         let geometry = crate::equipment::kit_geometry(&fixed);
         let ctx = crate::equipment_motion::EquipmentContext::new(fixed, geometry);
-        if !ctx.geometry.unresolved_piece_ids.is_empty()
-            || !lower_limb::structural_violations(profile, &ctx.kit, &ctx.geometry).is_empty()
+        if !ctx.geometry().unresolved_piece_ids.is_empty()
+            || !lower_limb::structural_violations(profile, ctx.kit(), ctx.geometry()).is_empty()
             || !ctx
-                .kit
+                .kit()
                 .iter()
                 .all(|p| equipment_posture_fits(profile, p, &ctx))
-            || !crate::posture::required_pairs_with_equipment(profile, &ctx.kit, Some(&ctx))
+            || !crate::posture::required_pairs_with_equipment(profile, ctx.kit(), Some(&ctx))
                 .is_empty()
         {
             continue;
@@ -1032,8 +1032,8 @@ fn repair_posture_order(
                     let hat = kit[index].clone();
                     let geometry = crate::equipment::kit_geometry(&kit);
                     let ctx = crate::equipment_motion::EquipmentContext::new(kit, geometry);
-                    (ctx.geometry.unresolved_piece_ids.is_empty()
-                        && lower_limb::structural_violations(profile, &ctx.kit, &ctx.geometry)
+                    (ctx.geometry().unresolved_piece_ids.is_empty()
+                        && lower_limb::structural_violations(profile, ctx.kit(), ctx.geometry())
                             .is_empty()
                         && equipment_posture_fits(profile, &hat, &ctx))
                     .then_some(hat)
@@ -1163,7 +1163,7 @@ fn repair_posture_order(
             }
             let geometry = crate::equipment::kit_geometry(&fixed);
             let ctx = crate::equipment_motion::EquipmentContext::new(fixed.clone(), geometry);
-            ctx.geometry.unresolved_piece_ids.is_empty()
+            ctx.geometry().unresolved_piece_ids.is_empty()
                 && crash_role_search_fits(profile, candidate, index, &ctx)
                 && equipment_posture_fits(profile, &candidate[index], &ctx)
                 && fixed
@@ -1190,7 +1190,7 @@ fn repair_posture_order(
                             let geometry = crate::equipment::kit_geometry(&pair_kit);
                             let pair_ctx =
                                 crate::equipment_motion::EquipmentContext::new(pair_kit, geometry);
-                            pair_ctx.geometry.unresolved_piece_ids.is_empty()
+                            pair_ctx.geometry().unresolved_piece_ids.is_empty()
                                 && equipment_posture_fits(profile, &candidate[index], &pair_ctx)
                                 && equipment_posture_fits(profile, hat, &pair_ctx)
                                 && crate::posture::pair_solution_with_equipment(

@@ -6,7 +6,10 @@ use crate::{
     motion::{add, distance, sub},
     rig::{rotate, HandSolution, RigProfile},
 };
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 #[path = "radial_clearance.rs"]
 mod radial_clearance;
@@ -15,10 +18,13 @@ pub const PITCH_OFFSETS: [f64; 9] = [0., -0.15, 0.15, -0.30, 0.30, -0.45, 0.45, 
 pub(crate) const LIFT_RATE: f64 = 1.2;
 pub(crate) const MAX_LIFT: f64 = 0.20;
 pub(crate) const PITCH_RATE: f64 = 2.0;
-
+const APPROACH_FRACTION: f64 = 0.96;
+const TERMINAL_CONTACT_HEIGHT: f64 = 0.012;
 pub struct EquipmentContext {
-    pub kit: Vec<KitPiece>,
-    pub geometry: equipment::EquipmentGeometry,
+    kit: Vec<KitPiece>,
+    geometry: equipment::EquipmentGeometry,
+    piece_indices: HashMap<String, usize>,
+    hand_cache: Mutex<HandMemo>,
     surfaces: std::collections::HashMap<String, equipment::Surface>,
 }
 impl EquipmentContext {
@@ -27,16 +33,80 @@ impl EquipmentContext {
             .iter()
             .map(|p| (p.id.clone(), equipment::surface(p)))
             .collect();
+        let piece_indices = kit
+            .iter()
+            .enumerate()
+            .map(|(i, piece)| (piece.id.clone(), i + 1))
+            .collect();
         Self {
             kit,
             geometry,
             surfaces,
+            piece_indices,
+            hand_cache: Mutex::new(HandMemo::default()),
         }
+    }
+    pub fn kit(&self) -> &[KitPiece] {
+        &self.kit
+    }
+    pub fn geometry(&self) -> &equipment::EquipmentGeometry {
+        &self.geometry
+    }
+    /// Release transient hand witnesses; nothing is stored in the plan.
+    pub(crate) fn clear_hand_cache(&self) {
+        *self.hand_cache.lock().expect("hand query cache") = HandMemo::default();
     }
     pub fn for_kit(kit: &[KitPiece]) -> Option<Arc<Self>> {
         kit.iter()
             .any(|p| p.geometry.is_some())
             .then(|| Arc::new(Self::new(kit.to_vec(), equipment::kit_geometry(kit))))
+    }
+}
+
+// One immutable equipment context owns its preparation witnesses. Profiles are
+// interned by complete numeric bit identity, not avatar ID or a rounded hash.
+// Entries include failed/policy fallback results and the intended physical piece.
+const MAX_HAND_QUERIES: usize = 32_768;
+const MAX_HAND_PROFILES: usize = 1_024;
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+struct HandQueryKey {
+    profile: usize,
+    limb: usize,
+    tip: [u64; 3],
+    pitch: u64,
+    swivel: u64,
+    preserve_arm: bool,
+    piece: usize,
+}
+#[derive(Default)]
+struct HandMemo {
+    profiles: HashMap<crate::rig::NumericProfileKey, usize>,
+    entries: HashMap<HandQueryKey, Option<HandSolution>>,
+}
+impl HandMemo {
+    fn get(
+        &self,
+        profile: &crate::rig::NumericProfileKey,
+        mut key: HandQueryKey,
+    ) -> Option<Option<HandSolution>> {
+        key.profile = *self.profiles.get(profile)?;
+        self.entries.get(&key).copied()
+    }
+    fn insert(
+        &mut self,
+        profile: crate::rig::NumericProfileKey,
+        mut key: HandQueryKey,
+        value: Option<HandSolution>,
+    ) {
+        // Eviction only repeats the same static query. It cannot alter search
+        // order, solver work limits, physical constraints or a chosen witness.
+        if self.entries.len() >= MAX_HAND_QUERIES || self.profiles.len() >= MAX_HAND_PROFILES {
+            self.entries.clear();
+            self.profiles.clear();
+        }
+        let index = self.profiles.len();
+        key.profile = *self.profiles.entry(profile).or_insert(index);
+        self.entries.insert(key, value);
     }
 }
 
@@ -57,8 +127,59 @@ impl HandEnvironment<'_> {
         swivel: f64,
         preserve_arm: bool,
     ) -> Option<HandSolution> {
+        let Some(ctx) = self.equipment else {
+            return self.solve_uncached(profile, limb, tip, pitch, swivel, preserve_arm);
+        };
+        // Unknown identities are not silently aliased to an unrelated target.
+        let piece = match self.intended_piece {
+            None => 0,
+            Some(id) => match ctx.piece_indices.get(id) {
+                Some(&index) => index,
+                None => {
+                    return self.solve_uncached(profile, limb, tip, pitch, swivel, preserve_arm)
+                }
+            },
+        };
+        let profile_key = profile.numeric_key();
+        let key = HandQueryKey {
+            profile: 0,
+            limb,
+            tip: tip.map(f64::to_bits),
+            pitch: pitch.to_bits(),
+            swivel: swivel.to_bits(),
+            preserve_arm,
+            piece,
+        };
+        if let Some(result) = ctx
+            .hand_cache
+            .lock()
+            .expect("hand query cache")
+            .get(&profile_key, key)
+        {
+            return result;
+        }
+        let result = self.solve_uncached(profile, limb, tip, pitch, swivel, preserve_arm);
+        ctx.hand_cache
+            .lock()
+            .expect("hand query cache")
+            .insert(profile_key, key, result);
+        result
+    }
+    fn solve_uncached(
+        self,
+        profile: &RigProfile,
+        limb: usize,
+        tip: Vec3,
+        pitch: f64,
+        swivel: f64,
+        preserve_arm: bool,
+    ) -> Option<HandSolution> {
+        if limb >= 2 {
+            return None;
+        }
+        let core = clearance::CoreQuery::new(profile, limb);
         profile.solve_hand_with_swivel_where(limb, tip, pitch, swivel, preserve_arm, &|hand| {
-            clearance::core_penetration(profile, limb, hand) == 0.
+            core.penetration(hand) == 0.
                 && self.equipment.is_none_or(|equipment| {
                     tool_clearance(profile, limb, hand, equipment, self.intended_piece)
                         >= crate::posture::MARGIN
@@ -153,9 +274,10 @@ fn tapered_surface_interval(
     radii: [f64; 2],
     body: &equipment::EquipmentBox,
     surface: &equipment::Surface,
+    required_clearance: f64,
 ) -> f64 {
     if let Some(profile) = &surface.radial_profile {
-        return radial_clearance::interval(start, end, radii, body, profile);
+        return radial_clearance::interval(start, end, radii, body, profile, required_clearance);
     }
     // The measured box axes need not be world axes. Clip its six support
     // planes and the playing-surface plane in the same rigid local frame.
@@ -212,6 +334,7 @@ fn tapered_surface_clearance(
     body: &equipment::EquipmentBox,
     surface: &equipment::Surface,
     terminal_contact: bool,
+    required_clearance: f64,
 ) -> f64 {
     let length = distance(butt, tip).max(1e-9);
     let axis = mul(sub(butt, tip), 1.0 / length);
@@ -239,6 +362,7 @@ fn tapered_surface_clearance(
             [radius(start), radius(end)],
             body,
             surface,
+            required_clearance,
         ));
     }
     let last = profile.last().expect("tool profile");
@@ -249,6 +373,7 @@ fn tapered_surface_clearance(
             [last[1]; 2],
             body,
             surface,
+            required_clearance,
         ));
     }
     best
@@ -404,7 +529,12 @@ fn query_tool(
                     .map(|(a, b)| a * b)
                     .sum::<f64>();
                 actual_height >= -0.000_000_1
-                    && contact::inside_playable_region(piece.expect("surface owner"), tip, 0.96, 0.)
+                    && contact::inside_playable_region(
+                        piece.expect("surface owner"),
+                        tip,
+                        APPROACH_FRACTION,
+                        0.,
+                    )
             });
         let physical = if approach {
             let (center, normal) = surface.expect("approach surface");
@@ -420,7 +550,8 @@ fn query_tool(
                 ctx.surfaces
                     .get(&body.piece_id)
                     .expect("approach surface owner"),
-                contact_height.abs() <= 0.012,
+                contact_height.abs() <= TERMINAL_CONTACT_HEIGHT,
+                0.,
             );
             // The 0.1 nm numerical allowance handles a tangent point represented
             // through different coordinate transforms; it cannot hide a mesh gap.
@@ -434,10 +565,24 @@ fn query_tool(
             .get(&body.piece_id)
             .filter(|surface| surface.radial_profile.is_some())
         {
-            // No terminal exemption or contact margin on any unrelated body.
-            // Keep the complete shaft's maximum radius, including the tip.
-            // Flat heads keep their full box: their rim may protrude above it.
-            tapered_surface_interval(butt, tip, [shaft_radius; 2], body, surface)
+            // A maximum-radius capsule cheaply certifies distant obstacles.
+            // Near the surface, refine the same authored taper used for contact:
+            // crossing the playable boundary must not turn its tip into a 6 mm
+            // sphere. Every section, including the terminal and butt, retains
+            // the full free-obstacle margin here. Flat heads keep their boxes.
+            let broad = tapered_surface_interval(
+                butt,
+                tip,
+                [shaft_radius; 2],
+                body,
+                surface,
+                crate::posture::MARGIN,
+            );
+            if broad >= crate::posture::MARGIN {
+                broad
+            } else {
+                tapered_surface_clearance(butt, tip, body, surface, false, crate::posture::MARGIN)
+            }
         } else {
             equipment::segment_box_clearance(butt, tip, shaft_radius, body)
         };
@@ -667,6 +812,110 @@ fn correction_search<const PRUNE: bool>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::posture;
+
+    #[test]
+    fn cached_queries_retain_exact_success_failure_and_environment_identity() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+        let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        let kit: Vec<KitPiece> = serde_json::from_value(fixture["kit"].clone()).unwrap();
+        let ctx = EquipmentContext::new(kit.clone(), equipment::kit_geometry(&kit));
+        let empty = EquipmentContext::new(kit, equipment::kit_geometry(&[]));
+        let equal = |a: Option<HandSolution>, b: Option<HandSolution>| match (a, b) {
+            (Some(a), Some(b)) => {
+                a.middle == b.middle
+                    && a.end == b.end
+                    && a.tip == b.tip
+                    && a.rotation == b.rotation
+                    && a.reachable == b.reachable
+            }
+            (None, None) => true,
+            _ => false,
+        };
+        let mut count = 0;
+        for yaw in [0., 0.12] {
+            let p = profile.turned(yaw);
+            for context in [&ctx, &empty] {
+                for intended in [None, Some("snare"), Some("tomHigh")] {
+                    let env = HandEnvironment {
+                        equipment: Some(context),
+                        intended_piece: intended,
+                    };
+                    for preserve in [false, true] {
+                        for target in [[0., 0.9, 0.5], [0., 2.0, 2.0]] {
+                            let expected = env.solve_uncached(&p, 0, target, -0.15, 0.05, preserve);
+                            let first = env.solve(&p, 0, target, -0.15, 0.05, preserve);
+                            let repeated = env.solve(&p, 0, target, -0.15, 0.05, preserve);
+                            assert!(equal(expected, first) && equal(expected, repeated));
+                            count += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            ctx.hand_cache.lock().unwrap().entries.len()
+                + empty.hand_cache.lock().unwrap().entries.len(),
+            count
+        );
+        let before = ctx.hand_cache.lock().unwrap().entries.len();
+        let missing = HandEnvironment {
+            equipment: Some(&ctx),
+            intended_piece: Some("unknown"),
+        };
+        assert!(equal(
+            missing.solve(&profile, 0, [0., 1., 0.5], 0., 0., false),
+            missing.solve_uncached(&profile, 0, [0., 1., 0.5], 0., 0., false)
+        ));
+        assert_eq!(ctx.hand_cache.lock().unwrap().entries.len(), before);
+        ctx.clear_hand_cache();
+        assert!(ctx.hand_cache.lock().unwrap().entries.is_empty());
+        assert!(ctx.hand_cache.lock().unwrap().profiles.is_empty());
+    }
+
+    #[test]
+    fn cache_eviction_recomputes_instead_of_aliasing_a_profile_or_failed_query() {
+        let profile = RigProfile::primitive();
+        let p = profile.numeric_key();
+        let mut cache = HandMemo::default();
+        let key = HandQueryKey {
+            profile: 0,
+            limb: 0,
+            tip: [0; 3],
+            pitch: 0,
+            swivel: 0,
+            preserve_arm: false,
+            piece: 0,
+        };
+        for i in 0..MAX_HAND_QUERIES {
+            cache.insert(
+                p.clone(),
+                HandQueryKey {
+                    pitch: i as u64,
+                    ..key
+                },
+                None,
+            );
+        }
+        assert_eq!(cache.entries.len(), MAX_HAND_QUERIES);
+        assert!(matches!(cache.get(&p, key), Some(None)));
+        let changed = profile.turned(0.1).numeric_key();
+        // Explicitly alter a numeric value even for a profile without a torso pivot.
+        let mut other = profile.clone();
+        other.roots[0][0] += 0.01;
+        assert!(cache.get(&other.numeric_key(), key).is_none());
+        cache.insert(
+            changed,
+            HandQueryKey {
+                pitch: MAX_HAND_QUERIES as u64,
+                ..key
+            },
+            None,
+        );
+        assert_eq!(cache.entries.len(), 1);
+        assert!(cache.get(&p, key).is_none());
+    }
 
     #[test]
     fn equipment_gate_retains_an_oblique_approach_hidden_by_the_first_hand() {
@@ -979,6 +1228,87 @@ mod tests {
     }
 
     #[test]
+    fn leaving_a_playable_region_keeps_the_actual_taper_and_full_free_margin() {
+        let mut cymbal = default_kit()
+            .into_iter()
+            .find(|p| p.instrument == Instrument::Crash)
+            .unwrap();
+        cymbal.position = [0.; 3];
+        cymbal.radius = 0.25;
+        let mut shape = equipment::local_geometry(&cymbal);
+        shape.reference_radius = 0.25;
+        shape.body = equipment::LocalBox {
+            center: [0., -0.01, 0.],
+            half_extents: [0.25, 0.01, 0.25],
+            rotation: None,
+        };
+        shape.surface = equipment::Surface {
+            center: [0.; 3],
+            normal: [0., 1., 0.],
+            radius: 0.25,
+            motion: None,
+            radial_profile: Some(equipment::RadialSurfaceProfile {
+                bell_radius: None,
+                origin: [0.; 3],
+                rotation: [0., 0., 0., 1.],
+                points: vec![[0., 0.], [0.25, 0.]],
+            }),
+        };
+        cymbal.geometry = Some(shape);
+        let body = equipment::body(&cymbal).unwrap();
+        let surface = equipment::surface(&cymbal);
+        let ctx = EquipmentContext::new(
+            vec![cymbal.clone()],
+            equipment::EquipmentGeometry {
+                version: 1,
+                bodies: vec![body.clone()],
+                supports: vec![],
+                pedals: vec![],
+                mechanisms: vec![],
+                unresolved_piece_ids: vec![],
+            },
+        );
+        let mut profile = RigProfile::primitive();
+        profile.grip_offsets[0] = [0.; 3];
+        let mut hand = HandSolution {
+            middle: [0., 0.2, -0.4],
+            end: [0.2401, 0.154, -0.3],
+            tip: [0.2401, 0.004, 0.],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        assert!(!contact::inside_playable_region(
+            &cymbal,
+            hand.tip,
+            APPROACH_FRACTION,
+            0.
+        ));
+        let (butt, tip) = stick_segment(&profile, 0, &hand);
+        assert!(
+            tapered_surface_interval(butt, tip, [0.006; 2], &body, &surface, posture::MARGIN,) < 0.
+        );
+        let clear = query_tool(&profile, 0, &hand, &ctx, None);
+        assert!(clear.tool >= posture::MARGIN);
+        assert_eq!(clear.tool, clear.physical_tool);
+        assert_eq!(
+            clear.tool,
+            query_tool(&profile, 0, &hand, &ctx, Some(&cymbal.id)).tool,
+            "an out-of-region intended label grants no exception"
+        );
+        // A 1 mm tip gap is physically separate but lacks the unchanged 2 mm
+        // free margin. Tangency and penetration do not inherit the 20 mm cap.
+        for height in [0.001, 0., -0.001] {
+            hand.tip[1] = height;
+            hand.end[1] = height + 0.15;
+            assert!(query_tool(&profile, 0, &hand, &ctx, None).tool < posture::MARGIN);
+        }
+        // Moving the tip beyond the edge cannot hide a shaft or butt crossing.
+        hand.tip = [0.40, 0.004, 0.];
+        hand.end = [0.05, 0.004, 0.];
+        assert!(query_tool(&profile, 0, &hand, &ctx, None).tool < 0.);
+    }
+
+    #[test]
     fn unrelated_cymbal_uses_its_bow_but_never_a_contact_exception() {
         let mut cymbal = default_kit()
             .into_iter()
@@ -1054,6 +1384,26 @@ mod tests {
         assert!(
             tool_clearance(&profile, 0, &hand, &ctx, None) < 0.,
             "lowering the same shaft crosses the bow"
+        );
+        // An unrelated near-rim pass needs a proof of the full free margin,
+        // even if the initial radial lower bound already proves nonintersection.
+        let butt = [-0.35, -0.14, -0.4];
+        hand.tip = [-0.247, 0.04, -0.07];
+        hand.end = add(
+            butt,
+            mul(
+                sub(hand.tip, butt),
+                crate::stick_geometry::profile().butt_length / distance(hand.tip, butt),
+            ),
+        );
+        let surface = equipment::surface(&ctx.kit[0]);
+        let tangent = tapered_surface_interval(butt, hand.tip, [0.006; 2], &body, &surface, 0.);
+        assert!(tangent > 0. && tangent < crate::posture::MARGIN);
+        let pass = assess_hand(&profile, 0, &hand, &ctx, None);
+        assert!(pass.tool >= crate::posture::MARGIN);
+        assert_eq!(
+            pass.tool, pass.physical_tool,
+            "no contact margin or tip exemption"
         );
     }
 
@@ -1271,13 +1621,15 @@ mod tests {
         assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("main-hat")) > 0.002);
         // A cue has no drum target; a different target at the same coordinates
         // must not acquire this body's terminal-contact exception either.
-        assert!(hand_clearance(&profile, 0, &hand, &ctx, None) < -0.005);
-        assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("unrelated-tom")) < -0.005);
-        assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("unknown")) < -0.005);
+        assert!(hand_clearance(&profile, 0, &hand, &ctx, None) < posture::MARGIN);
+        assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("unrelated-tom")) < posture::MARGIN);
+        assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("unknown")) < posture::MARGIN);
         assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("open-articulation")) > 0.002);
         // An OpenHat label alone cannot alias another instrument's location.
         ctx.kit[1].position[0] += 0.5;
-        assert!(hand_clearance(&profile, 0, &hand, &ctx, Some("open-articulation")) < -0.005);
+        assert!(
+            hand_clearance(&profile, 0, &hand, &ctx, Some("open-articulation")) < posture::MARGIN
+        );
     }
     #[test]
     fn intended_taper_accepts_shallow_approach_without_exempting_other_bodies() {
@@ -1298,14 +1650,14 @@ mod tests {
         let angle = 14_f64.to_radians();
         let butt = [0., 0.4 * angle.sin(), -0.4 * angle.cos()];
         let tip = [0.; 3];
-        assert!(tapered_surface_clearance(butt, tip, &body, &surface, true) > 0.0005);
+        assert!(tapered_surface_clearance(butt, tip, &body, &surface, true, 0.) > 0.0005);
         // The tip convention remains an approximation; demanding the pointed
         // cap itself tangent would reject this shallow real stick approach.
-        assert!(tapered_surface_clearance(butt, tip, &body, &surface, false) < 0.);
+        assert!(tapered_surface_clearance(butt, tip, &body, &surface, false, 0.) < 0.);
         // An unrelated body receives the unchanged complete-shaft test.
         assert!(equipment::segment_box_clearance(butt, tip, 0.006, &body) < 0.);
         let buried = [0., -0.03, 0.];
-        assert!(tapered_surface_clearance(butt, buried, &body, &surface, true) < -0.01);
+        assert!(tapered_surface_clearance(butt, buried, &body, &surface, true, 0.) < -0.01);
     }
     #[test]
     fn tapered_surface_bound_follows_the_measured_oriented_box() {
@@ -1346,13 +1698,14 @@ mod tests {
             ([0., -0.025, -0.3], [0., -0.025, 0.3], [0.006, 0.006]),
             ([0.18, -0.05, -0.3], [0.18, -0.05, 0.3], [0.003, 0.006]),
         ] {
-            let original = tapered_surface_interval(a, b, radii, &body, &surface);
+            let original = tapered_surface_interval(a, b, radii, &body, &surface, 0.);
             let moved = tapered_surface_interval(
                 transform(a),
                 transform(b),
                 radii,
                 &moved_body,
                 &moved_surface,
+                0.,
             );
             assert!((original - moved).abs() < 1e-12, "{original} -> {moved}");
         }

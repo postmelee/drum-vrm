@@ -1,4 +1,5 @@
 /** Review evidence, not another planner or a continuous motion certificate. */
+import { inspectedClearancePassed } from '../../src/review-clearance.ts';
 export const KINEMATIC_HALF_WINDOW_SECONDS = 1 / 240;
 const blockingCodes = new Set([
   'POSTURE_LIMIT', 'CONTACT_PITCH_LIMIT', 'COUNT_IN_GESTURE_UNAVAILABLE',
@@ -48,8 +49,18 @@ export function sampledUpperBodyPathsPassed(sequence) {
   return Number.isInteger(sequence?.samples) && sequence.samples > 0
     && proxy?.upperBodyCoreSamples === sequence.samples
     && proxy.upperBodyCoreIntersectingSamples === 0
-    && Number.isFinite(proxy.upperBodyCoreMinimumMeters)
-    && proxy.upperBodyCoreMinimumMeters >= -1e-6;
+    && inspectedClearancePassed(proxy.upperBodyCoreMinimumMeters);
+}
+
+/** Physical-tool review requires both measured boundaries at every sample.
+ * The same packed-pose tolerance as UI aggregation leaves raw minima intact. */
+export function sampledToolPathsPassed(sequence) {
+  const proxy = sequence?.proxy;
+  return Number.isInteger(sequence?.samples) && sequence.samples > 0
+    && proxy?.toolSamples === sequence.samples
+    && proxy.toolIntersectingSamples === 0
+    && inspectedClearancePassed(proxy.toolEquipmentMinimumMeters)
+    && inspectedClearancePassed(proxy.toolPairMinimumMeters);
 }
 
 const peak = () => ({ value: null, time: null, limb: null });

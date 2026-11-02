@@ -7,7 +7,7 @@ use crate::{
 };
 use hand_coordination::{OrientationSample, SwivelSample};
 use serde::{Deserialize, Serialize};
-const FORMAT_VERSION: u32 = 7;
+const FORMAT_VERSION: u32 = 9;
 const MAX_BYTES: usize = 128 * 1024 * 1024;
 pub(super) const MAX_EQUIPMENT_SAMPLES: usize = 16_000;
 
@@ -25,6 +25,8 @@ struct Prepared {
     hand_swivels: Vec<SwivelSample>,
     #[serde(deserialize_with = "bounded_track")]
     hand_orientations: Vec<OrientationSample>,
+    #[serde(deserialize_with = "bounded_physical_track")]
+    hand_pose_segments: Vec<crate::physical_hand_path::Segment>,
     #[serde(deserialize_with = "bounded_equipment_track")]
     equipment_path: Vec<PathSample>,
 }
@@ -34,6 +36,18 @@ where
     T: Deserialize<'de>,
 {
     bounded_values::<D, T, { hand_coordination::MAX_CONTROL_KNOTS }>(deserializer)
+}
+fn bounded_physical_track<'de, D>(
+    deserializer: D,
+) -> Result<Vec<crate::physical_hand_path::Segment>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    bounded_values::<
+        D,
+        crate::physical_hand_path::Segment,
+        { crate::physical_hand_path::MAX_SEGMENTS },
+    >(deserializer)
 }
 fn bounded_equipment_track<'de, D>(deserializer: D) -> Result<Vec<PathSample>, D::Error>
 where
@@ -86,6 +100,7 @@ impl Prepared {
             &self.body_turns,
             &self.hand_swivels,
             &self.hand_orientations,
+            &self.hand_pose_segments,
             &self.equipment_path,
         ))
     }
@@ -157,6 +172,7 @@ impl Motion {
             body_turns: self.body_turns.clone(),
             hand_swivels: self.hand_swivels.clone(),
             hand_orientations: self.hand_orientations.clone(),
+            hand_pose_segments: self.hand_pose_segments.clone(),
             equipment_path: self.equipment_path.clone(),
         };
         prepared.checksum = prepared.checksum();
@@ -381,7 +397,11 @@ impl Motion {
         }
         // Reuse the complete plan/assignment/index validation path. Only expensive
         // torso/DP planning is skipped, using the already validated numeric tracks.
-        let motion = Self::assemble_with_tracks(
+        if p.hand_pose_segments.len() > p.hand_swivels.len().saturating_mul(6) {
+            return Err("준비된 연주의 물리 팔 경로가 유효하지 않습니다.".into());
+        }
+        let hand_pose_segments = p.hand_pose_segments;
+        let mut motion = Self::assemble_with_tracks(
             p.plan,
             p.profile,
             Some((
@@ -425,6 +445,25 @@ impl Motion {
         }) {
             return Err("준비된 연주의 양손 경로가 유효하지 않습니다.".into());
         }
+        if !hand_pose_segments.is_empty() {
+            if motion
+                .profile
+                .as_ref()
+                .is_none_or(|p| p.hand_frames.is_none())
+            {
+                return Err("준비된 연주의 물리 팔 경로가 유효하지 않습니다.".into());
+            }
+            crate::physical_hand_path::validate(
+                &hand_pose_segments,
+                &motion.hand_swivels,
+                &motion.hand_orientations,
+                &motion.hand_path_spans(),
+                &motion.hand_source_times(),
+                &motion.inspection_times(),
+                |time| motion.hand_coordination_input(time),
+            )?;
+        }
+        motion.hand_pose_segments = hand_pose_segments;
         // Paired-tool cues are source contacts too, although they are not Hits.
         if let Some(profile) = &motion.profile {
             for sample in &motion.hand_orientations {
@@ -437,22 +476,8 @@ impl Motion {
                 for limb in 0..2 {
                     let (tip, pitch) = motion.stroke_at(limb, controls.time);
                     if controls.orientations[limb].is_some()
-                        && turned
-                            .solve_hand_with_swivel_and_orientation(
-                                limb,
-                                tip,
-                                -pitch,
-                                controls.angles[limb],
-                                controls.orientations[limb],
-                            )
-                            .map(|hand| {
-                                motion
-                                    .count_in
-                                    .orientation(sample.time)
-                                    .map_or(hand, |cue| {
-                                        cue.apply(&turned, limb, tip, controls.angles[limb], hand)
-                                    })
-                            })
+                        && motion
+                            .hand_solution_at(sample.time, limb, &turned, &controls, tip, pitch)
                             .is_none_or(|hand| {
                                 !turned.hand_orientation_policy_valid(limb, hand.rotation)
                             })
@@ -615,6 +640,47 @@ mod tests {
         let mut plan = sample(false).plan;
         crate::contact::apply(&mut plan, &profile);
         Motion::with_profile(plan, profile).unwrap()
+    }
+    #[test]
+    fn worker_transfer_rejects_unbound_physical_controls_even_with_valid_checksum() {
+        let original = sample_orientations(false);
+        let text = original.prepared_json();
+        let baseline: Prepared = serde_json::from_str(&text).unwrap();
+        let profile = profile_json(&original);
+        let hash = &original.plan.midi_hash;
+        assert!(Motion::from_prepared_json(&text, hash, &profile).is_ok());
+        let key = serde_json::json!({
+            "forearm": [0.,0.,1.], "forearm_rate": [0.,0.,0.],
+            "plane": 0., "plane_rate": 0., "rotation": [0.,0.,0.,1.],
+            "rotation_rate": [0.,0.,0.,0.], "source": false
+        });
+        let record = serde_json::json!({
+            "limb": 0, "start": baseline.hand_swivels[0].time,
+            "end": baseline.hand_swivels[1].time,
+            "from": key, "to": key, "parameters": [0.,0.,0.,0.,0.,0.,0.,0.]
+        });
+        for case in 0..6 {
+            let mut edited = baseline.clone();
+            let mut record = record.clone();
+            match case {
+                0 => record["start"] = serde_json::json!(-999.),
+                1 => record["from"]["forearm"] = serde_json::json!([0., -2., 0.]),
+                2 => record["to"]["rotation"] = serde_json::json!([0., 1., 0., 0.]),
+                3 => record["limb"] = serde_json::json!(2),
+                4 => record["parameters"][0] = serde_json::json!(4.),
+                _ => (),
+            }
+            edited.hand_pose_segments = vec![serde_json::from_value(record).unwrap()];
+            if case != 5 {
+                edited.checksum = edited.checksum();
+            }
+            assert!(Motion::from_prepared_json(
+                &serde_json::to_string(&edited).unwrap(),
+                hash,
+                &profile
+            )
+            .is_err());
+        }
     }
     #[test]
     fn worker_orientation_track_roundtrip_and_policy_validation() {
@@ -850,7 +916,7 @@ mod tests {
         let prepared: Prepared = serde_json::from_str(&text).unwrap();
         // Neither earlier quaternion interpretation may be restored as the
         // new independent arm/grip control, even with a recomputed checksum.
-        for version in [4, 5, 6] {
+        for version in [4, 5, 6, 7, 8] {
             let mut old_frame = prepared.clone();
             old_frame.format_version = version;
             old_frame.checksum = old_frame.checksum();

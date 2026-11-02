@@ -54,7 +54,7 @@ absolute-time mechanism state across motion, feedback and separate actual-marker
 inspection. The [equipment contact contract](equipment-contact.md#shared-contact-records-and-hi-hat-state)
 owns their fields, regeneration and capability limits.
 
-Planner `phrase-beam-8-beat-horizon-24-posture-v18` uses an eight-candidate beam with lookahead
+Planner `phrase-beam-8-beat-horizon-24-posture-v22` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each
@@ -65,8 +65,9 @@ mixed fills discourage extended one-hand repetition. A strong hit followed by a
 weaker hit on the same surface can instead favor a two-hit rebound candidate.
 Single, double and paradiddle sequences provide weak preferences, including mirrored
 and cyclic variants; they do not identify the original drummer's technique.
-Candidates first minimize unassigned events, then deviations from the default
-right-handed groove roles, then transfer, clearance and rudiment costs. Hi-hat/open
+Candidates first minimize unassigned events, then contacts without a complete
+ordinary-body approach witness, then deviations from default right-handed groove
+roles, then transfer, clearance and rudiment costs. Hi-hat/open
 hi-hat/ride belong to the right hand; sparse snare backbeats near a groove belong to
 the left. Head strikes within 0.8 quarter notes (clamped to 0.15–0.4 s) remain fill/run
 candidates, free to alternate or use doubles. These windows are engineering choices,
@@ -85,7 +86,14 @@ Original times and physical targets stay unchanged. The default roles are not a
 universal prohibition on two-handed hi-hat or open-handed playing; explicit style
 selection remains future work. [Instructional rationale](../../docs/research/ergonomics-and-sticking.md#groove-ownership-and-post-fill-crashes).
 
-Numeric torso-clearance cost is a soft preference at candidate contacts. Events
+The body-witness tier searches the existing pitch/swivel families at impact and
+both preparation probes, including alternatives beyond the first valid arm pose.
+It prefers a clear opposite hand over an unsafe cross-body fill. A neutral-torso
+search miss remains available when no better assignment exists: later torso motion
+may clear it, and source hits must not disappear because this bounded preference
+has no witness. Explicit hand overrides remain authoritative. Final physical path
+inspection still owns acceptance; a neutral witness is not a trajectory certificate.
+Measured costume-clearance cost remains advisory at candidate contacts. Events
 outside the candidate cap retain sound/diagnostics. This is a bounded heuristic,
 not a globally optimal arrangement or a guarantee of clear motion paths.
 Minimum re-strike interval (45 ms) and maximum target-chord speed (12 m/s) are
@@ -166,12 +174,46 @@ failed replacement search discard candidate reuse. Rust still validates every
 prepared installation. This is bounded
 reuse, not a cache of arbitrary uploaded files.
 
+Static hand queries share a bounded cache owned by one immutable equipment context.
+Its key includes the complete numeric profile bit pattern, limb, target, pitch,
+swivel, search mode and intended piece. Signed zero and optional fields remain distinct;
+profile names never affect selection. At most 32,768 query results and 1,024 profiles
+are retained, including failed and diagnostic fallback results. Eviction only repeats
+an identical query; it cannot change candidate order or physical bounds. Preparation
+and prepared restoration release these transient witnesses before returning. Nothing
+from this cache enters the saved plan or prepared transfer.
+
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
-7, containing the plan, numeric profile, torso, elbow/orientation and equipment-approach tracks,
+9, containing the plan, numeric profile, torso, elbow/orientation, physical hand segments and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v21` identifies
-wrist-driven shaft count-in, held arm/body witnesses and gap-aware settling;
-earlier prepared candidates must be rebuilt.
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v22` identifies
+coupled count-in transitions, ordinary-body-aware hand assignment and selected
+fixed-bone hand curves; earlier prepared candidates must be rebuilt.
+Selected physical segments are independent per hand and retain the routed tip at
+all times. A virtual lever combines the measured hand-local lower arm with the
+complete grip and tip offset; reconstruction preserves both real bone lengths.
+This algebraic construction does not replace anatomical or collision checks.
+Phase refinement retains the selected impact poses and original hit times. Phase coefficients, canonical
+endpoints and endpoint measurements are validated on restoration; invalid curves
+cannot silently fall back to the ordinary solver. Replay evaluates stored curves
+without an optimizer or playback history. The final interval checks include the
+other hand, equipment, ordinary body core and the existing wrist/palm policy.
+Physical segments have a separate preliminary transfer cap of 36,000 (six times
+the 6,000-control budget), followed by the tighter canonical interval count and
+per-hand non-overlap checks. Each curve has eight bounded coefficients in ±π;
+payloads cannot supply a free oscillation frequency or sampling count.
+The measured endpoint curve is the first candidate. Corrections first keep local
+forearm/wrist flex fixed and optimize the existing plane/twist coefficients; only
+failure enables all eight coefficients. Each solve has at most 48 feasibility and
+16 motion iterations, 12 backtracks, a 0.15 trust step and four collocation rounds.
+A single certified restart reuses the same static witness family. Both hands and
+restoration share the absolute 480 Hz lattice, canonical boundaries, control times
+and known inspection times. Non-source joins align outward to feasible existing controls; overlapping coverage is united and split at source/held-cue boundaries, while raw stroke breakpoints remain sampled. Adjacent ordinary phases may coalesce once without
+crossing an own source contact or held cue. A failed phase is retried once only
+when a newly accepted opposite-hand curve overlaps it. A physically valid route
+may also be simplified, but only if the existing dense actual-motion objective
+strictly decreases and every physical gate still passes. The objective is not a
+physiological speed limit or proof of aesthetic naturalness.
 Installation checks engine/planner versions, expected source/profile
 identity, finite values, ordering, track bounds and mandatory control times. The separate
 `handOrientations` track retains every original swivel-time orientation exactly, stays within
@@ -257,9 +299,10 @@ nearby equipment bounds, retaining larger authored stroke lift. Its added height
 is limited to 0.20 m and the available endpoint travel budget; endpoints and source
 times are unchanged. This guide does not replace whole-tool collision inspection
 or establish a speed bound for the final solved pose.
-For hand transfers in the measured-profile path, a lifted intermediate tip is kept
-at least as far from its reference shoulder as the interpolated endpoint radii.
-This reduces inward folding during preparation; it is not obstacle routing.
+Hand transfers retain the coherent chord/arch or complete waypoint route. They do
+not apply a separate, framewise clipped outward shoulder-radius expansion: it can
+create sharp tip/elbow motion at grazing obstacle boundaries. Common arm/core and
+whole-tool planning assess the resulting route without moving source contacts.
 
 For profiles with `torsoPivot`, planning precomputes a 12 Hz facing curve with yaw
 bounded to ±0.24 radians. Candidate yaw balances both hand targets, torso/forearm
@@ -294,10 +337,13 @@ markers, skin or exact triangles.
 
 Browser review keeps the raw proxy minimum/count fields and additionally aggregates
 optional `toolSamples`, `toolEquipmentMinimumMeters`, `toolPairMinimumMeters`,
-`toolIntersectingSamples` and `firstToolIntersectionSeconds`. A negative value in
-either tool metric counts as an intersecting tool sample. Acceptance needs present,
-finite, nonnegative whole-tool measurements; advisory body minima cannot substitute
-for or invalidate that result. Frame samples still do not prove the continuous path.
+`toolIntersectingSamples` and `firstToolIntersectionSeconds`. Raw signed minima
+remain unchanged. Browser and script review share a 1 µm f32 packing tolerance:
+either tool metric below −1 µm counts as an intersecting tool sample. Acceptance
+requires present, finite whole-tool measurements within that tolerance. This does
+not change the planner's 2 mm free margin or grant another contact exemption.
+Advisory body minima cannot substitute for or invalidate the tool result. Frame
+samples still do not prove the continuous path.
 
 Final engine inspection evaluates the same quarter/mid/three-quarter interval
 times as tool-route repair, plus the path knots, hand controls and count-in controls.

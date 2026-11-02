@@ -1135,3 +1135,111 @@ fn prepared_actual_orientation_avoids_legacy_roll_feedback_between_existing_cont
     evaluate(0.72);
     assert_eq!(center.rotation, evaluate(0.75).rotation);
 }
+
+#[test]
+fn lazy_rank_preserves_eager_tuple_order_and_skips_losing_tail_work() {
+    use std::cell::Cell;
+    let values = [-0., 0., 0.1, 1., f64::INFINITY, f64::NAN];
+    for i in 0..1024 {
+        let a = (
+            i & 1 != 0,
+            i & 2 != 0,
+            values[(i / 4) % 6],
+            values[(i / 7) % 6],
+            values[(i / 11) % 6],
+        );
+        let b = (
+            i & 16 != 0,
+            i & 32 != 0,
+            values[(i / 9) % 6],
+            values[(i / 13) % 6],
+            values[(i / 17) % 6],
+        );
+        let core_calls = Cell::new(0);
+        let got = rank_before(
+            [(a.0, a.1, a.2), (b.0, b.1, b.2)],
+            || {
+                core_calls.set(core_calls.get() + 1);
+                [a.3, b.3]
+            },
+            || [a.4, b.4],
+        );
+        assert_eq!(got, a < b, "case {i}");
+        if (a.0, a.1, a.2).partial_cmp(&(b.0, b.1, b.2)) != Some(std::cmp::Ordering::Equal) {
+            assert_eq!(core_calls.get(), 0);
+        }
+    }
+}
+
+#[test]
+fn shared_wrist_context_preserves_original_floating_point_pose() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+    let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+    for index in 0..400 {
+        let p = profile.turned((index as f64 * 0.137).sin() * 0.24);
+        let limb = index % 2;
+        let swivel = (index as f64 * 0.231).sin() * 0.8;
+        let target = [
+            (index as f64 * 0.31).sin() * 0.8,
+            0.4 + (index as f64 * 0.07).cos(),
+            0.2 + (index as f64 * 0.17).cos(),
+        ];
+        let rotation = axis_rotation(unit([0.3, 0.7, 0.2]), index as f64 * 0.137);
+        let expected = reference_solve_wrist(&p, limb, target, rotation, swivel);
+        let actual = WristContext::new(&p, limb, swivel).solve(target, rotation);
+        assert_eq!(
+            actual.middle.map(f64::to_bits),
+            expected.middle.map(f64::to_bits)
+        );
+        assert_eq!(actual.end.map(f64::to_bits), expected.end.map(f64::to_bits));
+        assert_eq!(actual.tip.map(f64::to_bits), expected.tip.map(f64::to_bits));
+        assert_eq!(
+            actual.rotation.map(f64::to_bits),
+            expected.rotation.map(f64::to_bits)
+        );
+        assert_eq!(actual.reachable, expected.reachable);
+    }
+}
+fn reference_solve_wrist(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    rotation: Quat,
+    swivel: f64,
+) -> HandSolution {
+    let root = profile.roots[limb];
+    let [upper, lower] = profile.lengths[limb];
+    let wrist = sub(target, profile.offset(limb, rotation));
+    let desired_distance = distance(root, wrist);
+    let axis = unit(sub(wrist, root));
+    let inner = (upper - lower).abs();
+    let outer = upper + lower;
+    let reachable = desired_distance >= inner + 1e-5 && desired_distance <= outer - 1e-4;
+    let length = desired_distance.clamp(inner + 1e-6, outer - 1e-6);
+    let end = add(root, mul(axis, length));
+    let outward = if limb == 0 { -1. } else { 1. };
+    let shoulders = sub(profile.roots[1], profile.roots[0]);
+    let horizontal = [shoulders[0], 0., shoulders[2]];
+    let right = if distance(horizontal, [0.; 3]) < 1e-8 {
+        [1., 0., 0.]
+    } else {
+        unit(horizontal)
+    };
+    let forward = [-right[2], 0., right[0]];
+    let transverse = unit(add(mul(right, outward * 0.45), [0., -1., 0.]));
+    // Hand pronation never changes the elbow reference plane. The coordinator
+    // now bounds the same body-relative swivel that fixed-orientation replay uses.
+    let pole = rotate(shortest_arc(forward, axis, transverse), transverse);
+    let bend = rotate(axis_rotation(axis, swivel), pole);
+    let along = (upper * upper - lower * lower + length * length) / (2. * length);
+    let radius = (upper * upper - along * along).max(0.).sqrt();
+    let middle = add(add(root, mul(axis, along)), mul(bend, radius));
+    HandSolution {
+        middle,
+        end,
+        tip: add(end, profile.offset(limb, rotation)),
+        rotation,
+        reachable,
+    }
+}

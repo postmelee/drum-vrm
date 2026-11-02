@@ -535,13 +535,13 @@ pub fn inward_grip_cost(profile: &RigProfile, limb: usize, rotation: Quat) -> f6
     0.08 * (roll / std::f64::consts::FRAC_PI_2).powi(2)
 }
 
-fn style_score(
+fn style_cost(
     profile: &RigProfile,
     limb: usize,
     target: Vec3,
     old: &HandSolution,
     hand: &HandSolution,
-) -> (bool, f64, f64, f64) {
+) -> f64 {
     let reach = profile.lengths[limb][0] + profile.lengths[limb][1];
     // Feasibility remains first. Among feasible approaches, retain the old
     // elbow/wrist locations instead of trading a raised arm for minimum wrist.
@@ -556,19 +556,88 @@ fn style_score(
         .sum::<f64>()
         .abs()
         .min(1.);
-    (
-        !hand.reachable,
-        crate::posture::anatomical_violation(profile, limb, target, hand),
-        crate::clearance::core_penetration(profile, limb, hand),
-        displacement
+    displacement
             + 0.01 * (1. - agreement)
             // A pose selected exactly at the wrist limit loses feasibility
             // under tiny neighboring swivel changes. This is a smooth style
             // cost, not another gate or a relaxation of the physical limit.
             + wrist_comfort(profile, limb, hand)
             + inward_grip_cost(profile, limb, hand.rotation)
-            + 0.01 * crate::posture::arm_comfort_cost(profile, limb, target, hand),
-    )
+            + 0.01 * crate::posture::arm_comfort_cost(profile, limb, target, hand)
+}
+
+// Most diagnostic candidates already differ in reach/anatomy. Keep the exact
+// lexicographic ordering while evaluating core/style only when those earlier
+// fields tie; a discarded candidate cannot affect the winner or search domain.
+#[derive(Clone)]
+struct RankedHand {
+    hand: HandSolution,
+    prefix: (bool, bool, f64),
+    core: std::cell::Cell<Option<f64>>,
+    style: std::cell::Cell<Option<f64>>,
+}
+impl RankedHand {
+    fn new(
+        profile: &RigProfile,
+        limb: usize,
+        target: Vec3,
+        hand: HandSolution,
+        accept: &dyn Fn(&HandSolution) -> bool,
+    ) -> Self {
+        let anatomy = crate::posture::anatomical_violation(profile, limb, target, &hand);
+        Self {
+            prefix: (
+                !hand.reachable
+                    || !crate::posture::anatomical_violation_valid(anatomy)
+                    || !accept(&hand),
+                !hand.reachable,
+                anatomy,
+            ),
+            hand,
+            core: std::cell::Cell::new(None),
+            style: std::cell::Cell::new(None),
+        }
+    }
+    fn core(&self, query: &crate::clearance::CoreQuery<'_>) -> f64 {
+        self.core.get().unwrap_or_else(|| {
+            let value = query.penetration(&self.hand);
+            self.core.set(Some(value));
+            value
+        })
+    }
+    fn style(&self, profile: &RigProfile, limb: usize, target: Vec3, old: &HandSolution) -> f64 {
+        self.style.get().unwrap_or_else(|| {
+            let value = style_cost(profile, limb, target, old, &self.hand);
+            self.style.set(Some(value));
+            value
+        })
+    }
+}
+#[derive(Clone)]
+struct RankedYaw {
+    yaw: f64,
+    hand: RankedHand,
+}
+
+fn rank_before(
+    prefix: [(bool, bool, f64); 2],
+    core: impl FnOnce() -> [f64; 2],
+    style: impl FnOnce() -> [f64; 2],
+) -> bool {
+    use std::cmp::Ordering;
+    match prefix[0].partial_cmp(&prefix[1]) {
+        Some(Ordering::Less) => return true,
+        Some(Ordering::Equal) => {}
+        _ => return false,
+    }
+    let [a, b] = core();
+    match a.partial_cmp(&b) {
+        Some(Ordering::Less) => return true,
+        Some(Ordering::Equal) => {}
+        _ => return false,
+    }
+    let [a, b] = style();
+    a < b
 }
 
 // Carry the same static contact query and its physical acceptance predicate.
@@ -584,6 +653,23 @@ fn solve_approach_yaw(
     accept: &dyn Fn(&HandSolution) -> bool,
 ) -> HandSolution {
     let [minimum, maximum] = reference.palm_roll_range.unwrap();
+    let wrist = WristContext::new(profile, limb, swivel);
+    let core = crate::clearance::CoreQuery::new(profile, limb);
+    let better_hand = |a: &RankedHand, b: &RankedHand, yaw: Option<[f64; 2]>| {
+        rank_before(
+            [a.prefix, b.prefix],
+            || [a.core(&core), b.core(&core)],
+            || {
+                let mut x = a.style(profile, limb, target, &old);
+                let mut y = b.style(profile, limb, target, &old);
+                if let Some([a, b]) = yaw {
+                    x += 0.001 * a.powi(2);
+                    y += 0.001 * b.powi(2);
+                }
+                [x, y]
+            },
+        )
+    };
     let evaluate = |yaw: f64| {
         let heading = add(
             profile.roots[limb],
@@ -601,46 +687,32 @@ fn solve_approach_yaw(
         let a = sub(neutral, mul(shaft, dot(neutral, shaft)));
         let mut rotation = base;
         for _ in 0..ROLL_REFINEMENTS {
-            let hand = solve_wrist(profile, limb, target, rotation, swivel);
+            let hand = wrist.solve(target, rotation);
             let actual = unit(sub(hand.end, hand.middle));
             let b = sub(actual, mul(shaft, dot(actual, shaft)));
             let roll = bounded_roll(dot(shaft, cross(a, b)), dot(a, b), minimum, maximum);
             rotation = normalize(multiply(axis_rotation(shaft, roll), base));
         }
-        let mut hand = solve_wrist(profile, limb, target, rotation, swivel);
-        let rank = |hand: &HandSolution| {
-            let score = style_score(profile, limb, target, &old, hand);
-            (
-                (score.0 || score.1 > 0. || !accept(hand)),
-                score.0,
-                score.1,
-                score.2,
-                score.3,
-            )
-        };
-        let mut score = rank(&hand);
+        let mut hand =
+            RankedHand::new(profile, limb, target, wrist.solve(target, rotation), accept);
         for roll in [minimum, maximum] {
-            let alternative = solve_wrist(
+            let alternative = RankedHand::new(
                 profile,
                 limb,
                 target,
-                normalize(multiply(axis_rotation(shaft, roll), base)),
-                swivel,
+                wrist.solve(
+                    target,
+                    normalize(multiply(axis_rotation(shaft, roll), base)),
+                ),
+                accept,
             );
-            let alternative_score = rank(&alternative);
-            if alternative_score < score {
+            if better_hand(&alternative, &hand, None) {
                 hand = alternative;
-                score = alternative_score;
             }
         }
-        // Each immutable candidate is compared repeatedly by golden refinement.
-        // Retain its exact score instead of recalculating posture trigonometry.
-        score.4 += 0.001 * yaw.powi(2);
-        (yaw, hand, score)
+        RankedYaw { yaw, hand }
     };
-    let better =
-        |a: &(f64, HandSolution, (bool, bool, f64, f64, f64)),
-         b: &(f64, HandSolution, (bool, bool, f64, f64, f64))| { a.2 < b.2 };
+    let better = |a: &RankedYaw, b: &RankedYaw| better_hand(&a.hand, &b.hand, Some([a.yaw, b.yaw]));
     let mut best = evaluate(0.);
     let (mut lo, mut hi) = (-MAX_APPROACH_YAW, MAX_APPROACH_YAW);
     for yaw in [lo, hi] {
@@ -655,27 +727,27 @@ fn solve_approach_yaw(
         evaluate(lo + ratio * (hi - lo)),
     );
     for _ in 0..YAW_REFINEMENTS {
-        for candidate in [left, right] {
-            if better(&candidate, &best) {
-                best = candidate;
+        for candidate in [&left, &right] {
+            if better(candidate, &best) {
+                best = candidate.clone();
             }
         }
         if better(&left, &right) {
-            hi = right.0;
+            hi = right.yaw;
             right = left;
             left = evaluate(hi - ratio * (hi - lo));
         } else {
-            lo = left.0;
+            lo = left.yaw;
             left = right;
             right = evaluate(lo + ratio * (hi - lo));
         }
     }
-    for candidate in [left, right] {
-        if better(&candidate, &best) {
-            best = candidate;
+    for candidate in [&left, &right] {
+        if better(candidate, &best) {
+            best = candidate.clone();
         }
     }
-    best.1
+    best.hand.hand
 }
 
 fn natural_palm_interval(reference: &HandControlFrame) -> bool {
@@ -711,6 +783,31 @@ pub fn orientation_policy_valid(profile: &RigProfile, limb: usize, rotation: Qua
     roll >= minimum - 1e-9
         && roll <= maximum + 1e-9
         && (!natural_palm_interval(reference) || up <= 1e-9)
+}
+
+/// Signed violation of the same palm policy, for continuous phase fitting.
+/// No declared interval contributes zero; the final acceptance gate is shared.
+pub fn orientation_policy_deficit(profile: &RigProfile, limb: usize, rotation: Quat) -> f64 {
+    let Some(reference) = profile
+        .hand_frames
+        .as_ref()
+        .and_then(|frames| frames.get(limb))
+    else {
+        return 0.;
+    };
+    let Some([minimum, maximum]) = reference.palm_roll_range else {
+        return 0.;
+    };
+    let (roll, up) = palm_orientation(profile, limb, reference, rotation);
+    if !roll.is_finite() || !up.is_finite() {
+        return f64::INFINITY;
+    }
+    let deficit = (minimum - roll).max(roll - maximum);
+    if natural_palm_interval(reference) {
+        deficit.max(up)
+    } else {
+        deficit
+    }
 }
 
 fn palm_orientation(
@@ -837,6 +934,76 @@ pub fn solve_with_roll(
     )
 }
 
+struct WristContext<'a> {
+    profile: &'a RigProfile,
+    limb: usize,
+    root: Vec3,
+    upper: f64,
+    lower: f64,
+    inner: f64,
+    outer: f64,
+    forward: Vec3,
+    transverse: Vec3,
+    swivel: (f64, f64),
+}
+impl<'a> WristContext<'a> {
+    fn new(profile: &'a RigProfile, limb: usize, swivel: f64) -> Self {
+        let [upper, lower] = profile.lengths[limb];
+        let outward = if limb == 0 { -1. } else { 1. };
+        let shoulders = sub(profile.roots[1], profile.roots[0]);
+        let horizontal = [shoulders[0], 0., shoulders[2]];
+        let right = if distance(horizontal, [0.; 3]) < 1e-8 {
+            [1., 0., 0.]
+        } else {
+            unit(horizontal)
+        };
+        Self {
+            profile,
+            limb,
+            root: profile.roots[limb],
+            upper,
+            lower,
+            inner: (upper - lower).abs(),
+            outer: upper + lower,
+            forward: [-right[2], 0., right[0]],
+            transverse: unit(add(mul(right, outward * 0.45), [0., -1., 0.])),
+            swivel: (swivel * 0.5).sin_cos(),
+        }
+    }
+    fn solve(&self, target: Vec3, rotation: Quat) -> HandSolution {
+        let Self {
+            profile,
+            limb,
+            root,
+            upper,
+            lower,
+            inner,
+            outer,
+            forward,
+            transverse,
+            swivel: (s, c),
+        } = *self;
+        let wrist = sub(target, profile.offset(limb, rotation));
+        let desired_distance = distance(root, wrist);
+        let axis = unit(sub(wrist, root));
+        let reachable = desired_distance >= inner + 1e-5 && desired_distance <= outer - 1e-4;
+        let length = desired_distance.clamp(inner + 1e-6, outer - 1e-6);
+        let end = add(root, mul(axis, length));
+        // Palm pronation does not move the anatomical elbow reference plane.
+        let pole = rotate(shortest_arc(forward, axis, transverse), transverse);
+        let bend = rotate([axis[0] * s, axis[1] * s, axis[2] * s, c], pole);
+        let along = (upper * upper - lower * lower + length * length) / (2. * length);
+        let radius = (upper * upper - along * along).max(0.).sqrt();
+        let middle = add(add(root, mul(axis, along)), mul(bend, radius));
+        HandSolution {
+            middle,
+            end,
+            tip: add(end, profile.offset(limb, rotation)),
+            rotation,
+            reachable,
+        }
+    }
+}
 fn solve_wrist(
     profile: &RigProfile,
     limb: usize,
@@ -844,40 +1011,7 @@ fn solve_wrist(
     rotation: Quat,
     swivel: f64,
 ) -> HandSolution {
-    let root = profile.roots[limb];
-    let [upper, lower] = profile.lengths[limb];
-    let wrist = sub(target, profile.offset(limb, rotation));
-    let desired_distance = distance(root, wrist);
-    let axis = unit(sub(wrist, root));
-    let inner = (upper - lower).abs();
-    let outer = upper + lower;
-    let reachable = desired_distance >= inner + 1e-5 && desired_distance <= outer - 1e-4;
-    let length = desired_distance.clamp(inner + 1e-6, outer - 1e-6);
-    let end = add(root, mul(axis, length));
-    let outward = if limb == 0 { -1. } else { 1. };
-    let shoulders = sub(profile.roots[1], profile.roots[0]);
-    let horizontal = [shoulders[0], 0., shoulders[2]];
-    let right = if distance(horizontal, [0.; 3]) < 1e-8 {
-        [1., 0., 0.]
-    } else {
-        unit(horizontal)
-    };
-    let forward = [-right[2], 0., right[0]];
-    let transverse = unit(add(mul(right, outward * 0.45), [0., -1., 0.]));
-    // Hand pronation never changes the elbow reference plane. The coordinator
-    // now bounds the same body-relative swivel that fixed-orientation replay uses.
-    let pole = rotate(shortest_arc(forward, axis, transverse), transverse);
-    let bend = rotate(axis_rotation(axis, swivel), pole);
-    let along = (upper * upper - lower * lower + length * length) / (2. * length);
-    let radius = (upper * upper - along * along).max(0.).sqrt();
-    let middle = add(add(root, mul(axis, along)), mul(bend, radius));
-    HandSolution {
-        middle,
-        end,
-        tip: add(end, profile.offset(limb, rotation)),
-        rotation,
-        reachable,
-    }
+    WristContext::new(profile, limb, swivel).solve(target, rotation)
 }
 
 #[cfg(test)]

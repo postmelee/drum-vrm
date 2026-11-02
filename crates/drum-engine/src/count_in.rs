@@ -273,7 +273,18 @@ impl CueOrientation {
             self.rotations[limb],
             self.weight,
         );
-        profile.solve_hand_with_rotation(limb, tip, rotation, swivel)
+        // The sample blends the two tip positions. Recover the matching
+        // blended wrist before applying the interpolated tool rotation. A
+        // straight tip blend with an independent quaternion arc otherwise
+        // bows the wrist into the torso as the long stick changes direction.
+        // Source cue contacts have weight one and remain exactly unchanged.
+        let blended_offset = add(
+            mul(profile.offset(limb, hand.rotation), 1. - self.weight),
+            mul(profile.offset(limb, self.rotations[limb]), self.weight),
+        );
+        let wrist = sub(tip, blended_offset);
+        let coupled_tip = add(wrist, profile.offset(limb, rotation));
+        profile.solve_hand_with_rotation(limb, coupled_tip, rotation, swivel)
     }
 }
 fn cue_hands(
@@ -420,8 +431,6 @@ impl CountInTrack {
             let next = hand_times.partition_point(|t| *t < time - WINDOW);
             if hand_times.get(next).is_some_and(|t| *t <= time + WINDOW) {
                 result.unavailable(time, &id, "양손 준비·복귀 구간에 실제 손 타격이 있습니다");
-            } else if next_preparation_start(plan, ready, time) <= time {
-                result.unavailable(time, &id, "다음 실제 타격의 준비 구간이 이미 시작됩니다");
             } else if free
                 .last()
                 .is_some_and(|(_, previous)| time > *previous && time - previous < MIN_INTERVAL)
@@ -575,7 +584,21 @@ impl CountInTrack {
             .fold(0_f64, f64::max);
         for index in 0..result.phrases.len() {
             let last = *result.phrases[index].times.last().unwrap();
-            let deadline = next_preparation_start(plan, ready, last).min(
+            let preparation = next_preparation_start(plan, ready, last);
+            // If home-to-target preparation already overlaps the cue, blend
+            // directly into that moving stroke instead of requiring a return
+            // home first. The real-hit exclusion window still has priority,
+            // and the cue overlay must be fully gone at the original hit.
+            let deadline = if preparation > last {
+                preparation
+            } else {
+                hand_times
+                    .iter()
+                    .copied()
+                    .find(|time| *time > last)
+                    .unwrap_or(plan.duration + crate::model::TAIL)
+            };
+            let deadline = deadline.min(
                 result
                     .phrases
                     .get(index + 1)
@@ -723,6 +746,39 @@ mod tests {
     use super::*;
     use crate::interpretation::{Interpretation, SourceEvent};
     use crate::rig::HandControlFrame;
+
+    #[test]
+    fn connecting_tool_pose_blends_the_wrist_and_preserves_rigid_tool_geometry() {
+        let profile = profile();
+        let wrists = [[-0.16, 1.03, 0.20], [-0.10, 1.06, 0.25]];
+        let rotations = [
+            profile.contact_rotations[0],
+            axis_rotation([0., 1., 0.], 0.7),
+        ];
+        let tips =
+            std::array::from_fn::<_, 2, _>(|i| add(wrists[i], profile.offset(0, rotations[i])));
+        for weight in [0., 0.25, 0.5, 0.75, 1.] {
+            let tip = add(mul(tips[0], 1. - weight), mul(tips[1], weight));
+            let base = profile.solve_hand_with_rotation(0, tip, rotations[0], 0.);
+            let cue = CueOrientation {
+                rotations: [rotations[1]; 2],
+                swivels: [0.; 2],
+                weight,
+            };
+            let hand = cue.apply(&profile, 0, tip, 0., base);
+            let expected_wrist = add(mul(wrists[0], 1. - weight), mul(wrists[1], weight));
+            assert!(hand.reachable);
+            assert!(distance(hand.end, expected_wrist) < 1e-12);
+            assert!(distance(hand.tip, add(hand.end, profile.offset(0, hand.rotation))) < 1e-12);
+            assert!(
+                (distance(profile.roots[0], hand.middle) - profile.lengths[0][0]).abs() < 1e-12
+            );
+            assert!((distance(hand.middle, hand.end) - profile.lengths[0][1]).abs() < 1e-12);
+            if weight == 0. || weight == 1. {
+                assert!(distance(hand.tip, tip) < 1e-12);
+            }
+        }
+    }
     fn profile() -> RigProfile {
         let mut p = RigProfile::primitive();
         for i in 0..2 {
@@ -966,6 +1022,17 @@ mod tests {
         assert_eq!(tight.cues.len(), 3);
         assert!(tight.phrases[0].end <= 1.35 - 0.22);
         assert_eq!(sources, serde_json::to_string(&plan.source_events).unwrap());
+        // A long home-to-target preparation can already have started while
+        // enough actual time remains after the cue. Join the moving stroke;
+        // do not omit a source cue solely to make an unnecessary home visit.
+        plan.hits = vec![hit(1.333333, 1, add(p.rest_tips[1], [0., 0., 0.75]))];
+        let before = serde_json::to_string(&plan).unwrap();
+        let joined = CountInTrack::prepare(&plan, &p);
+        assert_eq!(joined.cues.len(), 3);
+        assert!(joined.phrases[0].end > 1.);
+        assert!(joined.phrases[0].end <= plan.hits[0].time);
+        assert_eq!(joined.base_weight(plan.hits[0].time), 1.);
+        assert_eq!(before, serde_json::to_string(&plan).unwrap());
         // With no next hand action, the authored ending plus tail is the deadline.
         plan.hits.clear();
         plan.duration = 1.;

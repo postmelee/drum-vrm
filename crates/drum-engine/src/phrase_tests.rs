@@ -313,6 +313,112 @@ fn reference_simultaneous_snare_and_floor_tom_keep_independent_hands() {
     }
 }
 
+fn authored_cross_body_floor_phrase() -> (PerformancePlan, RigProfile) {
+    let events: Vec<_> = (0..8)
+        .map(|index| (if index == 0 { 0 } else { 80 }, 43, 80 + index * 5))
+        .collect();
+    let (mut source, profile) = reference_native_phrase(&events);
+    // An independently authored single-drum arrangement isolates body-aware
+    // hand assignment from unrelated stands. Both hands can reach this head
+    // with valid tool/posture witnesses; only the right approach clears the
+    // ordinary torso. The same original native bones and hand frames apply.
+    source.kit.retain(|piece| piece.id == "tomLow");
+    source.kit[0].position = [0.45, 0.80, 0.50];
+    crate::contact::apply(&mut source, &profile);
+    (source, profile)
+}
+
+fn assert_phrase_sources_unchanged(source: &PerformancePlan, planned: &PerformancePlan) {
+    assert_eq!(
+        serde_json::to_value(&source.source_events).unwrap(),
+        serde_json::to_value(&planned.source_events).unwrap()
+    );
+    assert_eq!(source.hits.len(), planned.hits.len());
+    for (before, after) in source.hits.iter().zip(&planned.hits) {
+        assert_eq!(before.source_event_id, after.source_event_id);
+        assert_eq!(before.time_us, after.time_us);
+        assert_eq!(before.time, after.time);
+        assert_eq!(before.velocity, after.velocity);
+    }
+}
+
+#[test]
+fn a_clear_body_approach_takes_priority_over_fast_fill_alternation() {
+    let (source, profile) = authored_cross_body_floor_phrase();
+    let target = source.hits[0].target;
+    let equipment = crate::equipment_motion::EquipmentContext::for_kit(&source.kit);
+    for limb in 0..2 {
+        assert!(crate::contact_feasibility::hand_probe_fits(
+            &profile,
+            limb,
+            target,
+            equipment.as_deref(),
+            Some("tomLow")
+        ));
+        assert_eq!(
+            crate::contact_feasibility::has_clear_body_approach(
+                &profile,
+                limb,
+                target,
+                equipment.as_deref(),
+                Some("tomLow")
+            ),
+            limb == 1
+        );
+    }
+    let mut planned = source.clone();
+    crate::motion::assign_measured_contacts_for_test(&mut planned, &profile);
+    assert!(planned.hits.iter().all(|hit| hit.limb == Some(1)));
+    assert_phrase_sources_unchanged(&source, &planned);
+}
+
+#[test]
+fn a_body_witness_preference_does_not_override_an_explicit_hand_choice() {
+    let (mut source, profile) = authored_cross_body_floor_phrase();
+    let overridden = source.hits[3].source_event_id.clone();
+    source.hand_overrides.insert(overridden.clone(), 0);
+    let mut planned = source.clone();
+    crate::motion::assign_measured_contacts_for_test(&mut planned, &profile);
+    for hit in &planned.hits {
+        assert_eq!(
+            hit.limb,
+            Some(usize::from(hit.source_event_id != overridden))
+        );
+    }
+    assert_eq!(planned.hand_overrides, source.hand_overrides);
+    assert_phrase_sources_unchanged(&source, &planned);
+}
+
+#[test]
+fn a_missing_neutral_body_witness_does_not_drop_the_only_available_hat_hand() {
+    let events: Vec<_> = (0..8)
+        .map(|index| (if index == 0 { 0 } else { 240 }, 42, 75))
+        .collect();
+    let (source, profile) = reference_native_phrase(&events);
+    let target = source.hits[0].target;
+    let equipment = crate::equipment_motion::EquipmentContext::for_kit(&source.kit);
+    for limb in 0..2 {
+        assert!(!crate::contact_feasibility::has_clear_body_approach(
+            &profile,
+            limb,
+            target,
+            equipment.as_deref(),
+            Some("hihat")
+        ));
+    }
+    assert!(crate::contact_feasibility::hand_probe_fits(
+        &profile,
+        1,
+        target,
+        equipment.as_deref(),
+        Some("hihat")
+    ));
+    let mut planned = source.clone();
+    crate::motion::assign_measured_contacts_for_test(&mut planned, &profile);
+    assert!(planned.hits.iter().all(|hit| hit.limb == Some(1)));
+    assert_phrase_sources_unchanged(&source, &planned);
+}
+
 fn reachable_crashes(plan: &mut PerformancePlan) {
     // An authored compact kit makes the left cymbal reachable by either hand;
     // a preference must never make an unreachable default target look feasible.

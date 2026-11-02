@@ -63,6 +63,20 @@ pub struct HandPlan {
 }
 type NodeOrientations = [Vec<Option<Quat>>; 2];
 type NodeKinematics = [Vec<Option<HandKinematics>>; 2];
+/// The shared actual-source gate, used both by graph ranking and the final
+/// reconciliation of provisional pitch warnings. Costume clearance is advisory.
+pub(crate) fn source_pose_valid(
+    profile: &RigProfile,
+    limb: usize,
+    hand: &crate::rig::HandSolution,
+    tool_clearance: f64,
+) -> bool {
+    hand.reachable
+        && tool_clearance >= crate::posture::MARGIN - 1e-9
+        && clearance::core_penetration(profile, limb, hand) <= 1e-9
+        && crate::posture::anatomical(profile, limb, hand.tip, hand)
+        && profile.hand_orientation_policy_valid(limb, hand.rotation)
+}
 #[derive(Clone, Copy)]
 struct HandKinematics {
     direction: Option<Vec3>,
@@ -86,6 +100,21 @@ fn kinematic_change(a: Option<HandKinematics>, b: Option<HandKinematics>, durati
             + orientation_change(Some(a.rotation), Some(b.rotation), duration)
             + 0.1 * crate::motion::distance(a.wrist, b.wrist).powi(2) / duration.max(1e-9)
     })
+}
+/// Use the same actual-motion objective when choosing a continuous arm curve.
+pub(crate) fn physical_motion_cost(
+    before_profile: &RigProfile,
+    after_profile: &RigProfile,
+    limb: usize,
+    before: &crate::rig::HandSolution,
+    after: &crate::rig::HandSolution,
+    duration: f64,
+) -> f64 {
+    kinematic_change(
+        Some(hand_kinematics(before_profile, limb, before)),
+        Some(hand_kinematics(after_profile, limb, after)),
+        duration,
+    )
 }
 /// An animation preference on integrated squared actual angular velocity, not
 /// an anatomical limit. The old relative-swivel bound remains a control bound.
@@ -248,7 +277,7 @@ fn hand_cost_for_pose(
         equipment.tool,
         clearance::body_penalty(body)
             + core_cost(&input.profile, limb, hand)
-            + posture_cost(&input.profile, limb, input.tips[limb], hand),
+            + posture_cost(&input.profile, limb, hand.tip, hand),
     )
 }
 fn core_cost(profile: &RigProfile, limb: usize, hand: &crate::rig::HandSolution) -> f64 {
@@ -276,7 +305,7 @@ fn posture_cost(
             1e9
         }
         + if hand.reachable { 0. } else { 1e12 }
-        + if violation == 0. {
+        + if crate::posture::anatomical_violation_valid(violation) {
             0.0
         } else {
             // Retain the infeasible tier, but do not rank a severe folded/
@@ -361,7 +390,9 @@ pub(crate) fn unconstrained_cost(profile: &RigProfile, tips: [Vec3; 2], pitches:
                     .solve_hand_with_swivel(limb, tips[limb], pitches[limb], a)
                     .filter(|h| h.reachable)
                     .map(|h| {
-                        let c = clearance::hand_clearance(profile, limb, &h);
+                        let c =
+                            clearance::body_penalty(clearance::hand_clearance(profile, limb, &h))
+                                + core_cost(profile, limb, &h);
                         (h, c)
                     })
             })
@@ -372,8 +403,8 @@ pub(crate) fn unconstrained_cost(profile: &RigProfile, tips: [Vec3; 2], pitches:
         for (right, rc) in &hands[1] {
             best = best.min(
                 pair_cost_for_pose(profile, left, right, [f64::INFINITY; 2], false, false)
-                    + clearance::body_penalty(*lc)
-                    + clearance::body_penalty(*rc)
+                    + lc
+                    + rc
                     + posture_cost(profile, 0, tips[0], left)
                     + posture_cost(profile, 1, tips[1], right),
             );
@@ -384,7 +415,10 @@ pub(crate) fn unconstrained_cost(profile: &RigProfile, tips: [Vec3; 2], pitches:
     }
     best
 }
-fn node_costs(input: &HandCoordinationInput) -> (Vec<f64>, NodeOrientations, NodeKinematics) {
+fn node_costs(
+    input: &HandCoordinationInput,
+    sources: [bool; 2],
+) -> (Vec<f64>, NodeOrientations, NodeKinematics, Vec<u8>) {
     let hands: [Vec<_>; 2] = std::array::from_fn(|limb| {
         (0..AXIS_STATES)
             .map(|i| {
@@ -457,6 +491,46 @@ fn node_costs(input: &HandCoordinationInput) -> (Vec<f64>, NodeOrientations, Nod
             })
             .collect()
     });
+    // Source endpoints survive every later phase repair unchanged. Rank their
+    // physical feasibility before finite interior/style costs, retaining a
+    // diagnostic fallback if no bounded graph path can satisfy them all.
+    let source_clear: [Vec<bool>; 2] = std::array::from_fn(|limb| {
+        hands[limb]
+            .iter()
+            .map(|candidate| {
+                !sources[limb]
+                    || candidate.as_ref().is_some_and(|(h, tool, _, _)| {
+                        source_pose_valid(&input.profile, limb, h, *tool)
+                    })
+            })
+            .collect()
+    });
+    let source_failures = (0..STATES)
+        .map(|state| {
+            let left = state / AXIS_STATES;
+            let right = state % AXIS_STATES;
+            let pair_failure = sources[0]
+                && sources[1]
+                && hands[0][left]
+                    .as_ref()
+                    .zip(hands[1][right].as_ref())
+                    .is_some_and(|(a, b)| {
+                        crate::count_in::contact_tool_clearance(
+                            &input.profile,
+                            &a.0,
+                            &b.0,
+                            input.intended_stick_contact,
+                        ) < if input.close_tool_approach {
+                            -1e-9
+                        } else {
+                            crate::posture::MARGIN - 1e-9
+                        }
+                    });
+            u8::from(!source_clear[0][left])
+                + u8::from(!source_clear[1][right])
+                + u8::from(pair_failure)
+        })
+        .collect();
     let costs = (0..STATES)
         .map(|state| {
             let a = angles(state);
@@ -482,15 +556,75 @@ fn node_costs(input: &HandCoordinationInput) -> (Vec<f64>, NodeOrientations, Nod
                 + 0.002 * (a[0] * a[0] + a[1] * a[1])
         })
         .collect();
-    (costs, orientations, directions)
+    (costs, orientations, directions, source_failures)
 }
+/// Lexicographic source feasibility cannot be purchased with a large finite
+/// pose/style cost. Infinite cue-incompatible nodes remain unreachable.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PathScore {
+    source_failures: u32,
+    cost: f64,
+}
+impl PathScore {
+    const UNREACHABLE: Self = Self {
+        source_failures: u32::MAX,
+        cost: f64::INFINITY,
+    };
+    fn new(source_failures: u32, cost: f64) -> Self {
+        if cost.is_finite() {
+            Self {
+                source_failures,
+                cost,
+            }
+        } else {
+            Self::UNREACHABLE
+        }
+    }
+    fn add(self, cost: f64) -> Self {
+        Self::new(self.source_failures, self.cost + cost)
+    }
+    fn with_node(self, failures: u32, cost: f64) -> Self {
+        Self::new(
+            self.source_failures.saturating_add(failures),
+            self.cost + cost,
+        )
+    }
+    fn compare(self, other: Self) -> std::cmp::Ordering {
+        self.source_failures
+            .cmp(&other.source_failures)
+            .then(self.cost.total_cmp(&other.cost))
+    }
+    fn better_than(self, other: Self) -> bool {
+        self.compare(other).is_lt()
+    }
+}
+#[cfg(test)]
 fn graph_path(
     inputs: &[HandCoordinationInput],
     costs: &[Vec<f64>],
     directions: &[NodeKinematics],
     edges: &[HashMap<usize, f64>],
 ) -> Vec<usize> {
-    let mut previous = costs[0].clone();
+    graph_path_with_sources(
+        inputs,
+        costs,
+        &vec![vec![0; STATES]; inputs.len()],
+        directions,
+        edges,
+    )
+}
+fn graph_path_with_sources(
+    inputs: &[HandCoordinationInput],
+    costs: &[Vec<f64>],
+    source_failures: &[Vec<u8>],
+    directions: &[NodeKinematics],
+    edges: &[HashMap<usize, f64>],
+) -> Vec<usize> {
+    let mut previous: Vec<_> = costs[0]
+        .iter()
+        .enumerate()
+        .map(|(s, &cost)| PathScore::new(source_failures[0][s] as u32, cost))
+        .collect();
     let mut parents = vec![vec![0u16; STATES]; inputs.len()];
     for i in 1..inputs.len() {
         let duration = inputs[i].time - inputs[i - 1].time;
@@ -513,19 +647,19 @@ fn graph_path(
             }
             values
         });
-        let mut next = vec![f64::INFINITY; STATES];
+        let mut next = vec![PathScore::UNREACHABLE; STATES];
         // The base transition is separable. Nonnegative sparse edge penalties
         // cannot displace its winner unless that particular edge is penalized.
         // Keep the existing right-then-left addition and hierarchical tie order.
         debug_assert!(edges[i].values().all(|penalty| *penalty >= 0.));
-        let mut rows = vec![(f64::INFINITY, 0usize); STATES];
+        let mut rows = vec![(PathScore::UNREACHABLE, 0usize); STATES];
         for pl in 0..AXIS_STATES {
             for r in 0..AXIS_STATES {
                 let slot = pl * AXIS_STATES + r;
                 for pr in r.saturating_sub(steps)..=(r + steps).min(AXIS_STATES - 1) {
                     let before = pl * AXIS_STATES + pr;
-                    let value = previous[before] + transitions[1][pr * AXIS_STATES + r];
-                    if value < rows[slot].0 {
+                    let value = previous[before].add(transitions[1][pr * AXIS_STATES + r]);
+                    if value.better_than(rows[slot].0) {
                         rows[slot] = (value, before);
                     }
                 }
@@ -535,30 +669,30 @@ fn graph_path(
             let (l, r) = (state / AXIS_STATES, state % AXIS_STATES);
             for pl in l.saturating_sub(steps)..=(l + steps).min(AXIS_STATES - 1) {
                 let (row, before) = rows[pl * AXIS_STATES + r];
-                let value = row + transitions[0][pl * AXIS_STATES + l];
-                if value < next[state] {
+                let value = row.add(transitions[0][pl * AXIS_STATES + l]);
+                if value.better_than(next[state]) {
                     next[state] = value;
                     parents[i][state] = before as u16;
                 }
             }
             let selected = parents[i][state] as usize * STATES + state;
             if edges[i].get(&selected).is_some_and(|penalty| *penalty > 0.) {
-                next[state] = f64::INFINITY;
+                next[state] = PathScore::UNREACHABLE;
                 parents[i][state] = 0;
                 let mut best_tie = (usize::MAX, f64::INFINITY, usize::MAX);
                 for pl in l.saturating_sub(steps)..=(l + steps).min(AXIS_STATES - 1) {
                     for pr in r.saturating_sub(steps)..=(r + steps).min(AXIS_STATES - 1) {
                         let before = pl * AXIS_STATES + pr;
-                        let row = previous[before] + transitions[1][pr * AXIS_STATES + r];
-                        let base = row + transitions[0][pl * AXIS_STATES + l];
+                        let row = previous[before].add(transitions[1][pr * AXIS_STATES + r]);
+                        let base = row.add(transitions[0][pl * AXIS_STATES + l]);
                         let edge = *edges[i].get(&(before * STATES + state)).unwrap_or(&0.);
-                        let value = base + edge;
-                        let tie = (pl, row, pr);
+                        let value = base.add(edge);
+                        let tie = (pl, row.cost, pr);
                         // A large left cost can round distinct row costs to the
                         // same total. Retain the separable row winner in that
                         // case too, without epsilon comparisons or dropped costs.
-                        if value < next[state]
-                            || (value.is_finite() && value == next[state] && tie < best_tie)
+                        if value.better_than(next[state])
+                            || (value.cost.is_finite() && value == next[state] && tie < best_tie)
                         {
                             next[state] = value;
                             parents[i][state] = before as u16;
@@ -567,12 +701,12 @@ fn graph_path(
                     }
                 }
             }
-            next[state] += costs[i][state];
+            next[state] = next[state].with_node(source_failures[i][state] as u32, costs[i][state]);
         }
         previous = next;
     }
     let mut state = (0..STATES)
-        .min_by(|&a, &b| previous[a].total_cmp(&previous[b]))
+        .min_by(|&a, &b| previous[a].compare(previous[b]))
         .unwrap();
     let mut path = vec![0; inputs.len()];
     for i in (0..inputs.len()).rev() {
@@ -588,6 +722,7 @@ fn graph_path(
 pub fn plan_with_checks(
     inputs: &[HandCoordinationInput],
     checks: &[HandCoordinationInput],
+    source_times: &[Vec<f64>; 2],
 ) -> Result<HandPlan, String> {
     check_control_budget(inputs.len())?;
     if inputs.is_empty() {
@@ -611,8 +746,17 @@ pub fn plan_with_checks(
         return Err("양손 경로의 그립 정책이 시간에 따라 변경되었습니다.".into());
     }
     let (mut costs, mut orientations, mut directions) = (Vec::new(), Vec::new(), Vec::new());
+    let mut source_failures = Vec::new();
     for input in inputs {
-        let (cost, orientation, direction) = node_costs(input);
+        let sources = std::array::from_fn(|limb| {
+            let times = &source_times[limb];
+            let at = times.partition_point(|time| *time < input.time - 1e-9);
+            times
+                .get(at)
+                .is_some_and(|time| (*time - input.time).abs() < 1e-9)
+        });
+        let (cost, orientation, direction, failures) = node_costs(input, sources);
+        source_failures.push(failures);
         costs.push(cost);
         orientations.push(orientation);
         directions.push(direction);
@@ -621,9 +765,9 @@ pub fn plan_with_checks(
     ordered_checks.sort_by(|a, b| a.time.total_cmp(&b.time));
     ordered_checks.dedup_by(|a, b| (a.time - b.time).abs() < 1e-9);
     let mut edges: Vec<HashMap<usize, f64>> = (0..inputs.len()).map(|_| HashMap::new()).collect();
-    let mut best = (f64::INFINITY, Vec::new());
+    let mut best = (PathScore::UNREACHABLE, Vec::new());
     for _ in 0..REFINEMENTS {
-        let path = graph_path(inputs, &costs, &directions, &edges);
+        let path = graph_path_with_sources(inputs, &costs, &source_failures, &directions, &edges);
         let track: Vec<_> = inputs
             .iter()
             .zip(&path)
@@ -698,7 +842,14 @@ pub fn plan_with_checks(
             let old = updates.entry((i, key)).or_insert(0.0);
             *old = old.max(penalty);
         }
-        if score < best.0 {
+        let score = PathScore::new(
+            path.iter()
+                .enumerate()
+                .map(|(i, &state)| source_failures[i][state] as u32)
+                .sum(),
+            score,
+        );
+        if score.better_than(best.0) {
             best = (score, track)
         }
         let mut changed = false;
@@ -731,7 +882,9 @@ pub fn plan_with_checks(
 }
 #[cfg(test)]
 fn plan(inputs: &[HandCoordinationInput]) -> Vec<SwivelSample> {
-    plan_with_checks(inputs, inputs).unwrap().swivels
+    plan_with_checks(inputs, inputs, &[Vec::new(), Vec::new()])
+        .unwrap()
+        .swivels
 }
 pub fn at(track: &[SwivelSample], time: f64) -> SwivelSample {
     if track.is_empty() {
@@ -1056,7 +1209,7 @@ mod tests {
         }
         let mut changed = inputs;
         changed[1].profile.hand_frames.as_mut().unwrap()[0].palm_roll_range = None;
-        assert!(plan_with_checks(&changed, &changed).is_err());
+        assert!(plan_with_checks(&changed, &changed, &[Vec::new(), Vec::new()]).is_err());
     }
     #[test]
     fn coordination_preserves_contacts_and_bounds_interpolated_motion() {
@@ -1235,6 +1388,86 @@ mod tests {
         // Greedy neutral at the middle knot cannot reach the final safe state
         // under the unchanged 2 rad/s sample bound.
         assert!((angles(neutral)[0] - angles(future)[0]).abs() > MAX_SAMPLE_RATE * STEP);
+    }
+    #[test]
+    fn source_feasibility_precedes_finite_cost_without_relaxing_rate_or_losing_fallback() {
+        let p = profile();
+        let inputs: Vec<_> = (0..3)
+            .map(|i| HandCoordinationInput {
+                cue_orientation: None,
+                time: i as f64 * STEP,
+                profile: p.clone(),
+                tips: [[-0.25, 1., 0.5], [0.25, 1., 0.5]],
+                pitches: [0.; 2],
+                equipment: None,
+                intended_stick_contact: false,
+                close_tool_approach: false,
+                intended_pieces: [None, None],
+            })
+            .collect();
+        let center = (AXIS_STATES - 1) / 2;
+        let neutral = center * AXIS_STATES + center;
+        let prepare = (center - 4) * AXIS_STATES + center;
+        let impact = (center - 8) * AXIS_STATES + center;
+        let mut costs = vec![vec![f64::INFINITY; STATES]; 3];
+        costs[0][neutral] = 0.;
+        costs[1][neutral] = 0.;
+        costs[1][prepare] = 1e12;
+        costs[2][neutral] = 0.;
+        costs[2][impact] = 1e12;
+        let edges = (0..3).map(|_| HashMap::new()).collect::<Vec<_>>();
+        let directions = vec![[vec![None; AXIS_STATES], vec![None; AXIS_STATES]]; 3];
+        let ordinary = graph_path(&inputs, &costs, &directions, &edges);
+        assert_eq!(ordinary, vec![neutral; 3]);
+        let mut failures = vec![vec![0; STATES]; 3];
+        failures[2].fill(1);
+        failures[2][impact] = 0;
+        let path = graph_path_with_sources(&inputs, &costs, &failures, &directions, &edges);
+        assert_eq!(path, vec![neutral, prepare, impact]);
+        for pair in path.windows(2) {
+            assert!(
+                (angles(pair[1])[0] - angles(pair[0])[0]).abs() <= MAX_SAMPLE_RATE * STEP + 1e-9
+            );
+        }
+        // A source-clear graph retains the exact existing objective and ties.
+        failures[2][neutral] = 0;
+        assert_eq!(
+            graph_path_with_sources(&inputs, &costs, &failures, &directions, &edges),
+            ordinary
+        );
+        // If the only clear impact lies outside the unchanged transition bound,
+        // retain the least-cost unresolved path instead of dropping its source.
+        failures[2][neutral] = 1;
+        costs[1][prepare] = f64::INFINITY;
+        assert_eq!(
+            graph_path_with_sources(&inputs, &costs, &failures, &directions, &edges),
+            ordinary
+        );
+    }
+    #[test]
+    fn simultaneous_source_tools_require_a_joint_witness_but_recovery_is_not_locked() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-natural-grip30.json")).unwrap();
+        let p: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        let input = HandCoordinationInput {
+            time: 0.,
+            cue_orientation: None,
+            profile: p,
+            tips: [[-0.0756, 0.825, 0.631]; 2],
+            pitches: [0.; 2],
+            equipment: None,
+            intended_stick_contact: false,
+            close_tool_approach: false,
+            intended_pieces: [None, None],
+        };
+        // Both exact tips occupy the same point. No pair of shaft witnesses
+        // can realize two simultaneous real hits with positive tool clearance.
+        let (_, _, _, simultaneous) = node_costs(&input, [true, true]);
+        assert!(simultaneous.iter().all(|failures| *failures > 0));
+        // If only one hand owns an immutable impact, the other may be repaired
+        // by the subsequent phase curve. Do not freeze its temporary overlap.
+        let (_, _, _, one_source) = node_costs(&input, [true, false]);
+        assert!(one_source.contains(&0));
     }
     /// Independent joint-neighbor reference using the existing separable
     /// floating-point objective and its right-row-then-left tie order.
@@ -1537,7 +1770,7 @@ mod tests {
             close_tool_approach: false,
             intended_pieces: [None, None],
         };
-        let (costs, _, _) = node_costs(&input);
+        let (costs, _, _, _) = node_costs(&input, [false; 2]);
         let expected = angles(
             (0..STATES)
                 .min_by(|&a, &b| costs[a].total_cmp(&costs[b]))

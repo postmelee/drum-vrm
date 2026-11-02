@@ -2,6 +2,36 @@
 //! This is a conservative procedural candidate, not a learned whole-body solver.
 use crate::{model::Vec3, rig::RigProfile};
 pub const STEP: f64 = 1.0 / 12.0;
+
+/// Anticipate upcoming targets within the same bounded facing candidates used
+/// for recovery. A one-way greedy pass reacts only after a target changes. The
+/// reverse pass supplies the other side of that transition; averaging the two
+/// bounded tracks preserves their yaw and neighboring-step limits.
+pub fn plan(profile: &RigProfile, samples: &[([Vec3; 2], [f64; 2])]) -> Vec<f64> {
+    let mut previous = 0.;
+    let mut result: Vec<_> = samples
+        .iter()
+        .map(|&(tips, pitches)| {
+            previous = candidate(profile, tips, pitches, previous);
+            previous
+        })
+        .collect();
+    let Some(mut next) = result.last().copied() else {
+        return result;
+    };
+    for (&(tips, pitches), yaw) in samples.iter().zip(&mut result).rev() {
+        next = candidate(profile, tips, pitches, next);
+        *yaw = (*yaw + next) * 0.5;
+    }
+    // A backward plan has no neutral predecessor. Restore the existing initial
+    // anchor and propagate its step bound without moving any timeline sample.
+    result[0] = result[0].clamp(-0.06, 0.06);
+    for i in 1..result.len() {
+        result[i] = result[i].clamp(result[i - 1] - 0.06, result[i - 1] + 0.06);
+    }
+    result
+}
+
 pub fn candidate(profile: &RigProfile, tips: [Vec3; 2], pitches: [f64; 2], previous: f64) -> f64 {
     if profile.torso_pivot.is_none() {
         return 0.0;
@@ -77,17 +107,26 @@ pub fn preserve_contacts(
     profile: &RigProfile,
     contacts: &[(f64, usize, Vec3, f64, Option<&str>)],
     equipment: Option<&crate::equipment_motion::EquipmentContext>,
+    source_times: &[Vec<f64>; 2],
 ) {
     if samples.is_empty() {
         return;
     }
     let valid =
         |yaw, &(time, limb, target, pitch, piece): &(f64, usize, Vec3, f64, Option<&str>)| {
-            let _ = time;
             let p = profile.turned(yaw);
             if equipment.is_some() && p.hand_frames.is_some() {
-                crate::contact_feasibility::at_pitch(&p, limb, target, pitch, equipment, piece)
+                let times = &source_times[limb];
+                let index = times.partition_point(|t| *t < time - 1e-9);
+                if times.get(index).is_some_and(|t| (*t - time).abs() < 1e-9) {
+                    crate::contact_feasibility::source_at_pitch(
+                        &p, limb, target, pitch, equipment, piece,
+                    )
                     .is_some()
+                } else {
+                    crate::contact_feasibility::at_pitch(&p, limb, target, pitch, equipment, piece)
+                        .is_some()
+                }
             } else {
                 p.reachable_at_pitch(limb, target, pitch)
             }
@@ -157,6 +196,91 @@ mod tests {
         motion::{distance, Motion},
         rig::{rotate, Quat},
     };
+    fn native_reference() -> RigProfile {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+        serde_json::from_value(fixture["profile"].clone()).unwrap()
+    }
+
+    #[test]
+    fn facing_anticipates_the_next_phrase_with_the_existing_turn_bounds() {
+        let profile = native_reference();
+        let centered = ([[-0.12, 0.95, 0.68], [0.12, 0.95, 0.68]], [0.; 2]);
+        let leftward = ([[-0.12, 0.85, 0.62], [-0.40, 1.10, 0.60]], [0.; 2]);
+        let mut phrase = vec![centered; 3];
+        phrase.extend([leftward; 3]);
+        let unchanged = phrase.clone();
+        let planned = plan(&profile, &phrase);
+        let quiet = plan(&profile, &[centered; 6]);
+        assert!(
+            planned[2] < quiet[2] - 0.005,
+            "facing should prepare for the future leftward phrase: {planned:?}"
+        );
+        assert_eq!(phrase, unchanged, "facing cannot retime or move targets");
+        phrase.reverse();
+        for track in [planned, plan(&profile, &phrase)] {
+            assert_eq!(track.len(), phrase.len());
+            assert!(track[0].abs() <= 0.06 + 1e-12);
+            assert!(track
+                .iter()
+                .all(|yaw| yaw.is_finite() && yaw.abs() <= 0.24 + 1e-12));
+            assert!(track
+                .windows(2)
+                .all(|pair| (pair[1] - pair[0]).abs() <= 0.06 + 1e-12));
+        }
+        assert!(plan(&profile, &[]).is_empty());
+        let single = plan(&profile, &[leftward]);
+        assert_eq!(single.len(), 1);
+        assert!(single[0].abs() <= 0.06 + 1e-12);
+    }
+
+    #[test]
+    fn facing_preserves_an_ordinary_body_witness_with_or_without_mesh_geometry() {
+        let reference = native_reference();
+        // Independently authored cross-body contact and resting opposite hand.
+        // A merely reachable facing previously left every otherwise valid RH
+        // witness inside the ordinary torso, although the next bounded turn
+        // admitted a clear pose. No imported avatar or recorded song is needed.
+        let tips = [[-0.12, 0.85, 0.62], [-0.40, 1.10, 0.60]];
+        for geometry in 0..3 {
+            let mut profile = reference.clone();
+            match geometry {
+                0 => profile.body_geometry = None,
+                1 => {
+                    // A small visual estimate must not shrink the semantic
+                    // torso used by common motion planning.
+                    let visual = profile.body_geometry.as_mut().unwrap();
+                    visual.torso.half_extents = [0.02, 0.05, 0.02];
+                    visual.arm_radii = [[0.01; 2]; 2];
+                }
+                _ => {}
+            }
+            let lengths = profile.lengths;
+            let yaw = candidate(&profile, tips, [0.; 2], 0.);
+            assert!(yaw.abs() <= 0.06 + 1e-12);
+            let turned = profile.turned(yaw);
+            assert_eq!(turned.lengths, lengths);
+            for (limb, &target) in tips.iter().enumerate() {
+                assert!(
+                    crate::posture::SWIVELS.iter().any(|&swivel| {
+                        turned
+                            .solve_hand_with_swivel(limb, target, 0., swivel)
+                            .is_some_and(|hand| {
+                                hand.reachable
+                                    && distance(hand.tip, target) < 1e-9
+                                    && crate::posture::anatomical(&turned, limb, target, &hand)
+                                    && turned.hand_orientation_policy_valid(limb, hand.rotation)
+                                    && crate::clearance::upper_body_core(&turned, limb, &hand)
+                                        .minimum()
+                                        >= 0.
+                            })
+                    }),
+                    "geometry {geometry}, limb {limb}, yaw {yaw}"
+                );
+            }
+        }
+    }
+
     #[test]
     fn coordinated_turn_keeps_contacts_support_and_shuffled_evaluation() {
         let track = [
@@ -275,14 +399,26 @@ mod tests {
         let target = [-1.079, 1.26, 0.2];
         assert!(profile.reachable(0, target));
         let mut samples = vec![0.24; 80];
-        preserve_contacts(&mut samples, &profile, &[(0.0, 0, target, 0.0, None)], None);
+        preserve_contacts(
+            &mut samples,
+            &profile,
+            &[(0.0, 0, target, 0.0, None)],
+            None,
+            &[vec![], vec![]],
+        );
         assert!(profile.turned(at(&samples, 0.0)).reachable(0, target));
         assert!((samples[79] - 0.24).abs() < 1e-12);
         assert!(samples
             .windows(2)
             .all(|p| (p[1] - p[0]).abs() <= 0.06 + 1e-12));
         let first = samples.clone();
-        preserve_contacts(&mut samples, &profile, &[(0.0, 0, target, 0.0, None)], None);
+        preserve_contacts(
+            &mut samples,
+            &profile,
+            &[(0.0, 0, target, 0.0, None)],
+            None,
+            &[vec![], vec![]],
+        );
         assert_eq!(samples, first);
     }
     #[test]
@@ -292,7 +428,13 @@ mod tests {
         let mut samples = vec![0.24; 80];
         reserve_neutral(&mut samples, &[[0.123, 0.917]]);
         let target = [-1.079, 1.26, 0.2];
-        preserve_contacts(&mut samples, &profile, &[(1.23, 0, target, 0., None)], None);
+        preserve_contacts(
+            &mut samples,
+            &profile,
+            &[(1.23, 0, target, 0., None)],
+            None,
+            &[vec![], vec![]],
+        );
         for time in [0.123 - 1e-9, 0.123, 0.5, 0.917, 0.917 + 1e-9] {
             assert_eq!(at(&samples, time), 0.);
         }

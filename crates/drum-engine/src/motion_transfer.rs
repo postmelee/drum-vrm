@@ -58,59 +58,6 @@ fn crosses_box(a: Vec3, b: Vec3, body: &EquipmentBox) -> bool {
     box_interval(a, b, body).is_some()
 }
 
-fn signed_box_distance(point: Vec3, center: Vec3, extents: Vec3) -> f64 {
-    let q: Vec3 =
-        std::array::from_fn(|i| (point[i] - center[i]).abs() - extents[i] - CORRIDOR_MARGIN);
-    q.iter().map(|v| v.max(0.).powi(2)).sum::<f64>().sqrt()
-        + q.into_iter().fold(f64::NEG_INFINITY, f64::max).min(0.)
-}
-
-/// Shoulder-radius preservation may expand a free chord into nearby equipment.
-/// Keep only the free part of that optional correction, including the vertical
-/// lift that will be applied next and the later bounded equipment lift. Reserve
-/// that upward corridor without reading a path currently being prepared, which
-/// would make raw travel depend recursively on its own correction. Existing
-/// endpoint/route overlaps remain the whole-tool solver's responsibility.
-pub(super) fn limit_projection(
-    base: Vec3,
-    projected: Vec3,
-    lift: f64,
-    reserve_lift: f64,
-    bodies: &[EquipmentBox],
-) -> Vec3 {
-    let mut from = base;
-    let mut to = projected;
-    from[1] += lift;
-    to[1] += lift;
-    let mut amount = 1_f64;
-    for body in bodies {
-        let mut center = body.center;
-        // Routing remains a conservative world-space guide. The final tool
-        // queries use the measured oriented box, without these empty corners.
-        let mut extents = box_world_half_extents(body);
-        center[1] -= reserve_lift * 0.5;
-        extents[1] += reserve_lift * 0.5;
-        let start = signed_box_distance(from, center, extents);
-        if start <= 0. {
-            // A raw path can already enter a source/target body's bounding
-            // envelope. Fade its optional correction by actual outward gain;
-            // do not abruptly restore the entire shift at that boundary.
-            let end = signed_box_distance(to, center, extents);
-            let outward = if start < 0. {
-                ((end - start) / -start).clamp(0., 1.)
-            } else {
-                f64::from(end >= 0.)
-            };
-            amount = amount.min(outward);
-            continue;
-        }
-        if let Some((enter, _)) = box_interval_bounds(from, to, center, extents) {
-            amount = amount.min(enter);
-        }
-    }
-    super::lerp(base, projected, amount)
-}
-
 /// Optional complete tip route around the edge of a higher contact surface.
 /// Selection depends only on immutable endpoints, duration and equipment; phase
 /// merely evaluates the selected two-leg C1 path. It already contains clearance
@@ -185,8 +132,8 @@ pub(super) fn clearance_waypoint(
 }
 
 /// Retain the authored stroke lift and add only a bounded, smooth travel arch.
-/// The extra guide uses the remaining chord-speed budget. Later shoulder-radius
-/// projection and equipment correction still require sampled velocity checks;
+/// The extra guide uses the remaining chord-speed budget. Whole-tool routing and
+/// equipment correction still require sampled velocity checks;
 /// the planner's endpoint speed limit is not a full-trajectory certificate.
 pub(super) fn lift(
     a: Vec3,
@@ -327,52 +274,6 @@ mod tests {
                 clearance_waypoint(a, b, u, 0.5, false, &[oriented.clone()]),
                 clearance_waypoint(a, b, u, 0.5, false, std::slice::from_ref(&bounds)),
             );
-        }
-        assert_eq!(
-            limit_projection(a, b, 0.1, 0.2, &[oriented]),
-            limit_projection(a, b, 0.1, 0.2, &[bounds]),
-        );
-    }
-    #[test]
-    fn shoulder_projection_preserves_the_free_lifted_corridor() {
-        let base = [-0.3, 1., 0.5];
-        let projected = [-0.1, 1., 0.7];
-        let bodies = [body([0., 1.1, 0.7], [0.2, 0.05, 0.2])];
-        // Without the subsequent lift this optional correction is below the
-        // obstacle. Its future lift is part of the actual clearance decision.
-        assert_eq!(
-            limit_projection(base, projected, 0., 0., &bodies),
-            projected
-        );
-        let clipped = limit_projection(base, projected, 0.1, 0., &bodies);
-        assert!((clipped[0] + 0.208).abs() < 1e-12);
-        assert_eq!(clipped[1], base[1]);
-        assert_eq!(limit_projection(base, projected, 0., 0.2, &bodies), clipped);
-        assert_eq!(limit_projection(base, base, 0.1, 0.2, &bodies), base);
-        let mut previous = base;
-        for step in 1..=1000 {
-            let candidate = super::super::lerp(base, projected, step as f64 / 1000.);
-            let point = limit_projection(base, candidate, 0.1, 0., &bodies);
-            assert!(distance(previous, point) <= distance(base, projected) / 1000. + 1e-12);
-            previous = point;
-        }
-    }
-    #[test]
-    fn projection_fades_continuously_as_base_enters_and_leaves_a_reserved_body() {
-        let bodies = [body([0., 1.1, 0.], [0.2, 0.05, 0.2])];
-        for shift in [-0.1, 0.1] {
-            let mut previous = None;
-            for step in 0..=2000 {
-                let x = -0.25 + step as f64 * 0.00005;
-                let point = limit_projection([x, 1., 0.], [x + shift, 1., 0.], 0., 0.2, &bodies);
-                if let Some(old) = previous {
-                    assert!(
-                        distance(old, point) < 0.001,
-                        "projection jump: {old:?} -> {point:?}"
-                    );
-                }
-                previous = Some(point);
-            }
         }
     }
     #[test]

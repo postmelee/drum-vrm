@@ -79,10 +79,10 @@ pub fn upper_body_core(
     limb: usize,
     hand: &HandSolution,
 ) -> UpperBodyCoreClearance {
-    let core = core_segments(profile, limb, hand);
-    let gaps = core
-        .segments
-        .map(|(a, b, radius)| torso_clearance_with_geometry(profile, &core.torso, a, b, radius));
+    let query = CoreQuery::new(profile, limb);
+    let gaps = query
+        .segments(hand)
+        .map(|(a, b, radius)| torso_clearance_with_geometry(profile, &query.torso, a, b, radius));
     UpperBodyCoreClearance {
         upper_arm: gaps[0],
         forearm: gaps[1],
@@ -96,23 +96,115 @@ pub fn upper_body_core(
 /// existing full query is nonnegative can skip its golden-section refinement.
 /// Positive inspection distances still use the original full query above.
 pub fn core_penetration(profile: &RigProfile, limb: usize, hand: &HandSolution) -> f64 {
-    let core = core_segments(profile, limb, hand);
-    core.segments
-        .into_iter()
-        .map(|(a, b, radius)| {
-            if proven_clear(&core.torso, core.axes, a, b, radius) {
-                0.
-            } else {
-                (-torso_clearance_with_geometry(profile, &core.torso, a, b, radius)).max(0.)
-            }
-        })
-        .fold(0_f64, f64::max)
+    CoreQuery::new(profile, limb).penetration(hand)
 }
 
-struct CoreSegments {
+/// Profile-owned terms of the ordinary body query, shared by all immutable
+/// candidates in one solve. No distance approximation or acceptance is cached.
+pub(crate) struct CoreQuery<'a> {
+    profile: &'a RigProfile,
+    limb: usize,
     torso: TorsoGeometry,
     axes: [Vec3; 2],
-    segments: [(Vec3, Vec3, f64); 4],
+    root: Vec3,
+    radii: [f64; 2],
+    from_center: Vec3,
+    socket_radius: f64,
+    connected: bool,
+}
+impl<'a> CoreQuery<'a> {
+    pub(crate) fn new(profile: &'a RigProfile, limb: usize) -> Self {
+        let torso = core_torso(profile);
+        let root = profile.roots[limb];
+        let radii = core_arm_radii(profile, limb);
+        let axes = body_axes(profile);
+        let side = if limb == 0 { -1. } else { 1. };
+        let from_center = sub(root, torso.center);
+        let own_side = side * dot(from_center, axes[0]) > 0.;
+        let socket_radius = 2. * radii[0];
+        // A connected shoulder must already meet the torso side/cap. The
+        // local socket allowance cannot excuse a detached or inward arm.
+        let connected = own_side
+            && torso_clearance_with_geometry(profile, &torso, root, root, socket_radius) <= 0.;
+        Self {
+            profile,
+            limb,
+            torso,
+            axes,
+            root,
+            radii,
+            from_center,
+            socket_radius,
+            connected,
+        }
+    }
+    pub(crate) fn penetration(&self, hand: &HandSolution) -> f64 {
+        self.segments(hand)
+            .into_iter()
+            .map(|(a, b, radius)| {
+                if proven_clear(&self.torso, self.axes, a, b, radius) {
+                    0.
+                } else {
+                    (-torso_clearance_with_geometry(self.profile, &self.torso, a, b, radius))
+                        .max(0.)
+                }
+            })
+            .fold(0_f64, f64::max)
+    }
+    fn segments(&self, hand: &HandSolution) -> [(Vec3, Vec3, f64); 4] {
+        let Self {
+            profile,
+            limb,
+            root,
+            radii: [upper_radius, lower_radius],
+            axes: [right, forward],
+            from_center,
+            socket_radius,
+            connected,
+            ..
+        } = *self;
+        let torso = &self.torso;
+        let side = if limb == 0 { -1. } else { 1. };
+        let upper = sub(hand.middle, root);
+        let radial_derivative = dot(from_center, right) * dot(upper, right)
+            / torso.half_extents[0].powi(2)
+            + dot(from_center, forward) * dot(upper, forward) / torso.half_extents[2].powi(2);
+        let outward = side * dot(upper, right) >= 0.
+            && side * dot(sub(hand.middle, torso.center), right) > 0.
+            && radial_derivative >= 0.;
+        let upper_start = if connected {
+            let length = distance(root, hand.middle);
+            add(root, mul(upper, (socket_radius / length.max(1e-9)).min(1.)))
+        } else {
+            root
+        };
+        // The ordinary hand core ignores measured costume centres/capsules.
+        let grip = add(
+            hand.end,
+            crate::rig::rotate(hand.rotation, profile.grip_offsets[limb]),
+        );
+        let hand_radius = (profile.lengths[limb][1] * 0.10).clamp(0.015, 0.030);
+        let (butt, tip) = crate::equipment_motion::stick_segment(profile, limb, hand);
+        let tool_radius = crate::stick_geometry::profile()
+            .terminal
+            .iter()
+            .map(|point| point[1])
+            .fold(0_f64, f64::max);
+        [
+            (
+                if connected && outward {
+                    hand.middle
+                } else {
+                    upper_start
+                },
+                hand.middle,
+                upper_radius,
+            ),
+            (hand.middle, hand.end, lower_radius),
+            (hand.end, grip, hand_radius),
+            (butt, tip, tool_radius),
+        ]
+    }
 }
 
 fn proven_clear(
@@ -165,67 +257,6 @@ fn proven_clear(
                 .map(|v| v.abs())
                 .sum::<f64>());
     radial_bound.max(vertical_bound) > radius + reserve + roundoff
-}
-
-fn core_segments(profile: &RigProfile, limb: usize, hand: &HandSolution) -> CoreSegments {
-    let torso = core_torso(profile);
-    let query = |a, b, r| torso_clearance_with_geometry(profile, &torso, a, b, r);
-    let root = profile.roots[limb];
-    let [upper_radius, lower_radius] = core_arm_radii(profile, limb);
-    let [right, forward] = body_axes(profile);
-    let side = if limb == 0 { -1. } else { 1. };
-    let from_center = sub(root, torso.center);
-    let own_side = side * dot(from_center, right) > 0.;
-    let socket_radius = 2. * upper_radius;
-    // A connection must already meet the torso's side/cap. Detached shoulders
-    // do not get to carve a hole into the torso. The ordinary torso cap sits
-    // 25 mm below the semantic shoulders, hence the local socket allowance.
-    let connected = own_side && query(root, root, socket_radius) <= 0.;
-    let upper = sub(hand.middle, root);
-    let radial_derivative = dot(from_center, right) * dot(upper, right)
-        / torso.half_extents[0].powi(2)
-        + dot(from_center, forward) * dot(upper, forward) / torso.half_extents[2].powi(2);
-    let outward = side * dot(upper, right) >= 0.
-        && side * dot(sub(hand.middle, torso.center), right) > 0.
-        && radial_derivative >= 0.;
-    let upper_start = if connected {
-        let length = distance(root, hand.middle);
-        add(root, mul(upper, (socket_radius / length.max(1e-9)).min(1.)))
-    } else {
-        root
-    };
-    // A hand core follows the actual wrist-to-grip frame without consulting
-    // potentially inflated mesh hand centers/capsules. Tool geometry remains
-    // the complete physical butt-to-tip segment.
-    let grip = add(
-        hand.end,
-        crate::rig::rotate(hand.rotation, profile.grip_offsets[limb]),
-    );
-    let hand_radius = (profile.lengths[limb][1] * 0.10).clamp(0.015, 0.030);
-    let (butt, tip) = crate::equipment_motion::stick_segment(profile, limb, hand);
-    let tool_radius = crate::stick_geometry::profile()
-        .terminal
-        .iter()
-        .map(|point| point[1])
-        .fold(0_f64, f64::max);
-    CoreSegments {
-        torso,
-        axes: [right, forward],
-        segments: [
-            (
-                if connected && outward {
-                    hand.middle
-                } else {
-                    upper_start
-                },
-                hand.middle,
-                upper_radius,
-            ),
-            (hand.middle, hand.end, lower_radius),
-            (hand.end, grip, hand_radius),
-            (butt, tip, tool_radius),
-        ],
-    }
 }
 
 #[cfg(test)]

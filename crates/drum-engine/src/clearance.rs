@@ -7,6 +7,7 @@ use serde::Serialize;
 mod tool_pair;
 #[path = "upper_body_core.rs"]
 mod upper_body_core;
+pub(crate) use upper_body_core::CoreQuery;
 pub use upper_body_core::{
     body_axes, core_arm_radii, core_penetration, core_torso, core_torso_clearance, upper_body_core,
     UpperBodyCoreClearance,

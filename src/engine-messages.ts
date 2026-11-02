@@ -49,6 +49,10 @@ export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = 
     '준비된 연주의 손 방향 제어점이 유효하지 않습니다.'
   ],
   [
+    'The prepared physical arm paths are invalid.',
+    '준비된 연주의 물리 팔 경로가 유효하지 않습니다.'
+  ],
+  [
     'The prepared hand orientation does not match the grip policy.',
     '준비된 연주의 손 방향이 그립 정책과 일치하지 않습니다.'
   ],

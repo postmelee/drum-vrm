@@ -822,9 +822,9 @@ fn native_ready_pose_fits_real_equipment_without_stacked_heads_or_buried_shafts(
         result.kit.clone(),
         crate::equipment::kit_geometry(&result.kit),
     );
-    assert!(ctx.geometry.unresolved_piece_ids.is_empty());
+    assert!(ctx.geometry().unresolved_piece_ids.is_empty());
     assert!(layout::violations(&profile, &result.kit).is_empty());
-    assert!(lower_limb::violations(&profile, &result.kit, &ctx.geometry).is_empty());
+    assert!(lower_limb::violations(&profile, &result.kit, ctx.geometry()).is_empty());
     for original in kit.iter().filter(|p| {
         matches!(
             p.instrument,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { KINEMATIC_HALF_WINDOW_SECONDS as h, motionValidity, sampledUpperBodyPathsPassed, summarizeMotionSamples } from './review-motion-metrics.mjs';
+import { KINEMATIC_HALF_WINDOW_SECONDS as h, motionValidity, sampledToolPathsPassed, sampledUpperBodyPathsPassed, summarizeMotionSamples } from './review-motion-metrics.mjs';
+import { POSE_CLEARANCE_TOLERANCE_METERS } from '../../src/review-clearance.ts';
 
 const cuePlan = () => ({
   sourceEvents: [{ id: 'count', timeUs: 1000000, message: { kind: 'noteOn', velocity: 80 } }],
@@ -75,6 +76,30 @@ test('ordinary torso review requires complete measured evidence and rejects exte
   }
   const packed = sequence(); packed.proxy.upperBodyCoreMinimumMeters = -.5e-6;
   assert.equal(sampledUpperBodyPathsPassed(packed), true, 'same f32 packing tolerance as the engine');
+});
+
+test('physical-tool review tolerates only packed-pose roundoff and still requires both measured boundaries', () => {
+  const tangent = 1.2 - Math.fround(1.2);
+  const sequence = () => ({ samples: 3, proxy: {
+    toolSamples: 3, toolIntersectingSamples: 0,
+    toolEquipmentMinimumMeters: tangent, toolPairMinimumMeters: -POSE_CLEARANCE_TOLERANCE_METERS,
+  } });
+  assert.equal(sampledToolPathsPassed(sequence()), true);
+  for (const change of [
+    value => { value.proxy.toolSamples = 2; },
+    value => { delete value.proxy.toolEquipmentMinimumMeters; },
+    value => { delete value.proxy.toolPairMinimumMeters; },
+    value => { value.proxy.toolEquipmentMinimumMeters = NaN; },
+    value => { value.proxy.toolPairMinimumMeters = Infinity; },
+    value => { value.proxy.toolEquipmentMinimumMeters = -4e-6; },
+    value => { value.proxy.toolPairMinimumMeters = -.001; },
+    value => { value.proxy.toolIntersectingSamples = 1; },
+    value => { value.samples = 0; value.proxy.toolSamples = 0; },
+  ]) {
+    const value = sequence(); change(value);
+    assert.equal(sampledToolPathsPassed(value), false);
+  }
+  assert.equal(sampledToolPathsPassed({ samples: 3, proxy: {} }), false);
 });
 
 function poseAt(time) {

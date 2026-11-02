@@ -358,11 +358,11 @@ Reach and shared anatomical deficit rank first, followed by displacement from th
 The independent 0.60 rad wrist gate and all joint limits remain unchanged. Each trial recovers the wrist from complete grip/tool offsets and solves fixed-length bones.
 Each selected original control stores one unit quaternion `inverse(q_approach) × q_selected` in `SwivelSample.orientations` and its matching `OrientationSample`; `OrientationControl` is a quaternion alias. It represents the actual selected direction relative to the geometric target/pitch approach; legacy hands consistently store `None`.
 Angles keep their original C1 curve, and the residual uses sign-invariant smoothstep/shortest-arc slerp. Replay composes `q_currentApproach × residual` without rerunning the ordinary arm's four roll refinements. Selected endpoint wrist, elbow and contact are retained; interpolation does not guarantee an unchanged legacy arm or pure wrist twist between endpoints.
-Runtime uses that transported orientation and one fixed-length arm solve, without pointwise palm/wrist projection or shaft-yaw search. Interpolated palm, wrist, reach and physical tool failures remain diagnosed.
+The ordinary path uses that transported orientation and one fixed-length arm solve, without pointwise palm/wrist projection or shaft-yaw search. Selected physical phase curves subsequently couple the elbow, wrist and actual tool frame while retaining the routed tip and selected impact poses; [engine contract](engine-contract.md) defines their independent validation and restoration. Remaining palm, wrist, reach and tool failures stay diagnosed.
 The original angle and orientation controls stay unchanged; failed interior checks do not insert isolated orientation anchors. The 33 × 33 graph remains the bounded planner, without a new state dimension, runtime cone search or playback history.
 Without a roll range, the original four unconstrained refinements and anatomical pole remain unchanged.
 
-The cheap `may_reach_contact` triangle envelope only prunes impossible distances; passing it does not replace an actual posture/tool witness at the chosen pitch and swivel.
+The cheap `may_reach_contact` triangle envelope only prunes impossible distances, including each static impact/preparation/recovery probe before wrist search; passing it does not replace an actual posture/tool witness at the chosen pitch and swivel.
 These approach and roll rules are animation priors, not all grip styles or a global optimum. Inspect rendered fingers, wrist swing and the whole moving shaft separately from endpoint error; this is not continuous collision certification.
 
 ## Coordinated torso and inspection
@@ -370,9 +370,9 @@ These approach and roll rules are animation priors, not all grip styles or a glo
 Optional `torsoPivot` is measured from the normalized spine and translated with the
 seat. [body_motion.rs](../../crates/drum-engine/src/body_motion.rs) precomputes a
 12 Hz yaw curve, bounded to ±0.24 radians. Each step examines 13 candidates within
-±0.06 radians of the previous planned yaw. Costs balance the direction of both hand targets, a joint bounded search for
-left/right elbow candidates, shared proxy clearance and change in yaw. Smooth interpolation is
-evaluated by absolute time; this is planned continuity, not accumulated frame state.
+±0.06 radians of the adjacent planned yaw. Forward and reverse passes share this search;
+their mean anticipates upcoming targets, retaining the initial and neighboring step bounds. Costs include ordinary-body core clearance, separately from advisory costume overlap, alongside hand direction, joint elbow candidates and yaw change.
+Smooth interpolation uses absolute time; it never accumulates playback state.
 The resulting curve is checked at every assigned hand impact, including impacts
 between sample knots. If facing loses reach, only adjacent time knots are attenuated toward neutral,
 propagating the existing 0.06 rad neighbor bound. A bounded 16-pass repair retains
@@ -397,7 +397,7 @@ therefore contributes at most 3 rad/s. These are swivel-track limits, not limits
 the entire moving elbow or wrist. Actual tool rotation receives `0.01 × (Δangle)² / Δtime`, and actual wrist displacement receives `0.1 × (Δdistance)² / Δtime`, at graph transitions and inspected samples; quaternion signs represent the same rotation.
 Actual shoulder-to-elbow directions in body coordinates receive `0.01 × (Δangle)² / Δtime`, an integrated squared angular-speed preference, at transitions and in inspected-path scoring. Only failed poses add coupled edge penalties; rate cost alone preserves the separable search. Removing torso yaw prevents whole-body turning from counting as an independent elbow gesture; this adds no hard actual-direction speed bound.
 
-Every transition first computes the bounded predecessor minimum separately per arm.
+Every transition first computes the bounded predecessor minimum separately per arm. At exact source hits, the count of hand poses failing reach, anatomy, palm, tool or ordinary-core checks ranks before finite interior/style costs; two simultaneous source hands also require whole-stick pair clearance. A rate-bounded source-clear path therefore cannot lose solely to a cheaper unsafe source pose; if none exists, the unresolved fallback and diagnostics remain.
 Only a destination whose selected predecessor edge has a positive coupled penalty repeats the full joint-neighbor search; nonnegative penalties cannot change the other winners.
 Both paths use the canonical separable arithmetic and tie order; this is not an arbitrary-bit identity claim against the old general branch at floating-point ties.
 

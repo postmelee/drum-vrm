@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createReviewSnapshot, reviewOrder, reviewTimes, summarizePoseReview, summarizeProxyReview } from '../src/performance-review';
 import type { PerformancePlan, PoseInspection, RigProfile } from '../src/types';
+import { POSE_CLEARANCE_TOLERANCE_METERS } from '../src/review-clearance';
 
 const plan = { schemaVersion: 2, duration: .2, hits: [{ id: 0, time: .123456, limb: null, tick: 10, track: 0, channel: 9, note: 38, velocity: 80, instrument: 'snare', target: [0, 1, 0] }], sourceEvents: [{ id: 'private-note', track: 0, eventIndex: 0, tick: 0, timeUs: 0, channel: 9, message: { kind: 'noteOn', key: 75, velocity: 90 } }], interpretations: [{ sourceEventId: 'private-note', kind: 'unmapped' }], kit: [], tempoCount: 1, diagnostics: [{ code: 'unmapped', message: 'Private source detail' }] } as PerformancePlan;
 
@@ -62,5 +63,18 @@ describe('local performance review', () => {
     const {toolEquipmentClearanceMeters,toolPairClearanceMeters,...legacy}=sample;
     expect(summarizeProxyReview([0],[legacy]).toolIntersectingSamples).toBeUndefined();
     expect(summarizeProxyReview([0,.1],[{...legacy,toolEquipmentClearanceMeters:.003},{...legacy,toolPairClearanceMeters:.01}])).toMatchObject({toolSamples:0,toolIntersectingSamples:0,toolEquipmentMinimumMeters:.003,toolPairMinimumMeters:.01});
+  });
+  it('retains f32 tangent roundoff while counting physical penetrations beyond the packing tolerance', () => {
+    // A point exactly on an authored 1.2m surface moves slightly past it when
+    // packed for rendering. This must not become a whole-stick collision.
+    const tangentClearance = 1.2 - Math.fround(1.2);
+    expect(tangentClearance).toBeLessThan(0);
+    const sample:PoseInspection={scope:'skeletal-proxies',torsoClearanceMeters:.02,armClearanceMeters:.03,stickClearanceMeters:.01,boneLengthErrorMeters:0,poseFloats:77,toolEquipmentClearanceMeters:tangentClearance,toolPairClearanceMeters:tangentClearance};
+    const tangent=summarizeProxyReview([0],[sample]);
+    expect(tangent).toMatchObject({packingToleranceMeters:POSE_CLEARANCE_TOLERANCE_METERS,toolSamples:1,toolIntersectingSamples:0,firstToolIntersectionSeconds:null,toolEquipmentMinimumMeters:tangentClearance,toolPairMinimumMeters:tangentClearance});
+    const boundary={...sample,toolEquipmentClearanceMeters:-POSE_CLEARANCE_TOLERANCE_METERS};
+    expect(summarizeProxyReview([0],[boundary]).toolIntersectingSamples).toBe(0);
+    const result=summarizeProxyReview([0,.1,.2,.3],[sample,boundary,{...sample,toolEquipmentClearanceMeters:-4e-6},{...sample,toolPairClearanceMeters:-.001}]);
+    expect(result).toMatchObject({toolSamples:4,toolIntersectingSamples:2,firstToolIntersectionSeconds:.2,toolEquipmentMinimumMeters:-4e-6,toolPairMinimumMeters:-.001});
   });
 });

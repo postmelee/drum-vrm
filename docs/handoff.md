@@ -6,31 +6,36 @@ own measured results and publication evidence.
 ## Current review and next work
 
 The kit/grip batch on `codex/kit-grip-refinement` remains **draft, not published**.
-The owner authorized pushing this branch. The [shaft-count-in/path evidence](verification/shaft-count-in-and-path-followup.md)
-records planner v21: a 30° wrist-driven shaft-middle count-in, common gap-aware
-settling, ordinary upper-body cores independent of costume, and an 8 cm forward
-move of the linked hi-hat/pedal and left crash. The existing solver now considers
-body clearance before accepting an arm-preserving route. No avatar-name rules,
-bone stretching or MIDI retiming are introduced. Earlier v18 kit/grip and v19
-stand-phase work remain part of the draft; their measured evidence is preserved.
+The owner authorized pushing the branch and continuing the common motion work
+before broader VRM 0.0/FBX validation. The [current v22 evidence](verification/coupled-hand-path-and-preparation.md)
+continues the [v21 record](verification/shaft-count-in-and-path-followup.md).
 
-All four frozen native/public VRM profiles retain static fit and 53-hit assignment.
-Short crossed-hat/snare windows are ordinary-core clear, but full temporal motion
-still fails, including some new tool-path regressions. Do not call this batch
-collision-free. `UPPER_BODY_PATH_CLEARANCE` and separate core review fields expose
-remaining overlap; a strict review requires complete measured samples. Clothing
-remains advisory. The blanket static core filter and pointwise midpoint repair
-were rejected because they lost notes or worsened the opposite hand/rates.
+The candidate retains the reviewed reference kit, forward left instruments,
+larger shaft-middle wrist count-in and ordinary semantic body cores. It now
+couples elbow, wrist and actual tool orientation over fixed routed tips; selected impact poses stay fixed within phase refinement, and original
+MIDI times and both real arm lengths are preserved. Source-safe anchors
+rank before finite path/style cost. Contact pitch boundary refinement avoids
+coarse-sampling false failures, and radial queries prove the caller's actual
+margin. Exact query reuse reduces repeated preparation work. Internal prepared
+format 9 validates canonical per-hand curves and their shared sampling lattice.
+No avatar-name rules, bone stretching or MIDI retiming are introduced.
 
-Next repair a complete short preparation→impact→rebound→next-target segment with
-compatible elbow, wrist and actual tool orientation, starting with Twist's snare
-recovery at 2.75–2.80 s and count-in entry/exit. Preserve original source contacts,
-fixed bones, deterministic seek and prepared restoration. Do not repeat isolated
-angle/weight sweeps or treat static fit as a continuous-motion certificate. Keep
-owner visual review of the larger count-in and forward left kit before broader
-VRM 0.0/FBX validation. Fast-fill choice explanations and full-demo expansion
-remain unfinished; do not force paradiddles into every fill. The
-[ergonomics/sticking research](research/ergonomics-and-sticking.md) preserves the rationale.
+All four native/public profiles retain assignment, contact, source facts, seek
+and prepared restoration in the latest short-demo runs. These invariants are
+separate from temporal acceptance. Final whole-catalog physical/posture scans,
+actual adapter/skin inspection and owner visual review are still in progress;
+do not call the candidate collision-free or ready for import-model handoff yet.
+The [current evidence](verification/coupled-hand-path-and-preparation.md) separates
+intermediate failures from later corrections. Keep body/costume advisory findings
+distinct from ordinary-core, anatomical and physical-tool failures.
+
+Next finish those scans and the remaining common phase failures, check the
+larger count-in and elbow motion with the owner, then hand the exact candidate
+and reproducible acceptance record to the import chat. Do not restart isolated
+avatar-specific angle sweeps or infer natural movement from marker accuracy.
+Fast-fill explanations and broader model coverage remain separate work; do not
+force paradiddles into every fill. The [ergonomics/sticking research](research/ergonomics-and-sticking.md)
+preserves the rationale.
 
 [PR #64](https://github.com/postmelee/drum-vrm/pull/64) carries the reviewed
 common-fitting/motion checkpoint on top of PR #58's FBX/VRM 0.0 work. The owner
@@ -67,7 +72,7 @@ startup. These UI integrations do not establish new motion acceptance.
   Report measured lower-body warnings separately from fit completion. Extreme
   costume clearance is outside this batch; character scaling is not implemented.
 - **Next acceptance:** preserve current successful fit/assignment/contact and
-  prepared-format-7 restoration checks while repairing the remaining tool paths,
+  prepared-format-9 restoration checks while repairing the remaining tool paths,
   wrist limits and excessive arm elevation. Marker precision, palm direction and
   seek equality do not certify intervening motion. Exact branch-jump regressions
   now pass, but sampled tool speeds and interior poses still fail natural-motion review.
@@ -86,7 +91,7 @@ layout checkpoint, not proof of this candidate's public-model acceptance.
 [ergonomics/sticking](research/ergonomics-and-sticking.md) retain the rationale.
 
 Record subsequent checks and browser evidence against the exact candidate in the
-[shaft count-in/path follow-up](verification/shaft-count-in-and-path-followup.md); preserve the older
+[current coupled-path record](verification/coupled-hand-path-and-preparation.md); preserve the older
 [public VRM review](verification/public-vrm-fit.md) as its own measurement.
 The earlier Pages authorization covers the published PR #64 batch. A subsequent
 candidate needs its own reviewed scope and approval under the

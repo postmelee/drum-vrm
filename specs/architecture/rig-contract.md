@@ -299,13 +299,13 @@ accepted only with exact contact, the full anatomical limits and palm policy.
 Reach and shared anatomical constraints outrank comfort preferences. Within feasible
 static candidates, natural grip softly prefers inward/thumb-up and uses only the
 pronation justified by wrist comfort and the preserved arm path; this is not a
-global-optimum guarantee. The independent actual wrist-swing limit stays 0.60 rad. The shared grip does not guarantee thumb-up at every hit or a clear whole performance; high contacts can still require pronation.
-Planner v18 / internal prepared format 7 stores one unit quaternion per selected
+global-optimum guarantee. The independent actual wrist-swing limit stays 0.60 rad. Shared anatomical acceptance uses a numeric norm tolerance of `1e−10`, above optimizer roundoff but far below a visible angle; the squared violation remains measurable and no joint bound changes. The shared grip does not guarantee thumb-up at every hit or a clear whole performance; high contacts can still require pronation.
+Planner v22 / internal prepared format 9 stores one unit quaternion per selected
 bounded-hand control. `OrientationControl` aliases a quaternion; the JSON value is
 `[x, y, z, w]`, or `null` for a hand without a bounded palm policy. `Qapproach` is
 the geometric target/pitch approach frame, and encoding is
-`residual = inverse(Qapproach) × Qactual`. Formats 4, 5 and 6 require rebuilding.
-Edge checks and runtime use one sign-invariant shortest-arc slerp with smoothstep
+`residual = inverse(Qapproach) × Qactual`. Older formats require rebuilding.
+The ordinary path uses one sign-invariant shortest-arc slerp with smoothstep
 weights and the existing elbow controls. Replay reconstructs
 `Qactual = QcurrentApproach × residual`, without an intermediate legacy hand solve.
 Selected endpoint orientations, wrist, elbow and contact remain exact. Static
@@ -314,7 +314,7 @@ not guarantee preservation of the legacy arm or a pure wrist-only twist between 
 Runtime applies no pointwise palm projection or another yaw search. The planner
 retains the original orientation controls rather than inserting isolated interior
 repair anchors. Palm, wrist, reach and complete-tool checks still assess the actual
-pose, and unresolved interiors remain visible in diagnostics.
+pose. Selected per-hand physical phase curves can replace a failing interval while retaining its routed tip and selected impact poses; they couple fixed-length elbow/wrist/tool reconstruction and undergo separate dense validation. The [engine contract](engine-contract.md) owns storage and restoration. Unresolved interiors remain visible in diagnostics.
 Actual tool rotation, wrist displacement and body-relative upper-arm direction
 receive duration-aware squared-rate costs at graph transitions and inspected
 samples. Residual-quaternion changes are not a substitute for these

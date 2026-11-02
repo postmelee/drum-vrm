@@ -31,6 +31,8 @@ pub(super) struct Input {
     pub pitches: [f64; 2],
     pub equipment: Arc<EquipmentContext>,
     pub intended: [Option<String>; 2],
+    /// Exact assigned MIDI contacts, distinct from an interior intended surface.
+    pub source_contacts: [bool; 2],
     pub weight: f64,
     pub intentional_contact: bool,
     pub close_tool_approach: bool,
@@ -42,17 +44,14 @@ struct Metrics {
     anatomy: [bool; 2],
     violation: [f64; 2],
     hands: [Option<HandSolution>; 2],
+    source_supported: [bool; 2],
 }
 struct Repair {
     score: f64,
     path: Vec<PathSample>,
     metrics: Vec<(usize, Metrics)>,
 }
-fn measure_hand(
-    input: &Input,
-    path: &[PathSample],
-    limb: usize,
-) -> (Option<HandSolution>, f64, f64) {
+fn measure_hand(input: &Input, path: &[PathSample], limb: usize) -> HandMeasurement {
     let (lift, pitch) = equipment_motion::sample(path, input.time, limb);
     let mut target = input.tips[limb];
     target[1] += lift * input.weight;
@@ -103,7 +102,21 @@ fn measure_hand(
             break;
         }
     }
-    (best, violation, equipment)
+    // Body/pitch planning has already certified real source contacts. A later
+    // tool-pair repair may change their pitch only while retaining a complete
+    // witness at that exact pitch and current torso orientation. Intermediate
+    // samples keep their existing bounded route search and diagnostic fallback.
+    let source_supported = !input.source_contacts[limb]
+        || crate::contact_feasibility::source_at_pitch(
+            &input.profile,
+            limb,
+            target,
+            angle,
+            Some(&input.equipment),
+            input.intended[limb].as_deref(),
+        )
+        .is_some();
+    (best, violation, equipment, source_supported)
 }
 
 fn pair(input: &Input, hands: [Option<HandSolution>; 2]) -> f64 {
@@ -123,12 +136,13 @@ fn measure(input: &Input, path: &[PathSample]) -> Metrics {
     Metrics {
         pair: pair(input, hands),
         hands,
-        anatomy: values.map(|v| v.1 == 0.),
+        anatomy: values.map(|v| posture::anatomical_violation_valid(v.1)),
         violation: values.map(|v| v.1),
         equipment: values.map(|v| v.2),
+        source_supported: values.map(|v| v.3),
     }
 }
-type HandMeasurement = (Option<HandSolution>, f64, f64);
+type HandMeasurement = (Option<HandSolution>, f64, f64, bool);
 const MAX_HAND_CACHE_ENTRIES: usize = 16_384;
 
 /// Inputs/profiles/obstacles are immutable for one route invocation. Only the
@@ -181,12 +195,13 @@ impl HandMemo {
 /// A cone edits one limb. Always combine its exact cached/new witness with the
 /// current other hand, then recompute their pair clearance.
 fn measure_changed(input: &Input, old: Metrics, limb: usize, value: HandMeasurement) -> Metrics {
-    let (hand, violation, equipment) = value;
+    let (hand, violation, equipment, source_supported) = value;
     let mut next = old;
     next.hands[limb] = hand;
-    next.anatomy[limb] = violation == 0.;
+    next.anatomy[limb] = posture::anatomical_violation_valid(violation);
     next.violation[limb] = violation;
     next.equipment[limb] = equipment;
+    next.source_supported[limb] = source_supported;
     next.pair = pair(input, next.hands);
     next
 }
@@ -208,7 +223,7 @@ fn total_penalty(input: &Input, metrics: Metrics) -> f64 {
 }
 
 fn anatomy_penalty(violation: f64) -> f64 {
-    if violation == 0. {
+    if posture::anatomical_violation_valid(violation) {
         0.
     } else {
         0.01 + 0.05 * violation.min(10.)
@@ -438,7 +453,8 @@ fn route_with_reuse<const REUSE: bool>(
                             measure_changed(&inputs[i], old, limb, value)
                         };
                         if (0..2).any(|j| {
-                            (!m.anatomy[j] && old.anatomy[j])
+                            (!m.source_supported[j] && old.source_supported[j])
+                                || (!m.anatomy[j] && old.anatomy[j])
                                 || (old.equipment[j] >= posture::MARGIN
                                     && m.equipment[j] < posture::MARGIN - 1e-7)
                         }) || (old.pair >= pair_margin(&inputs[i])
@@ -506,6 +522,7 @@ mod tests {
     fn assert_hand_measurement_eq(a: HandMeasurement, b: HandMeasurement) {
         assert_eq!(a.1.to_bits(), b.1.to_bits());
         assert_eq!(a.2.to_bits(), b.2.to_bits());
+        assert_eq!(a.3, b.3);
         match (a.0, b.0) {
             (Some(a), Some(b)) => {
                 assert_eq!(a.middle.map(f64::to_bits), b.middle.map(f64::to_bits));
@@ -526,6 +543,42 @@ mod tests {
         }
     }
     #[test]
+    fn cached_posture_deficits_share_acceptance_without_losing_their_magnitude() {
+        let input = Input {
+            cue_orientation: None,
+            time: 0.,
+            profile: profile(),
+            tips: [[-0.1, 0.95, 0.65], [0.1, 0.95, 0.65]],
+            pitches: [0.; 2],
+            equipment: Arc::new(EquipmentContext::new(
+                vec![],
+                crate::equipment::kit_geometry(&[]),
+            )),
+            intended: [None, None],
+            source_contacts: [false; 2],
+            weight: 1.,
+            intentional_contact: false,
+            close_tool_approach: false,
+        };
+        let old = measure(&input, &[]);
+        for (deficit, accepted) in [(1e-24_f64, true), (1e-12_f64, false)] {
+            let updated = measure_changed(
+                &input,
+                old,
+                0,
+                (
+                    old.hands[0],
+                    deficit,
+                    old.equipment[0],
+                    old.source_supported[0],
+                ),
+            );
+            assert_eq!(updated.anatomy[0], accepted);
+            assert_eq!(updated.violation[0].to_bits(), deficit.to_bits());
+            assert_eq!(anatomy_penalty(deficit) == 0., accepted);
+        }
+    }
+    #[test]
     fn hand_memo_is_exact_bounded_and_recombines_the_current_other_hand() {
         let input = Input {
             cue_orientation: None,
@@ -538,6 +591,7 @@ mod tests {
                 crate::equipment::kit_geometry(&[]),
             )),
             intended: [None, None],
+            source_contacts: [false; 2],
             weight: 1.,
             intentional_contact: false,
             close_tool_approach: false,
@@ -592,11 +646,13 @@ mod tests {
                     recombined.hands[limb],
                     recombined.violation[limb],
                     recombined.equipment[limb],
+                    recombined.source_supported[limb],
                 ),
                 (
                     direct.hands[limb],
                     direct.violation[limb],
                     direct.equipment[limb],
+                    direct.source_supported[limb],
                 ),
             );
         }
@@ -632,6 +688,7 @@ mod tests {
                 pitches: [0.; 2],
                 equipment: equipment.clone(),
                 intended: [None, None],
+                source_contacts: [false; 2],
                 weight: 1.,
                 intentional_contact: false,
                 close_tool_approach: false,
@@ -699,6 +756,7 @@ mod tests {
                 pitches: [0.; 2],
                 equipment: equipment.clone(),
                 intended: [None, None],
+                source_contacts: [false; 2],
                 weight: 1.,
                 intentional_contact: false,
                 close_tool_approach: false,
@@ -774,6 +832,7 @@ mod tests {
             pitches: [0.; 2],
             equipment,
             intended: [None, None],
+            source_contacts: [false; 2],
             weight: 1.,
             intentional_contact: false,
             close_tool_approach: false,
@@ -783,11 +842,91 @@ mod tests {
             lift: [0.; 2],
             pitch: [0.; 2],
         }];
-        let (hand, violation, clearance) = measure_hand(&input, &path, 0);
+        let (hand, violation, clearance, _) = measure_hand(&input, &path, 0);
         assert_eq!(violation, 0.);
         assert!(clearance >= posture::MARGIN, "tool clearance: {clearance}");
         assert!(crate::motion::distance(hand.unwrap().tip, target) < 1e-9);
     }
+    #[test]
+    fn paired_pitch_repair_preserves_certified_source_body_witness() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+        let mut kit: Vec<crate::model::KitPiece> =
+            serde_json::from_value(fixture["kit"].clone()).unwrap();
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-natural-grip30.json")).unwrap();
+        let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        for piece in &mut kit {
+            if matches!(
+                piece.instrument,
+                crate::model::Instrument::Hihat
+                    | crate::model::Instrument::OpenHat
+                    | crate::model::Instrument::PedalHat
+            ) {
+                piece.position[2] += 0.08;
+            }
+        }
+        let equipment = EquipmentContext::for_kit(&kit).unwrap();
+        let hat = kit.iter().find(|piece| piece.id == "hihat").unwrap();
+        let observer = std::array::from_fn(|i| (profile.roots[0][i] + profile.roots[1][i]) * 0.5);
+        let mut target = crate::contact::target(hat, "bow", observer);
+        target[1] += 0.025;
+        let input = Input {
+            time: 0.,
+            cue_orientation: None,
+            profile,
+            tips: [[-0.3, 0.95, 0.5], target],
+            pitches: [0.; 2],
+            equipment,
+            intended: [None, Some("openHat".into())],
+            source_contacts: [false, true],
+            weight: 1.,
+            intentional_contact: false,
+            close_tool_approach: false,
+        };
+        let original = vec![PathSample {
+            time: 0.,
+            lift: [0.; 2],
+            pitch: [0.; 2],
+        }];
+        let before = measure(&input, &original);
+        assert!(before.source_supported[1]);
+        assert!(before.pair < -0.01);
+        // The old pair-only route chooses this tool-clear approach even though
+        // no ordinary-core-safe source witness exists at its new right pitch.
+        let invalid = vec![PathSample {
+            time: 0.,
+            lift: [0.; 2],
+            pitch: [-0.4, 0.1],
+        }];
+        let lost = measure(&input, &invalid);
+        assert!(!lost.source_supported[1]);
+        assert!(lost.anatomy[1]);
+        assert!(
+            crate::clearance::core_penetration(&input.profile, 1, &lost.hands[1].unwrap()) > 0.01
+        );
+        assert!(lost.equipment.into_iter().all(|gap| gap >= posture::MARGIN));
+        let mut repaired = original.clone();
+        route(&mut repaired, std::slice::from_ref(&input), &[[true; 2]]);
+        let after = measure(&input, &repaired);
+        assert!(after.source_supported[1]);
+        // Preserve a real source even when the other (non-source) hand still
+        // needs the later coupled posture planner. Route improvement cannot
+        // purchase a cleared pair by invalidating the source body certificate.
+        assert!(after.pair > before.pair);
+        assert!(after.anatomy[1]);
+        assert!(after
+            .equipment
+            .into_iter()
+            .all(|gap| gap >= posture::MARGIN));
+        assert_eq!(repaired[0].time, original[0].time);
+        assert_eq!(repaired[0].lift, original[0].lift);
+        assert_ne!(repaired[0].pitch, original[0].pitch);
+        let mut uncached = original;
+        route_with_reuse::<false>(&mut uncached, &[input], &[[true; 2]]);
+        assert_eq!(repaired, uncached);
+    }
+
     #[test]
     fn crossing_contact_approaches_use_joint_pitch_without_moving_contacts() {
         let profile = profile();
@@ -812,12 +951,18 @@ mod tests {
                 pitches: [0.; 2],
                 equipment: equipment.clone(),
                 intended: [None, None],
+                source_contacts: [true; 2],
                 weight: 1.,
                 intentional_contact: false,
                 close_tool_approach: false,
             })
             .collect();
-        assert!(measure(&inputs[0], &path).pair < -0.002);
+        let before = measure(&inputs[0], &path);
+        assert!(before.pair < -0.002);
+        assert!(before
+            .source_supported
+            .into_iter()
+            .all(|supported| supported));
         let original = path.clone();
         // All knots are immutable contacts: only approach pitch may change.
         let locks = vec![[true; 2]; path.len()];
@@ -826,6 +971,10 @@ mod tests {
             let clear = measure(input, &path);
             assert!(clear.pair >= posture::MARGIN - 1e-7, "{}", clear.pair);
             assert!(clear.anatomy.iter().all(|v| *v));
+            assert!(clear
+                .source_supported
+                .into_iter()
+                .all(|supported| supported));
         }
         assert!(path.iter().all(|s| s.lift == [0.; 2]));
         assert_eq!(
@@ -865,6 +1014,7 @@ mod tests {
                 pitches: [0.; 2],
                 equipment: equipment.clone(),
                 intended: [None, None],
+                source_contacts: [false; 2],
                 weight: 1.,
                 intentional_contact: false,
                 close_tool_approach: false,

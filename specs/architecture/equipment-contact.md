@@ -333,11 +333,10 @@ the common playable frame (radial-local XZ or declared plane) within 96% of its
 radius. A planar approach clips the body by its surface plane, avoiding empty rim
 box corners. A declared radial profile instead uses the complete upper surface,
 as described below. The intended surface permits tangent contact without a free-space margin;
-other obstacles retain the full maximum-radius capsule and 2 mm safety margin.
+other obstacles retain the complete stick and 2 mm safety margin.
 The terminal exception remains explicit: it does not prove tangent contact of a
 rounded tip, actual rim/bell clearance, or exact triangle contact along the shaft.
-Unrelated bodies with an authored radial profile use that curved upper surface,
-with the full 6 mm shaft radius and no terminal exemption. Flat heads retain their
+Unrelated bodies with an authored radial profile first test a conservative full-radius capsule against that curved surface. A bound below the required 2 mm is refined with the complete authored taper and no terminal exemption; the point tip does not become a 6 mm cap merely because it leaves the intended region. Flat heads retain their
 full body boxes, including the rim; unknown bodies, hardware and pedal boxes also
 retain their full envelopes. World surfaces are cached per equipment context.
 
@@ -353,7 +352,7 @@ Radial extrema are exact along the segment; maximum profile height includes all
 knots in that radial range. Box-face bounds retain the measured body envelope.
 The centre hole and space under the upper profile are deliberately filled, so
 an underside approach cannot pass as a valid strike. Intervals subdivide only
-within depth 16 and a 256-visit subdivision budget; unresolved bounds never
+within depth 16 and 256 visits to prove the caller’s required clearance: zero for intended tangent contact, 2 mm for unrelated obstacles. A loose nonnegative bound below that threshold still needs refinement; unresolved bounds never
 become clearance. This may conservatively reject near-tangent paths. The query
 does not infer curvature for planar imports, change arm/hand body-box checks,
 or certify triangle, skin, clothing or continuous motion clearance.
@@ -363,10 +362,10 @@ impact, 55 mm preparation and 110 mm recovery probes with the same bounded pitch
 and elbow candidates, anatomical limits and complete-tool equipment query.
 Measured body proxies rank candidates but do not veto reach. Distinct
 playing regions are checked separately: snare centre/rim and ride bell/bow/edge
-cannot inherit each other's reach result. A static witness does not certify the
-route between contacts. Optional torso turns must preserve the actual selected
-impact pitch; a hypothetical different pitch or turn cannot validate the stored
-motion. Fit and assignment therefore do not use incompatible reach gates.
+cannot inherit each other's reach result. A static witness does not certify the route between contacts.
+Optional torso turns must preserve the actual selected impact pitch.
+Source-pitch certification and source-preserving torso checks also
+require an ordinary-core-clear witness. Joint tool routing must preserve that source certificate. After final coordination, only provisional unsupported source-pitch warnings whose actual target, reach, anatomy, palm, equipment, core and simultaneous-source pair checks all pass are retired; unrelated warnings remain. A hypothetical different pitch or turn cannot validate stored motion.
 
 [motion_transfer.rs](../../crates/drum-engine/src/motion_transfer.rs) shapes travel before
 scalar corrections. Arch clearance uses the smoothstep chord's obstacle entry/exit,
@@ -374,9 +373,8 @@ not just its midpoint; an available underpass limits rebound below overhead bodi
 Different-height contacts may use two smoothstep legs through a body-face waypoint,
 chosen for the complete interval, independent of playback phase. Candidates preserve
 both contact points/times, add at most 0.20 m vertically, and obey the 12 m/s tip
-speed budget. Optional shoulder-radius projection is capped at the available corridor,
-reserving the later maximum 0.20 m lift. Its correction fades at reserved boundaries;
-it cannot move a contact or exempt an obstacle from the final whole-shaft query.
+speed budget. The coherent route has no additional framewise clipped radial
+expansion near obstacle boundaries. Common arm/core and full-shaft checks remain authoritative; source contacts and obstacle checks are preserved. There is no additional departure-boundary route selector.
 Raw underpass ceilings also bound scalar rate projection and prevent later repair
 increases above the cap. Rotated boxes are supported. The intended physical surface
 and already-overlapping raw points do not define an underpass; all physical queries
@@ -397,7 +395,7 @@ Impact pitch is scheduled before projecting the intervening samples onto the
 2 rad/s correction limit. A nine-state bounded search first maximizes the number
 of retained neutral posture/equipment witnesses. Unsupported ties minimize reach misses,
 physical-tool deficit and anatomical deficit, in that order, before comfort/pitch cost.
-Repeated identical target/piece queries share a local cache of the nine pitch ranks.
+If coarse scheduling leaves unsupported hits, only adjacent supported/unsupported pitch boundaries receive three bisections; at most 33 individually witnessed pitches per contact are retried. Already successful schedules keep the original nine choices. Repeated identical target/piece queries share both coarse and refined ranks.
 An incompatible fill therefore does not discard valid anchors elsewhere in the
 song. `CONTACT_PITCH_LIMIT` reports unsupported impact witnesses from their first
 source time; it does not certify the retained trajectory as clear. If no reachable
@@ -446,20 +444,20 @@ share a held phrase when no real hand hit intervenes. Actual hand hits, includin
 unassigned hits, have priority; nonduplicate cues closer than 0.12 s are diagnosed.
 The last rebound takes at most 0.11 s. Common settling uses spare time before either
 hand's next preparation, the next cue phrase or the authored ending plus tail. Only each hand's first upcoming hit reserves home-to-target preparation;
-later hits transfer from their preceding strike. An unavailable candidate or already
-started next preparation retains the source with `COUNT_IN_GESTURE_UNAVAILABLE`.
+later hits transfer from their preceding strike. If that preparation already overlaps the cue, the exit blends directly into the moving stroke and ends by its original hit, without an unnecessary home visit.
+An unavailable pose or real-hit exclusion still retains the source with `COUNT_IN_GESTURE_UNAVAILABLE`.
 Preparation tests bounded body-relative crossings and the existing 0.05 rad elbow
 grid. One common swivel per hand must satisfy anatomical, ordinary torso-core and whole-tool checks at
 all 40 pulse phases. The temporal graph retains these witnesses during the held
 phrase; its neutral torso roots are reserved at both bracketing body knots, with
 existing yaw-rate propagation. No post-graph elbow override or bone stretching is
 used. Natural-grip cues reserve 15° toward palm-down within the declared policy.
-The ordinary path blends once into/out of the cue; tip and wrist orientation share
-the same absolute-time pulse. Entry, rebound and settling boundaries enter the hand
-graph. Prepared restore reconstructs them and validates the held roots and swivels.
-Underlying equipment corrections fade out at cue contact and return on exit.
-Pulse witnesses do not certify entry/exit interpolation; actual anatomical/tool
-inspection retains unresolved transition diagnostics.
+Entry/exit blend actual wrist positions and tool quaternions together, then derive
+the physical tip from the interpolated rigid mount; independently blending tip and
+rotation would bow the wrist path. Source cue contacts remain exact. Entry, rebound
+and settling boundaries enter the hand graph; restore validates held roots/swivels.
+Underlying equipment corrections fade out at cue contact and return on exit. Pulse
+witnesses do not certify entry/exit interpolation; inspection retains unresolved transition diagnostics.
 Inter-stick checks use complete butt-to-tip profiles from the rendered taper,
 without trimmed shafts or terminal exemptions. During the close cue the ordinary
 2 mm pair margin may shrink to zero, never below. Intentional-contact inspection
@@ -477,8 +475,9 @@ validate actual shaft contacts, never substituting tips or planned points.
 `inspect_pose_at` retains `equipmentClearanceMeters`, the combined minimum across
 arms, hands and tools. Its optional `toolEquipmentClearanceMeters` reports only the
 complete physical sticks against equipment; `toolPairClearanceMeters` reports
-complete stick pairs. Whole-tool checks must be present, finite and nonnegative for
-a sampled tool-clearance pass. Missing optional fields are unmeasured, not a pass.
+complete stick pairs. Sampled review requires present, finite whole-tool checks
+within the shared 1 µm packing tolerance; raw signed minima remain unchanged.
+Missing optional fields are unmeasured, not a pass.
 Advisory body overlap can coexist with a valid tool sample, and a clear body proxy
 cannot hide a stick intersecting a tom or another stick.
 

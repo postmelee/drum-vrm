@@ -17,7 +17,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin } from '@pixiv/three-vrm';
 import * as wasm from '../src/wasm/drum_engine.js';
 import { motionReviewLandmarks } from './lib/review-landmarks.mjs';
-import { KINEMATIC_HALF_WINDOW_SECONDS, motionValidity, sampledUpperBodyPathsPassed, summarizeMotionSamples } from './lib/review-motion-metrics.mjs';
+import { KINEMATIC_HALF_WINDOW_SECONDS, motionValidity, sampledToolPathsPassed, sampledUpperBodyPathsPassed, summarizeMotionSamples } from './lib/review-motion-metrics.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 process.chdir(root);
@@ -326,9 +326,7 @@ if (mode === 'fit') {
         result.motionCoveragePassed = result.studies.every(study => study.unassigned.length === 0);
         result.motionValidityPassed = result.studies.every(study => study.motionValidity.passed
           && study.kinematics.observations > 0 && study.kinematics.invalidObservations === 0);
-        result.sampledToolPathsPassed = result.studies.every(study => study.sequence.proxy.toolSamples === study.sequence.samples
-          && study.sequence.proxy.toolIntersectingSamples === 0
-          && study.sequence.proxy.toolEquipmentMinimumMeters >= 0 && study.sequence.proxy.toolPairMinimumMeters >= 0);
+        result.sampledToolPathsPassed = result.studies.every(study => sampledToolPathsPassed(study.sequence));
         result.sampledUpperBodyPathsPassed = result.studies.every(study => sampledUpperBodyPathsPassed(study.sequence));
         result.passed = result.layoutPassed && result.motionCoveragePassed && result.motionValidityPassed
           && result.sampledToolPathsPassed && result.sampledUpperBodyPathsPassed;

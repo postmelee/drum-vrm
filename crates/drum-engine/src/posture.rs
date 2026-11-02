@@ -11,6 +11,11 @@ pub const MARGIN: f64 = 0.002;
 pub const MAX_WRIST_SWING: f64 = 0.6;
 /// Common elbow extension bound; pi would be a straight arm.
 pub const MAX_ELBOW_ANGLE: f64 = 165_f64.to_radians();
+/// Shared numerical tolerance for the norm of angular / bone-normalized posture
+/// deficits. The bounded optimizer converges at residual norm 1e-12; this leaves
+/// a 100x arithmetic reserve for reconstruction without changing the measured
+/// deficit or any geometric limit (1e-10 rad is about 5.7e-9 degrees).
+const ANATOMICAL_NUMERIC_TOLERANCE: f64 = 1e-10;
 pub const SWIVELS: [f64; 5] = [0.0, -0.4, 0.4, -0.8, 0.8];
 
 /// Try every existing approach that preserves the ordinary arm before allowing
@@ -114,7 +119,12 @@ pub fn anatomical_violation(
         + if hand.reachable { 0. } else { 1. }
 }
 pub fn anatomical(profile: &RigProfile, limb: usize, target: Vec3, hand: &HandSolution) -> bool {
-    anatomical_violation(profile, limb, target, hand) == 0.
+    anatomical_violation_valid(anatomical_violation(profile, limb, target, hand))
+}
+/// Cached posture deficits use the same acceptance as an actual evaluated pose.
+/// Keep the original squared magnitude for diagnostics and continuous ranking.
+pub(crate) fn anatomical_violation_valid(violation: f64) -> bool {
+    violation >= 0. && violation <= ANATOMICAL_NUMERIC_TOLERANCE.powi(2)
 }
 
 fn hand_candidate(
@@ -575,6 +585,74 @@ pub fn ready_pose(profile: &RigProfile, kit: &[KitPiece]) -> Result<Vec<f32>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn exact_posture_boundaries_survive_roundoff_but_reject_real_excess() {
+        let mut profile = RigProfile::primitive();
+        profile.roots[0] = [-0.18, 1.2, 0.];
+        profile.roots[1] = [0.18, 1.2, 0.];
+        profile.lengths[0] = [0.30, 0.27];
+        let frame = crate::rig::HandControlFrame {
+            forearm: [0., 0., 1.],
+            palm: [1., 0., 0.],
+            desired_palm: [1., 0., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
+        };
+        profile.hand_frames = Some([frame.clone(), frame]);
+        let hand_at = |angle: f64, rearward_excess: f64| {
+            let back = -profile.lengths[0][0] * 0.35 - rearward_excess;
+            let middle = [
+                -0.18,
+                1.2 - (profile.lengths[0][0].powi(2) - back * back).sqrt(),
+                back,
+            ];
+            let end = crate::motion::add(middle, [0., 0., profile.lengths[0][1]]);
+            let rotation = [(angle * 0.5).sin(), 0., 0., (angle * 0.5).cos()];
+            // Exercise the same numeric representation as a stored source pose.
+            let rotation =
+                serde_json::from_str::<[f64; 4]>(&serde_json::to_string(&rotation).unwrap())
+                    .unwrap();
+            HandSolution {
+                middle,
+                end,
+                tip: crate::motion::add(end, profile.offset(0, rotation)),
+                rotation,
+                reachable: true,
+            }
+        };
+        for hand in [
+            hand_at(MAX_WRIST_SWING, 0.),
+            hand_at(MAX_WRIST_SWING + 2. * f64::EPSILON, 0.),
+            hand_at(MAX_WRIST_SWING + 1e-12, 0.),
+            hand_at(0., 1e-15),
+        ] {
+            assert!(anatomical(&profile, 0, hand.tip, &hand));
+            let cached = anatomical_violation(&profile, 0, hand.tip, &hand);
+            assert!(cached < 1e-20);
+            assert!(anatomical_violation_valid(cached));
+        }
+        for excess in [1e-9, 1e-6] {
+            for hand in [hand_at(MAX_WRIST_SWING + excess, 0.), hand_at(0., excess)] {
+                assert!(!anatomical(&profile, 0, hand.tip, &hand));
+                let cached = anatomical_violation(&profile, 0, hand.tip, &hand);
+                assert!(cached > 0.);
+                assert!(!anatomical_violation_valid(cached));
+            }
+        }
+        let unreachable = HandSolution {
+            reachable: false,
+            ..hand_at(0., 0.)
+        };
+        assert!(!anatomical(&profile, 0, unreachable.tip, &unreachable));
+        let nonfinite = HandSolution {
+            middle: [f64::NAN, 0., 0.],
+            ..hand_at(0., 0.)
+        };
+        assert!(!anatomical(&profile, 0, nonfinite.tip, &nonfinite));
+        for malformed in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.] {
+            assert!(!anatomical_violation_valid(malformed));
+        }
+    }
     #[test]
     fn anatomical_forward_limits_follow_the_body_instead_of_world_z() {
         let mut p = RigProfile::primitive();
