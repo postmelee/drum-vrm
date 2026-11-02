@@ -5,6 +5,17 @@ import { pieceInstrument, type Instrument, type KitPiece, type PerformancePlan }
 const ids: Instrument[]=['kick','snare','hihat','openHat','pedalHat','tomHigh','tomMid','tomLow','crash','ride'];
 const kit=():KitPiece[]=>ids.map(id=>({id,label:id,position:[0,id==='kick'||id==='pedalHat'?.08:1,.5],radius:.2}));
 describe('physical layout recalibration',()=>{
+  it('accepts optional unit body frames and rejects invalid measured rotations',()=>{
+    const layout=kit(), piece=layout.find(value=>value.id==='tomHigh')!;
+    piece.geometry={version:1,source:'procedural',referenceRadius:piece.radius,body:{center:[.01,-.1,.02],halfExtents:[.2,.11,.2]},surface:{center:[0,0,0],normal:[0,1,0],radius:.2}};
+    expect(validateKitLayout(layout)[5].geometry!.body.rotation).toBeUndefined();
+    piece.geometry.body.rotation=[Math.sin(.2),0,0,Math.cos(.2)];
+    expect(validateKitLayout(layout)[5].geometry).toEqual(piece.geometry);
+    for(const rotation of [[0,0,0,0],[0,0,0,2],[0,0,NaN,1],[0,0,1]]){
+      const invalid=structuredClone(layout); invalid[5].geometry!.body.rotation=rotation as [number,number,number,number];
+      expect(()=>validateKitLayout(invalid)).toThrow();
+    }
+  });
   it('round-trips semantic pedal direction and rejects non-horizontal or non-unit frames',()=>{
     const layout=kit(); layout.find(piece=>piece.id==='pedalHat')!.pedalForward=[-.6,0,.8];
     const restored=JSON.parse(JSON.stringify(layout)); validateKitLayout(restored);
@@ -18,16 +29,19 @@ describe('physical layout recalibration',()=>{
     const kick=structuredClone(layout);kick.find(piece=>piece.id==='kick')!.pedalForward=[0,0,1];
     expect(()=>validateKitLayout(kick)).toThrow();
   });
-  it('retains a bounded absolute tripod phase without accepting it on a non-tripod mount',()=>{
+  it('retains bounded tripod and floor-leg phases without accepting them on another mount',()=>{
     const layout=kit();layout.find(piece=>piece.id==='snare')!.standRotation=Math.PI/2;
+    layout.find(piece=>piece.id==='tomLow')!.standRotation=-Math.PI/2;
     const restored=validateKitLayout(JSON.parse(JSON.stringify(layout)));
     expect(sameKitLayout(layout,restored)).toBe(true);
     for(const value of [NaN,Infinity,Math.PI+.01]){
       const bad=structuredClone(layout);bad.find(piece=>piece.id==='snare')!.standRotation=value;
       expect(()=>validateKitLayout(bad)).toThrow();
     }
-    const bad=structuredClone(layout);bad.find(piece=>piece.id==='tomLow')!.standRotation=0;
+    const bad=structuredClone(layout);bad.find(piece=>piece.id==='tomHigh')!.standRotation=0;
     expect(()=>validateKitLayout(bad)).toThrow();
+    const mounted=structuredClone(layout);mounted.find(piece=>piece.id==='tomLow')!.mount={kind:'standClamp',supportPieceId:'ride'};
+    expect(()=>validateKitLayout(mounted)).toThrow();
   });
   it('keeps equivalent serialized setup but detects physical and semantic edits',()=>{
     const accepted=kit(), serialized=accepted.map(piece=>({radius:piece.radius,instrument:pieceInstrument(piece),label:piece.label,position:[...piece.position] as [number,number,number],id:piece.id}));

@@ -9,6 +9,7 @@ export function diagnosticTitle(code: string): string {
     UNMAPPED_NOTE: ['Instrument unmapped', '악기 미매핑'],
     HAND_OVERRIDE_INFEASIBLE: ['Hand assignment unavailable', '지정한 손으로 연주 불가'],
     BODY_PATH_CLEARANCE: ['Body path overlap', '신체 경로 겹침'],
+    UPPER_BODY_PATH_CLEARANCE: ['Arm–torso overlap', '팔·몸통 겹침'],
     EQUIPMENT_PATH_CLEARANCE: ['Equipment path overlap', '악기 경로 겹침'],
     TOOL_EQUIPMENT_PATH_CLEARANCE: ['Stick–equipment overlap', '스틱·악기 겹침'],
     TOOL_PAIR_PATH_CLEARANCE: ['Stick–stick overlap', '스틱 간 겹침'],
@@ -27,6 +28,42 @@ export function diagnosticTitle(code: string): string {
  * Keep exact templates covered by the Rust-message coverage test until the
  * engine exposes structured diagnostic arguments at this boundary. */
 export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = [
+  [
+    '{0} sampled arm/tool paths intersect the ordinary torso core (minimum signed clearance {1} mm). Clothing is advisory; inspect the marked interval.',
+    '팔·도구 경로 표본 {0}개가 일반적인 몸통 두께와 겹칩니다(최소 간격 {1} mm). 옷 겹침은 참고 정보입니다. 표시된 구간을 확인하세요.'
+  ],
+  [
+    'The grip policy changed within the hand motion track.',
+    '양손 경로의 그립 정책이 시간에 따라 변경되었습니다.'
+  ],
+  [
+    'The selected hand motion track has no recoverable grip rotation.',
+    '선택된 양손 경로의 그립 회전값을 복구할 수 없습니다.'
+  ],
+  [
+    'The selected hand motion track has no recoverable hand orientation.',
+    '선택된 양손 경로의 손 방향을 복구할 수 없습니다.'
+  ],
+  [
+    'The prepared hand orientation controls are invalid.',
+    '준비된 연주의 손 방향 제어점이 유효하지 않습니다.'
+  ],
+  [
+    'The prepared physical arm paths are invalid.',
+    '준비된 연주의 물리 팔 경로가 유효하지 않습니다.'
+  ],
+  [
+    'The prepared hand orientation does not match the grip policy.',
+    '준비된 연주의 손 방향이 그립 정책과 일치하지 않습니다.'
+  ],
+  [
+    'The prepared hand motion track does not preserve the original strike contacts.',
+    '준비된 연주의 양손 경로가 원본 타격 접촉을 보존하지 않습니다.'
+  ],
+  [
+    'The prepared performance does not preserve the count-in contacts.',
+    '준비된 연주의 카운트인 접촉이 보존되지 않았습니다.'
+  ],
   [
     '{0} sampled whole-stick paths intersect drum equipment (minimum signed proxy clearance {1} mm). Original contact times are preserved; inspect the marked interval.',
     '스틱 전체 경로 표본 {0}개가 악기와 겹칩니다(대리 형상 최소 간격 {1} mm). 원래 타격 시각은 유지합니다. 표시된 구간을 확인하세요.'
@@ -262,6 +299,10 @@ export const ENGINE_MESSAGE_TEMPLATES: readonly (readonly [string, string])[] = 
   [
     "An actual hand strike overlaps the two-stick preparation or recovery interval",
     "양손 준비·복귀 구간에 실제 손 타격이 있습니다"
+  ],
+  [
+    "Preparation for the next actual strike has already started",
+    "다음 실제 타격의 준비 구간이 이미 시작됩니다"
   ],
   [
     "The performance plan exceeds the size limit.",

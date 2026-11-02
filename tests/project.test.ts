@@ -100,6 +100,24 @@ describe('versioned local project',()=>{
     for(const kit of [project.kit,project.plan.kit]) kit.find(piece=>piece.id==='hihat')!.geometry!.surface.radialProfile!.points[1][0]=-1;
     expect(()=>parseProject(JSON.stringify(project))).toThrow();
   });
+  it('round-trips oriented body bounds without reinterpreting legacy axis-aligned geometry',()=>{
+    const project=structuredClone(fixture);
+    const geometry={version:1 as const,source:'mesh-bounds' as const,referenceRadius:.2,
+      body:{center:[.03,-.1,.05] as [number,number,number],halfExtents:[.15,.1,.16] as [number,number,number],
+        rotation:[Math.sin(Math.PI/18),0,0,Math.cos(Math.PI/18)] as [number,number,number,number]},
+      surface:{center:[0,0,0] as [number,number,number],normal:[0,1,0] as [number,number,number],radius:.15}};
+    for(const kit of [project.kit,project.plan.kit]) kit.find(piece=>piece.id==='tomHigh')!.geometry=structuredClone(geometry);
+    const restored=parseProject(JSON.stringify(project));
+    expect(restored.kit.find(piece=>piece.id==='tomHigh')!.geometry).toEqual(geometry);
+    expect(restored.plan.kit.find(piece=>piece.id==='tomHigh')!.geometry).toEqual(geometry);
+    const mismatched=structuredClone(project);
+    mismatched.plan.kit.find(piece=>piece.id==='tomHigh')!.geometry!.body.rotation=[0,0,0,1];
+    expect(()=>parseProject(JSON.stringify(mismatched))).toThrow('layout differs');
+    for(const kit of [project.kit,project.plan.kit]) delete kit.find(piece=>piece.id==='tomHigh')!.geometry!.body.rotation;
+    const legacy=parseProject(JSON.stringify(project));
+    expect(legacy.kit.find(piece=>piece.id==='tomHigh')!.geometry!.body).toEqual({center:geometry.body.center,halfExtents:geometry.body.halfExtents});
+    expect(legacy.plan.kit.find(piece=>piece.id==='tomHigh')!.geometry!.body.rotation).toBeUndefined();
+  });
   it('requires same-content relinking; renamed same files match and same-name edits do not',async()=>{
     const renamed=new File([await midiFile.arrayBuffer()],'renamed.mid'),edited=new File(['changed'],midiFile.name);
     const good=await fileReference('midi',renamed),bad=await fileReference('midi',edited);

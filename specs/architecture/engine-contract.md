@@ -54,7 +54,7 @@ absolute-time mechanism state across motion, feedback and separate actual-marker
 inspection. The [equipment contact contract](equipment-contact.md#shared-contact-records-and-hi-hat-state)
 owns their fields, regeneration and capability limits.
 
-Planner `phrase-beam-8-beat-horizon-24-posture-v10` uses an eight-candidate beam with lookahead
+Planner `phrase-beam-8-beat-horizon-24-posture-v22` uses an eight-candidate beam with lookahead
 up to 24 events and two local quarter notes, with the time horizon clamped to
 0.35–1.20 s. The current simultaneous
 group can extend that horizon, capped at 32 events. Future hits consume limbs in each
@@ -65,8 +65,9 @@ mixed fills discourage extended one-hand repetition. A strong hit followed by a
 weaker hit on the same surface can instead favor a two-hit rebound candidate.
 Single, double and paradiddle sequences provide weak preferences, including mirrored
 and cyclic variants; they do not identify the original drummer's technique.
-Candidates first minimize unassigned events, then deviations from the default
-right-handed groove roles, then transfer, clearance and rudiment costs. Hi-hat/open
+Candidates first minimize unassigned events, then contacts without a complete
+ordinary-body approach witness, then deviations from default right-handed groove
+roles, then transfer, clearance and rudiment costs. Hi-hat/open
 hi-hat/ride belong to the right hand; sparse snare backbeats near a groove belong to
 the left. Head strikes within 0.8 quarter notes (clamped to 0.15–0.4 s) remain fill/run
 candidates, free to alternate or use doubles. These windows are engineering choices,
@@ -85,7 +86,14 @@ Original times and physical targets stay unchanged. The default roles are not a
 universal prohibition on two-handed hi-hat or open-handed playing; explicit style
 selection remains future work. [Instructional rationale](../../docs/research/ergonomics-and-sticking.md#groove-ownership-and-post-fill-crashes).
 
-Numeric torso-clearance cost is a soft preference at candidate contacts. Events
+The body-witness tier searches the existing pitch/swivel families at impact and
+both preparation probes, including alternatives beyond the first valid arm pose.
+It prefers a clear opposite hand over an unsafe cross-body fill. A neutral-torso
+search miss remains available when no better assignment exists: later torso motion
+may clear it, and source hits must not disappear because this bounded preference
+has no witness. Explicit hand overrides remain authoritative. Final physical path
+inspection still owns acceptance; a neutral witness is not a trajectory certificate.
+Measured costume-clearance cost remains advisory at candidate contacts. Events
 outside the candidate cap retain sound/diagnostics. This is a bounded heuristic,
 not a globally optimal arrangement or a guarantee of clear motion paths.
 Minimum re-strike interval (45 ms) and maximum target-chord speed (12 m/s) are
@@ -138,8 +146,8 @@ only with a complete proposal, regenerate the profile through the same adapter,
 and prepare the plan before committing scene state. A failed proposal preserves
 the input layout and zero seat offset; search-stage evidence does not replace
 layout-specific reach/clearance diagnostics. Optional `advisoryLayoutViolations: string[]` contains
-measured leg/foot-envelope warnings for the returned setup, excluding structural failures already in
-`layoutViolations`. It does not affect `complete`; an absent legacy field means unreported, not clear.
+measured leg/foot envelopes and broad `head-approach:<head>:<obstacle>` warnings, excluding hard failures in
+`layoutViolations`. Actual contact, whole-stick and required-pair checks still gate completion. It does not affect `complete`; an absent legacy field means unreported, not clear.
 The [calibration contract](calibration.md) owns search bounds and static/motion acceptance.
 
 ## Preparation and Worker boundary
@@ -166,14 +174,56 @@ failed replacement search discard candidate reuse. Rust still validates every
 prepared installation. This is bounded
 reuse, not a cache of arbitrary uploaded files.
 
+Static hand queries share a bounded cache owned by one immutable equipment context.
+Its key includes the complete numeric profile bit pattern, limb, target, pitch,
+swivel, search mode and intended piece. Signed zero and optional fields remain distinct;
+profile names never affect selection. At most 32,768 query results and 1,024 profiles
+are retained, including failed and diagnostic fallback results. Eviction only repeats
+an identical query; it cannot change candidate order or physical bounds. Preparation
+and prepared restoration release these transient witnesses before returning. Nothing
+from this cache enters the saved plan or prepared transfer.
+
 [prepared.rs](../../crates/drum-engine/src/prepared.rs) owns internal transfer format
-2, containing the plan, numeric profile, torso/elbow and equipment-approach tracks,
+9, containing the plan, numeric profile, torso, elbow/orientation, physical hand segments and equipment-approach tracks,
 and an FNV-1a integrity
-checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v11` distinguishes
-the physical-tool/advisory-body policy; earlier prepared candidates must be rebuilt.
+checksum. Planner version `phrase-beam-8-beat-horizon-24-posture-v22` identifies
+coupled count-in transitions, ordinary-body-aware hand assignment and selected
+fixed-bone hand curves; earlier prepared candidates must be rebuilt.
+Selected physical segments are independent per hand and retain the routed tip at
+all times. A virtual lever combines the measured hand-local lower arm with the
+complete grip and tip offset; reconstruction preserves both real bone lengths.
+This algebraic construction does not replace anatomical or collision checks.
+Phase refinement retains the selected impact poses and original hit times. Phase coefficients, canonical
+endpoints and endpoint measurements are validated on restoration; invalid curves
+cannot silently fall back to the ordinary solver. Replay evaluates stored curves
+without an optimizer or playback history. The final interval checks include the
+other hand, equipment, ordinary body core and the existing wrist/palm policy.
+Physical segments have a separate preliminary transfer cap of 36,000 (six times
+the 6,000-control budget), followed by the tighter canonical interval count and
+per-hand non-overlap checks. Each curve has eight bounded coefficients in ±π;
+payloads cannot supply a free oscillation frequency or sampling count.
+The measured endpoint curve is the first candidate. Corrections first keep local
+forearm/wrist flex fixed and optimize the existing plane/twist coefficients; only
+failure enables all eight coefficients. Each solve has at most 48 feasibility and
+16 motion iterations, 12 backtracks, a 0.15 trust step and four collocation rounds.
+A single certified restart reuses the same static witness family. Both hands and
+restoration share the absolute 480 Hz lattice, canonical boundaries, control times
+and known inspection times. Non-source joins align outward to feasible existing controls; overlapping coverage is united and split at source/held-cue boundaries, while raw stroke breakpoints remain sampled. Adjacent ordinary phases may coalesce once without
+crossing an own source contact or held cue. A failed phase is retried once only
+when a newly accepted opposite-hand curve overlaps it. A physically valid route
+may also be simplified, but only if the existing dense actual-motion objective
+strictly decreases and every physical gate still passes. The objective is not a
+physiological speed limit or proof of aesthetic naturalness.
 Installation checks engine/planner versions, expected source/profile
-identity, finite values, ordering, track bounds, mandatory control times and assigned
-contact/pedal feasibility at the stored torso yaw and equipment pitch. A reachable
+identity, finite values, ordering, track bounds and mandatory control times. The separate
+`handOrientations` track retains every original swivel-time orientation exactly, stays within
+the original endpoints and has at most 6,000 sorted anchors. Each
+`SwivelSample.orientations` / `OrientationSample.orientations` value is a single finite unit quaternion (squared norm within
+`1e-8` of one), or consistently `None` for a hand without a bounded palm policy. Decoded
+orientations at control times must satisfy that policy. Assigned hand impacts and retained
+count-in contacts are rechecked with stored/interpolated swivel and actual
+orientation, including the deterministic cue overlay, torso yaw and equipment/stroke pitch.
+Count-in validates both measured shaft surfaces and full physical stick clearance. Pedal feasibility is also retained. A reachable
 alternative pose cannot validate an unreachable stored impact. Equipment tracks additionally require bounded lift/pitch,
 rate limits and zero lift at each source impact. All mandatory equipment times must
 survive exactly; sorted extra controls may lie only within the original endpoints.
@@ -205,15 +255,36 @@ Sequential playback, shuffled seeks and fixed-frame export must produce the same
 major pose. No frame-history randomness or accumulated secondary physics may
 silently change that result.
 
+Static fitting and contact candidates use [calibration](calibration.md)'s bounded optimizer:
+retain the legacy anatomical arm using a feasible rigid wrist-to-tip twist, otherwise search
+shaft yaw within ±45° with twelve golden-section steps. Overextended approaches may use the
+existing 165° elbow reach cone via a shortest rigid tool-offset rotation, retaining exact contact
+and the full posture/palm gates. Static contact/probe and ready/pair searches exhaust the existing pitch range with arm-preserving witnesses before their full fallback families; a fixed-pitch query keeps its original coarse-first full search. There is no runtime cone search.
+Shared `HandEnvironment` gives contact, ready, cue, graph and route searches the intended-piece whole-tool gate before a static candidate is chosen; a colliding first witness continues through the existing bounded alternatives.
+Each selected original control stores one quaternion `inverse(q_approach) × q_selected`.
+Edge checks/replay use `q_currentApproach × slerp(residual)` with smoothstep weights.
+Selected endpoint wrist/elbow/contact remain exact; intermediate legacy-arm or pure wrist-twist preservation is not guaranteed. No isolated anchors or graph dimensions are added.
+Runtime performs one fixed-length arm solve; it does not repeat the ordinary roll refinements, project the palm/wrist or search shaft yaw. Unresolved
+interpolated poses retain their diagnoses. Legacy hands keep `None` and their existing solve.
+Actual tool rotation, wrist displacement and body-relative shoulder-to-elbow direction
+receive integrated squared-rate soft costs at graph transitions and inspected edge samples.
+The costs use actual poses, not residual quaternion changes. The 2 rad/s relative-swivel
+knot limit and smoothstep's 1.5 factor remain; neither these bounds nor the soft costs certify
+physiological limits on the complete arm/tool motion. There is no added graph dimension or
+frame history. Inspected samples do not certify the entire continuous path.
+
 In the measured-profile path, left/right hands normally wait 3.5 cm above snare/hi-hat.
 Between repetitions on one physical piece, the ready tip stays over that piece.
 If the candidate is unreachable, use the measured reference rest instead. Hand
 preparation/recovery windows use contact-to-ready distance divided by 2.5 m/s,
-clamped to 0.22–0.65 s and 0.18–0.65 s respectively. A gap within their sum plus
-0.02 s uses one direct transfer, preserving the 0.42 s threshold for nearby targets
-while preventing overlapping long moves from interrupting each other. Wider gaps
-join the ready pose between separate windows. These durations are engineering
-heuristics. The legacy primitive comparison retains its generic rest.
+clamped to 0.22–0.65 s and 0.18–0.65 s respectively. When both hands are idle,
+recovery can use half the free interval, capped at 0.65 s, reserving either hand's
+next preparation and the authored ending plus tail. An opposite-hand preparation
+or overlapping recovery retains the distance floor. Count-in shares this settling
+rule after its separate wrist rebound. Tight gaps within the distance windows'
+sum plus 0.02 s retain direct transfer (0.42 s for nearby targets); wider gaps join
+the ready pose. These are engineering heuristics, not source-time changes.
+The legacy primitive comparison retains its generic rest.
 Each `Motion` precomputes immutable ready-pose feasibility, including failed
 queries, keyed by limb, physical piece and exact target bits. Shared assembly
 reconstructs it on prepared restoration; there is no playback-dependent cache.
@@ -228,9 +299,10 @@ nearby equipment bounds, retaining larger authored stroke lift. Its added height
 is limited to 0.20 m and the available endpoint travel budget; endpoints and source
 times are unchanged. This guide does not replace whole-tool collision inspection
 or establish a speed bound for the final solved pose.
-For hand transfers in the measured-profile path, a lifted intermediate tip is kept
-at least as far from its reference shoulder as the interpolated endpoint radii.
-This reduces inward folding during preparation; it is not obstacle routing.
+Hand transfers retain the coherent chord/arch or complete waypoint route. They do
+not apply a separate, framewise clipped outward shoulder-radius expansion: it can
+create sharp tip/elbow motion at grazing obstacle boundaries. Common arm/core and
+whole-tool planning assess the resulting route without moving source contacts.
 
 For profiles with `torsoPivot`, planning precomputes a 12 Hz facing curve with yaw
 bounded to ±0.24 radians. Candidate yaw balances both hand targets, torso/forearm
@@ -251,9 +323,9 @@ collision-free motion.
 
 `inspect_pose_at` reports `scope: "skeletal-proxies"`, `torsoClearanceMeters`,
 `armClearanceMeters`, `stickClearanceMeters`, `crossClearanceMeters`,
-`geometrySource`, `boneLengthErrorMeters` and `poseFloats`. Cross clearance is the
+`geometrySource`, `boneLengthErrorMeters`, `upperBodyCoreClearanceMeters` and `poseFloats`. Cross clearance is the
 minimum stick-to-opposite-arm/hand clearance; own-hand grip attachment is permitted.
-Negative measured-body clearance is an advisory numeric overlap. The historical
+Negative measured-body clearance is an advisory numeric overlap. `upperBodyCoreClearanceMeters` separately measures ordinary torso versus arms/hands/tools; measured clothing cannot enlarge it. The historical
 `equipmentClearanceMeters` remains the combined arm/hand/tool minimum; it must not
 be interpreted as the physical-stick acceptance result. Optional fields
 `toolEquipmentClearanceMeters` and `toolPairClearanceMeters` separately report
@@ -265,10 +337,13 @@ markers, skin or exact triangles.
 
 Browser review keeps the raw proxy minimum/count fields and additionally aggregates
 optional `toolSamples`, `toolEquipmentMinimumMeters`, `toolPairMinimumMeters`,
-`toolIntersectingSamples` and `firstToolIntersectionSeconds`. A negative value in
-either tool metric counts as an intersecting tool sample. Acceptance needs present,
-finite, nonnegative whole-tool measurements; advisory body minima cannot substitute
-for or invalidate that result. Frame samples still do not prove the continuous path.
+`toolIntersectingSamples` and `firstToolIntersectionSeconds`. Raw signed minima
+remain unchanged. Browser and script review share a 1 µm f32 packing tolerance:
+either tool metric below −1 µm counts as an intersecting tool sample. Acceptance
+requires present, finite whole-tool measurements within that tolerance. This does
+not change the planner's 2 mm free margin or grant another contact exemption.
+Advisory body minima cannot substitute for or invalidate the tool result. Frame
+samples still do not prove the continuous path.
 
 Final engine inspection evaluates the same quarter/mid/three-quarter interval
 times as tool-route repair, plus the path knots, hand controls and count-in controls.
@@ -281,7 +356,7 @@ collision or posture certificates.
 The [reference-layout review](../../scripts/reference-layout-review.mjs) separately
 gates assignment coverage, tool paths and motion validity. `POSTURE_LIMIT`,
 `CONTACT_PITCH_LIMIT`, `COUNT_IN_GESTURE_UNAVAILABLE`, `TOOL_EQUIPMENT_PATH_CLEARANCE`
-and `TOOL_PAIR_PATH_CLEARANCE` block motion validity: clear review-grid samples
+`TOOL_PAIR_PATH_CLEARANCE` and `UPPER_BODY_PATH_CLEARANCE` block motion validity: clear review-grid samples
 cannot erase a physical failure found at an internal refined time. Each source
 count-in must retain two planned hand contacts at its original time, so omitting
 an unavailable cue cannot pass. Successful fit and full hit assignment alone do
@@ -294,7 +369,7 @@ Actual adapter bone angles and these motion metrics are summarized globally and
 around semantic landmarks. Missing angle measurements remain unmeasured. The script
 still requires separate textured visual review of posture, skin and clothing.
 
-`BODY_PATH_CLEARANCE` reports advisory body overlap.
+`BODY_PATH_CLEARANCE` reports advisory body overlap. `UPPER_BODY_PATH_CLEARANCE` reports ordinary-core intersections, using a 1 µm packing tolerance on evaluated f32 poses. Browser aggregation retains its own minimum, measured/intersecting counts and first time; missing legacy fields remain unmeasured.
 `TOOL_EQUIPMENT_PATH_CLEARANCE` and `TOOL_PAIR_PATH_CLEARANCE` identify sampled
 physical-tool intersections; `EQUIPMENT_PATH_CLEARANCE` retains the combined
 historical report. These diagnostics preserve source hits/times and expose an

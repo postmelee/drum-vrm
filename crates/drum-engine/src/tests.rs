@@ -618,6 +618,16 @@ fn profile_replanning_diagnoses_outer_and_inner_reach_without_losing_audio() {
         (240, note(38, 100, 9)),
         (240, end()),
     ]);
+    // This boundary fixture needs an unreachable cymbal independently of the
+    // playable reference kit's current spacing.
+    let distant = [-1.2, 1.4, 1.2];
+    source
+        .kit
+        .iter_mut()
+        .find(|piece| piece.id == "crash")
+        .unwrap()
+        .position = distant;
+    source.hits[0].target = distant;
     source
         .diagnostics
         .push(Diagnostic::new("SOURCE_NOTICE", "keep this".into()));
@@ -631,7 +641,11 @@ fn profile_replanning_diagnoses_outer_and_inner_reach_without_losing_audio() {
         .iter()
         .any(|d| d.code == "RIG_UNREACHABLE_HIT" && d.hit_id == Some(0)));
     let mut previous_plan = motion.plan.clone();
-    for code in ["TOOL_EQUIPMENT_PATH_CLEARANCE", "TOOL_PAIR_PATH_CLEARANCE"] {
+    for code in [
+        "TOOL_EQUIPMENT_PATH_CLEARANCE",
+        "TOOL_PAIR_PATH_CLEARANCE",
+        "UPPER_BODY_PATH_CLEARANCE",
+    ] {
         previous_plan
             .diagnostics
             .push(Diagnostic::new(code, "stale setup result".into()));

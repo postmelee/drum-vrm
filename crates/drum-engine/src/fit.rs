@@ -249,8 +249,8 @@ fn crash_role_search_fits(
         })
     })
 }
-/// Static equipment, playable head approaches and all supports use the same
-/// numeric geometry that the renderer and temporal inspector consume.
+/// Physical bodies and supports use the same numeric geometry as rendering and
+/// temporal inspection. Broad head-access lanes are returned as advisories.
 fn piece_clear(index: usize, kit: &[KitPiece]) -> bool {
     let piece = &kit[index];
     let Some(body) = crate::equipment::body(piece) else {
@@ -258,10 +258,8 @@ fn piece_clear(index: usize, kit: &[KitPiece]) -> bool {
     };
     if kit.iter().enumerate().any(|(other, p)| {
         other != index
-            && crate::equipment::body(p).is_some_and(|obstacle| {
-                !crate::equipment::boxes_clear(&body, &obstacle)
-                    || !crate::equipment::playable_pair(piece, p)
-            })
+            && crate::equipment::body(p)
+                .is_some_and(|obstacle| !crate::equipment::boxes_clear(&body, &obstacle))
     }) {
         return false;
     }
@@ -868,13 +866,13 @@ fn place_rack_group(
         }
         let geometry = crate::equipment::kit_geometry(&fixed);
         let ctx = crate::equipment_motion::EquipmentContext::new(fixed, geometry);
-        if !ctx.geometry.unresolved_piece_ids.is_empty()
-            || !lower_limb::structural_violations(profile, &ctx.kit, &ctx.geometry).is_empty()
+        if !ctx.geometry().unresolved_piece_ids.is_empty()
+            || !lower_limb::structural_violations(profile, ctx.kit(), ctx.geometry()).is_empty()
             || !ctx
-                .kit
+                .kit()
                 .iter()
                 .all(|p| equipment_posture_fits(profile, p, &ctx))
-            || !crate::posture::required_pairs_with_equipment(profile, &ctx.kit, Some(&ctx))
+            || !crate::posture::required_pairs_with_equipment(profile, ctx.kit(), Some(&ctx))
                 .is_empty()
         {
             continue;
@@ -896,9 +894,9 @@ fn place_rack_group(
 
 /// Tripod phase is a real hardware degree of freedom, stored in the accepted
 /// kit so runtime reconstruction cannot silently choose another leg direction.
-/// Try it only when the current piece's support intersects the lower body;
+/// Try it when the current piece's support obstructs equipment or the lower body;
 /// moving an unrelated obstruction or weakening an envelope is not a repair.
-fn choose_leg_clear_stand_phase(
+fn choose_clear_stand_phase(
     profile: &RigProfile,
     candidate: &mut [KitPiece],
     index: usize,
@@ -917,20 +915,28 @@ fn choose_leg_clear_stand_phase(
     let kit = fixed(candidate);
     let geometry = crate::equipment::kit_geometry(&kit);
     let failures = lower_limb::structural_violations(profile, &kit, &geometry);
-    if failures.is_empty() {
+    if failures.is_empty() && geometry.unresolved_piece_ids.is_empty() {
         return true;
     }
-    if !matches!(
+    let rotatable = matches!(
         candidate[index].instrument,
         Instrument::Snare | Instrument::Hihat | Instrument::Crash | Instrument::Ride
-    ) || failures
-        .iter()
-        .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
+    ) || (candidate[index].instrument == Instrument::TomLow
+        && candidate[index].mount.is_none());
+    if !rotatable
+        || !piece_clear(kit.len() - 1, &kit)
+        || !layout::violations(profile, &kit).is_empty()
+        || (!geometry.unresolved_piece_ids.is_empty()
+            && !geometry.unresolved_piece_ids.contains(&candidate[index].id))
+        || failures
+            .iter()
+            .any(|code| !code.ends_with(&format!(":{}", candidate[index].id)))
     {
         return false;
     }
     // This piece's shell, footboards and leg IK do not change with its stand
-    // phase. The guard above already excludes failures owned by other pieces.
+    // phase. Only its supports may resolve a leg or equipment obstruction;
+    // unrelated failures cannot justify moving an already accepted stand.
     // Reject these exact invariant obstructions before spending phase probes.
     let mut invariant_geometry = geometry.clone();
     invariant_geometry
@@ -1020,14 +1026,14 @@ fn repair_posture_order(
                     kit.push(hat.clone());
                     let index = kit.len() - 1;
                     let fixed: Vec<_> = (0..index).collect();
-                    if !choose_leg_clear_stand_phase(profile, &mut kit, index, &fixed, cache) {
+                    if !choose_clear_stand_phase(profile, &mut kit, index, &fixed, cache) {
                         return None;
                     }
                     let hat = kit[index].clone();
                     let geometry = crate::equipment::kit_geometry(&kit);
                     let ctx = crate::equipment_motion::EquipmentContext::new(kit, geometry);
-                    (ctx.geometry.unresolved_piece_ids.is_empty()
-                        && lower_limb::structural_violations(profile, &ctx.kit, &ctx.geometry)
+                    (ctx.geometry().unresolved_piece_ids.is_empty()
+                        && lower_limb::structural_violations(profile, ctx.kit(), ctx.geometry())
                             .is_empty()
                         && equipment_posture_fits(profile, &hat, &ctx))
                     .then_some(hat)
@@ -1138,10 +1144,8 @@ fn repair_posture_order(
             };
             locked.iter().all(|&i| {
                 i == index
-                    || crate::equipment::body(&candidate[i]).is_none_or(|obstacle| {
-                        crate::equipment::boxes_clear(&body, &obstacle)
-                            && crate::equipment::playable_pair(piece, &candidate[i])
-                    })
+                    || crate::equipment::body(&candidate[i])
+                        .is_none_or(|obstacle| crate::equipment::boxes_clear(&body, &obstacle))
             })
         };
         let against_locked = |candidate: &[KitPiece]| {
@@ -1159,7 +1163,7 @@ fn repair_posture_order(
             }
             let geometry = crate::equipment::kit_geometry(&fixed);
             let ctx = crate::equipment_motion::EquipmentContext::new(fixed.clone(), geometry);
-            ctx.geometry.unresolved_piece_ids.is_empty()
+            ctx.geometry().unresolved_piece_ids.is_empty()
                 && crash_role_search_fits(profile, candidate, index, &ctx)
                 && equipment_posture_fits(profile, &candidate[index], &ctx)
                 && fixed
@@ -1186,7 +1190,7 @@ fn repair_posture_order(
                             let geometry = crate::equipment::kit_geometry(&pair_kit);
                             let pair_ctx =
                                 crate::equipment_motion::EquipmentContext::new(pair_kit, geometry);
-                            pair_ctx.geometry.unresolved_piece_ids.is_empty()
+                            pair_ctx.geometry().unresolved_piece_ids.is_empty()
                                 && equipment_posture_fits(profile, &candidate[index], &pair_ctx)
                                 && equipment_posture_fits(profile, hat, &pair_ctx)
                                 && crate::posture::pair_solution_with_equipment(
@@ -1232,12 +1236,11 @@ fn repair_posture_order(
             {
                 return false;
             }
-            if !against_locked(candidate) {
-                return false;
-            }
-            let phase = candidate[index].stand_rotation;
-            choose_leg_clear_stand_phase(profile, candidate, index, &locked, cache)
-                && (phase == candidate[index].stand_rotation || against_locked(candidate))
+            // A tripod may block another instrument while the seated legs are
+            // already clear. Try its existing physical phases before rejecting
+            // the placement, then validate the actual resulting tool paths.
+            choose_clear_stand_phase(profile, candidate, index, &locked, cache)
+                && against_locked(candidate)
         };
         let mut initial = result.kit.clone();
         if piece_posture_fits(profile, &initial[index], cache) && placement_fits(&mut initial) {
@@ -1513,6 +1516,9 @@ pub fn fit_kit(profile: &RigProfile, kit: &[KitPiece]) -> Result<KitFitProposal,
     .into_iter()
     .filter(|violation| !result.layout_violations.contains(violation))
     .collect();
+    result
+        .advisory_layout_violations
+        .extend(crate::equipment::approach_advisories(&result.kit));
     result.capabilities = Some(crate::posture::audit(&fitted_profile, &result.kit));
     Ok(cache.finish(result))
 }

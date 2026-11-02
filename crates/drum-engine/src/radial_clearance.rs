@@ -47,12 +47,15 @@ fn point_bound(
 /// interval; long shafts above the bow usually pass without subdivision.
 /// A finite subdivision budget returns an unresolved conservative bound; it
 /// never converts an uncertain interval into clearance.
+/// `required_clearance` is the caller's proof threshold, not extra geometry:
+/// tangent contact needs zero, while a free obstacle needs its full margin.
 pub(super) fn interval(
     start: Vec3,
     end: Vec3,
     radii: [f64; 2],
     body: &EquipmentBox,
     profile: &RadialSurfaceProfile,
+    required_clearance: f64,
 ) -> f64 {
     let slope = profile
         .points
@@ -117,7 +120,12 @@ pub(super) fn interval(
     while let Some((a, b, depth)) = pending.pop() {
         let lower = bound(a, b);
         visits += 1;
-        if lower >= 0. || bound(a, a) <= 0. || bound(b, b) <= 0. || depth == 16 || visits >= 256 {
+        if lower >= required_clearance
+            || bound(a, a) <= required_clearance
+            || bound(b, b) <= required_clearance
+            || depth == 16
+            || visits >= 256
+        {
             minimum = minimum.min(lower);
             continue;
         }
@@ -166,7 +174,8 @@ mod tests {
                 [0.3, 0.01, 0.],
                 [0.003; 2],
                 &body,
-                &profile
+                &profile,
+                0.,
             ) < 0.
         );
     }
@@ -180,7 +189,8 @@ mod tests {
                 [0.30, 0.005, 0.],
                 [0.003, 0.006],
                 &body,
-                &profile
+                &profile,
+                0.,
             ) > 0.
         );
         assert!(
@@ -189,7 +199,48 @@ mod tests {
                 [0.2, -0.035, 0.],
                 [0.003; 2],
                 &body,
-                &profile
+                &profile,
+                0.,
+            ) < 0.
+        );
+    }
+
+    #[test]
+    fn refines_positive_rim_bound_until_the_requested_margin_is_proven() {
+        let (body, profile) = fixture();
+        // The low butt is far outside the disk, while the high tip passes near
+        // its edge. The whole-interval radial bound is positive but too loose
+        // to prove the free-obstacle margin; one plane need not bound both ends.
+        let a = [-0.35, -0.14, -0.4];
+        let b = [-0.247, 0.04, -0.07];
+        let margin = 0.002;
+        let tangent = interval(a, b, [0.006; 2], &body, &profile, 0.);
+        let clear = interval(a, b, [0.006; 2], &body, &profile, margin);
+        assert!(tangent > 0. && tangent < margin);
+        assert!(
+            clear >= margin,
+            "ambiguous positive bound {tangent}: {clear}"
+        );
+
+        // An endpoint genuinely inside the required margin remains unresolved;
+        // refining the proof threshold never exempts the tip or shrinks the tool.
+        let close = interval(
+            [-0.36, -0.03, 0.],
+            [-0.25675, -0.03, 0.],
+            [0.006; 2],
+            &body,
+            &profile,
+            margin,
+        );
+        assert!(close >= 0. && close < margin);
+        assert!(
+            interval(
+                [-0.36, -0.03, 0.],
+                [-0.249, -0.03, 0.],
+                [0.006; 2],
+                &body,
+                &profile,
+                margin,
             ) < 0.
         );
     }
@@ -210,7 +261,7 @@ mod tests {
         // A bow crossing over 120 mm from the tip is outside the intended
         // terminal contact region, regardless of the tangent at the bell.
         let start = std::array::from_fn(|axis| tip[axis] + (butt[axis] - tip[axis]) * 0.07);
-        assert!(interval(start, butt, [0.003, 0.006], &body, &profile) < 0.);
+        assert!(interval(start, butt, [0.003, 0.006], &body, &profile, 0.) < 0.);
     }
 
     #[test]
@@ -218,7 +269,7 @@ mod tests {
         let (body, profile) = fixture();
         let a = [0.07, 0.015, 0.];
         let b = [0.30, 0.005, 0.];
-        let before = interval(a, b, [0.003, 0.006], &body, &profile);
+        let before = interval(a, b, [0.003, 0.006], &body, &profile, 0.);
         let angle = 0.37_f64;
         let q = [(angle / 2.).sin(), 0., 0., (angle / 2.).cos()];
         let mut moved_body = body.clone();
@@ -233,6 +284,7 @@ mod tests {
             [0.003, 0.006],
             &moved_body,
             &moved_profile,
+            0.,
         );
         assert!((before - after).abs() < 1e-12);
     }
@@ -244,14 +296,17 @@ mod tests {
         for i in 0..40 {
             let a = [-0.27, -0.04 + i as f64 * 0.003, 0.015];
             let b = [0.27, 0.045 - i as f64 * 0.001, -0.02];
-            let bound = interval(a, b, [0.002, 0.006], &body, &profile);
-            for step in 0..=1000 {
-                let t = step as f64 / 1000.;
-                let point = std::array::from_fn(|axis| a[axis] + (b[axis] - a[axis]) * t);
-                assert!(
-                    bound
-                        <= point_bound(point, &body, &profile, slope) - (0.002 + 0.004 * t) + 1e-12
-                );
+            for required in [0., 0.002, 0.01] {
+                let bound = interval(a, b, [0.002, 0.006], &body, &profile, required);
+                for step in 0..=1000 {
+                    let t = step as f64 / 1000.;
+                    let point = std::array::from_fn(|axis| a[axis] + (b[axis] - a[axis]) * t);
+                    assert!(
+                        bound
+                            <= point_bound(point, &body, &profile, slope) - (0.002 + 0.004 * t)
+                                + 1e-12
+                    );
+                }
             }
         }
     }

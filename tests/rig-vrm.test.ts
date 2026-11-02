@@ -67,6 +67,13 @@ describe('VRM normalized-to-raw rest basis and actual tool attachments', () => {
     expect(profile.gripOffsets[0][0]).toBeCloseTo(-profile.gripOffsets[1][0], 6);
     for (const side of ['left', 'right'] as const) {
       const socket = rig.root.getObjectByName(`${side}HandToolSocket`)!;
+      const wrist = vrm.humanoid.getRawBoneNode(`${side}Hand`)!.getWorldPosition(new Vector3());
+      const handForward = vrm.humanoid.getRawBoneNode(`${side}MiddleProximal`)!.getWorldPosition(new Vector3()).sub(wrist).normalize();
+      const shaft = new Vector3(0, 0, 1).applyQuaternion(socket.getWorldQuaternion(new Quaternion()));
+      // A horizontal shaft and a thumb-up hand can now have a parallel forearm
+      // inside the common 0.6-radian wrist bound. Measure actual attached bones
+      // and the socket, independently of the adapter's control-frame metadata.
+      expect(shaft.angleTo(handForward)).toBeLessThan(.6);
       const proximal = socket.worldToLocal(vrm.humanoid.getRawBoneNode(`${side}IndexProximal`)!.getWorldPosition(new Vector3()));
       const distal = socket.worldToLocal(vrm.humanoid.getRawBoneNode(`${side}IndexDistal`)!.getWorldPosition(new Vector3()));
       const grip = new Vector3(...profile.gripOffsets[side === 'left' ? 0 : 1]); grip.x *= -1;

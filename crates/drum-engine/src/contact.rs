@@ -125,6 +125,19 @@ fn radial_frame(piece: &KitPiece) -> Option<(&crate::equipment::RadialSurfacePro
         scale,
     ))
 }
+/// The playable footprint uses the authored radial frame when present, not a
+/// tangent plane sampled at a different point on the curved bow. Padding is in
+/// planning metres; each caller retains its own existing region fraction.
+pub fn inside_playable_region(piece: &KitPiece, point: Vec3, fraction: f64, padding: f64) -> bool {
+    if let Some((profile, origin, scale)) = radial_frame(piece) {
+        let local = crate::rig::rotate(inverse(profile.rotation), sub(point, origin));
+        return local[0].hypot(local[2])
+            <= profile.points.last().unwrap()[0] * scale * fraction + padding;
+    }
+    let (center, normal, radius) = surface(piece);
+    let delta = sub(point, center);
+    distance(sub(delta, mul(normal, dot(delta, normal))), [0.; 3]) <= radius * fraction + padding
+}
 fn radial_height(points: &[[f64; 2]], radius: f64) -> (f64, f64) {
     let index = points
         .partition_point(|point| point[0] < radius)
@@ -249,7 +262,7 @@ pub fn valid_target(piece: &KitPiece, target: Vec3) -> bool {
         );
         let radius = local[0].hypot(local[2]);
         let allowance = distance(mechanism_offset(piece, 1.), [0.; 3]) / scale;
-        return radius <= profile.points.last().unwrap()[0] * 0.95 + allowance + 1e-9
+        return inside_playable_region(piece, target, 0.95, (allowance + 1e-9) * scale)
             && (local[1] - radial_height(&profile.points, radius).0).abs() <= allowance + 1e-6;
     }
     let (center, normal, radius) = surface(piece);
@@ -296,6 +309,7 @@ mod tests {
             body: crate::equipment::LocalBox {
                 center: [0.08, 0.04, -0.06],
                 half_extents: [0.23, 0.09, 0.23],
+                rotation: None,
             },
             surface: crate::equipment::Surface {
                 center: [0.08, 0.12, -0.06],
@@ -375,6 +389,67 @@ mod tests {
                     height > 0.
                 );
             }
+        }
+    }
+    #[test]
+    fn radial_playable_region_and_projection_follow_rigid_tilt() {
+        let mut base = tilted_piece([0., 1., 0.]);
+        let origin = [0.02, 0.04, 0.05];
+        let points = vec![[0., 0.02], [0.04, 0.01], [0.12, -0.01], [0.2, -0.03]];
+        // Historical projected-plane radii need not equal the radial surface.
+        base.geometry.as_mut().unwrap().surface.radius = 0.12;
+        base.geometry.as_mut().unwrap().surface.radial_profile =
+            Some(crate::equipment::RadialSurfaceProfile {
+                origin,
+                rotation: [0., 0., 0., 1.],
+                points: points.clone(),
+                bell_radius: None,
+            });
+        let scale = base.radius / base.geometry.as_ref().unwrap().reference_radius;
+        let world_origin = add(base.position, mul(origin, scale));
+        let observer = add(world_origin, [0.3, 0.7, -0.5]);
+        let base_target = target(&base, "crash", observer);
+        let translation = [0.4, -0.2, 0.3];
+        for degrees in [0_f64, 15., 20., 25.] {
+            let angle = degrees.to_radians() / 2.;
+            let rotation = [angle.sin(), 0., 0., angle.cos()];
+            let mut piece = base.clone();
+            piece.position = add(base.position, translation);
+            piece
+                .geometry
+                .as_mut()
+                .unwrap()
+                .surface
+                .radial_profile
+                .as_mut()
+                .unwrap()
+                .rotation = rotation;
+            let transform = |point| {
+                add(
+                    add(world_origin, translation),
+                    crate::rig::rotate(rotation, sub(point, world_origin)),
+                )
+            };
+            let hit = target(&piece, "crash", transform(observer));
+            assert!(distance(hit, transform(base_target)) < 1e-12);
+            assert!(valid_target(&piece, hit));
+            assert!(inside_playable_region(&piece, hit, 0.96, 0.));
+            let up = crate::rig::rotate(rotation, [0., 1., 0.]);
+            let (projected, _) = project_surface(&piece, add(hit, mul(up, 0.08)));
+            assert!(distance(projected, hit) < 1e-12);
+            let radius = 0.2 * 0.98;
+            let outside = transform(add(
+                world_origin,
+                mul([radius, radial_height(&points, radius).0, 0.], scale),
+            ));
+            assert!(!inside_playable_region(&piece, outside, 0.96, 0.));
+            assert!(!valid_target(&piece, outside));
+            let below = sub(hit, mul(up, 0.01));
+            assert!(inside_playable_region(&piece, below, 0.96, 0.));
+            assert!(
+                !valid_target(&piece, below),
+                "footprint does not grant surface contact"
+            );
         }
     }
     #[test]

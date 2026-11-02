@@ -1,12 +1,15 @@
 import { msg } from './i18n';
 import type { PerformancePlan, PoseInspection, RigProfile } from './types';
+import { POSE_CLEARANCE_TOLERANCE_METERS } from './review-clearance';
 
 export interface PoseReview {
   samples: number;
   maxOrderDifference: number;
   nonfiniteValues: number;
   durationSeconds: number;
-  proxy?: { scope: 'skeletal-proxies'; samples: number; torsoMinimumMeters: number;
+  proxy?: { scope: 'skeletal-proxies'; samples: number; packingToleranceMeters?: number; torsoMinimumMeters: number;
+    upperBodyCoreMinimumMeters?: number; upperBodyCoreSamples?: number;
+    upperBodyCoreIntersectingSamples?: number; firstUpperBodyCoreIntersectionSeconds?: number|null;
     equipmentMinimumMeters?:number; crossMinimumMeters?:number; armsMinimumMeters: number; sticksMinimumMeters: number; boneLengthMaximumErrorMeters: number;
     toolEquipmentMinimumMeters?:number; toolPairMinimumMeters?:number;
     toolSamples?:number; toolIntersectingSamples?:number; firstToolIntersectionSeconds?:number|null;
@@ -59,12 +62,21 @@ export function summarizePoseReview(times: number[], ordered: readonly Float32Ar
 export function summarizeProxyReview(times: number[], inspections: readonly PoseInspection[]): NonNullable<PoseReview['proxy']> {
   if (!times.length || times.length !== inspections.length) throw new Error(msg("Inspection sample counts do not match.", "검수 표본 수가 다릅니다."));
   const result: NonNullable<PoseReview['proxy']> = { scope:'skeletal-proxies', samples: times.length,
+    packingToleranceMeters: POSE_CLEARANCE_TOLERANCE_METERS,
     torsoMinimumMeters: Infinity, armsMinimumMeters: Infinity, sticksMinimumMeters: Infinity,
     boneLengthMaximumErrorMeters: 0, intersectingSamples: 0, firstIntersectionSeconds: null };
   inspections.forEach((sample,index) => {
     const values=[sample.torsoClearanceMeters,sample.armClearanceMeters,sample.stickClearanceMeters,sample.boneLengthErrorMeters];
     if (!values.every(Number.isFinite)) throw new Error(msg("Invalid clearance measurement.", "유효하지 않은 간격 계측값입니다."));
     result.torsoMinimumMeters=Math.min(result.torsoMinimumMeters,sample.torsoClearanceMeters);
+    if(sample.upperBodyCoreClearanceMeters!==undefined){
+      const core=sample.upperBodyCoreClearanceMeters;
+      if(!Number.isFinite(core))throw new Error(msg('Invalid clearance measurement.', '유효하지 않은 간격 계측값입니다.'));
+      result.upperBodyCoreMinimumMeters=Math.min(result.upperBodyCoreMinimumMeters??Infinity,core);
+      result.upperBodyCoreSamples=(result.upperBodyCoreSamples??0)+1;
+      result.upperBodyCoreIntersectingSamples??=0;result.firstUpperBodyCoreIntersectionSeconds??=null;
+      if(core < -POSE_CLEARANCE_TOLERANCE_METERS){result.upperBodyCoreIntersectingSamples++;result.firstUpperBodyCoreIntersectionSeconds??=times[index];}
+    }
     result.armsMinimumMeters=Math.min(result.armsMinimumMeters,sample.armClearanceMeters);
     result.sticksMinimumMeters=Math.min(result.sticksMinimumMeters,sample.stickClearanceMeters);
     result.boneLengthMaximumErrorMeters=Math.max(result.boneLengthMaximumErrorMeters,sample.boneLengthErrorMeters);
@@ -83,7 +95,7 @@ export function summarizeProxyReview(times: number[], inspections: readonly Pose
       // mixed data may retain minima, but cannot certify the missing boundary.
       result.toolSamples=(result.toolSamples??0)+Number(toolValues.length===2);
       result.toolIntersectingSamples??=0;result.firstToolIntersectionSeconds??=null;
-      if(Math.min(...toolValues)<0){result.toolIntersectingSamples++;result.firstToolIntersectionSeconds??=times[index];}
+      if(Math.min(...toolValues)<-POSE_CLEARANCE_TOLERANCE_METERS){result.toolIntersectingSamples++;result.firstToolIntersectionSeconds??=times[index];}
     }
     if (Math.min(...values.slice(0,3),...extra) < 0) { result.intersectingSamples++;result.firstIntersectionSeconds??=times[index]; }
   });
