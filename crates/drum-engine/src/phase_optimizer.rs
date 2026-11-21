@@ -63,8 +63,25 @@ fn optimize_active(
         };
         let mut matrix = [[0.; VARIABLES]; VARIABLES];
         let mut rhs = [0.; VARIABLES];
+        // Compact support makes the Jacobian vanish at a source contact.
+        // Bound regularization by active curvature so damping cannot swamp
+        // the entire system as a sample approaches that contact.
+        let curvature = jacobian[..active]
+            .iter()
+            .map(|column| {
+                column
+                    .iter()
+                    .zip(&residual)
+                    .filter(|(_, r)| **r > 0.)
+                    .map(|(j, _)| j * j)
+                    .sum::<f64>()
+            })
+            .fold(0_f64, f64::max);
+        if curvature == 0. {
+            break;
+        }
         for i in 0..VARIABLES {
-            matrix[i][i] = DAMPING;
+            matrix[i][i] = DAMPING.min(curvature);
             for (k, &r) in residual.iter().enumerate().filter(|(_, r)| **r > 0.) {
                 rhs[i] -= jacobian[i][k] * r;
                 for (j, row) in jacobian.iter().enumerate() {
@@ -285,6 +302,13 @@ fn solve(mut matrix: [[f64; VARIABLES]; VARIABLES], mut rhs: Parameters) -> Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn repairs_a_small_violation_next_to_a_fixed_contact() {
+        let residuals = |p: &Parameters| vec![1e-5 * (0.1 - p[0])];
+        let fitted = optimize_plane_twist([0.; 8], residuals, |_| 0.);
+        assert!(violation(&residuals(&fitted)).unwrap() <= CONVERGENCE);
+    }
 
     #[test]
     fn fits_coupled_nonlinear_constraints_deterministically() {

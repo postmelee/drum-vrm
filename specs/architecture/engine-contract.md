@@ -206,6 +206,7 @@ The measured endpoint curve is the first candidate. Corrections first keep local
 forearm/wrist flex fixed and optimize the existing plane/twist coefficients; only
 failure enables all eight coefficients. Each solve has at most 48 feasibility and
 16 motion iterations, 12 backtracks, a 0.15 trust step and four collocation rounds.
+Near a protected contact the curve coefficients have little influence. Feasibility damping is bounded by the largest active diagonal of the normal matrix so a small correctable wrist error can still converge.
 A single certified restart reuses the same static witness family. Both hands and
 restoration share the absolute 480 Hz lattice, canonical boundaries, control times
 and known inspection times. Non-source joins align outward to feasible existing controls; overlapping coverage is united and split at source/held-cue boundaries, while raw stroke breakpoints remain sampled. Adjacent ordinary phases may coalesce once without

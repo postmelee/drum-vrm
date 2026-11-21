@@ -5,6 +5,26 @@ It covers the unpublished v22 work on `codex/kit-grip-refinement`, starting from
 `9e3af50aa46083ae97774c8cfae2ef339eb36ab6`. Intermediate measurements below do not
 establish a final candidate, owner visual acceptance or Pages deployment.
 
+## Endpoint correction — 2026-11-22
+
+Using the same fitted inputs as the November 3 comparison, WASM
+`b98cc579c36ce8295349169c2d54062316e92896de1b649f9f7f97f0ea670416`
+clears the native Interpretation study's 55 posture warnings. All 82 hits,
+source facts, layout, seek and prepared restoration pass. The six optimizer
+tests include a small wrist correction adjacent to a fixed contact.
+
+Seed Studio preserves 193 assigned hits and prepared restoration. Both WASM
+versions report 435 posture samples, first at 7.88125 s. A native replan of
+the saved WASM tracks produces 939 failing right-hand samples on the denser
+private grid with either optimizer. Comparing that native result to the 843
+saved-track samples would incorrectly attribute a runtime difference to the fix.
+
+A separate native Studio experiment interpolated actual endpoint wrists and
+tool rotations for the 7.875–8.25 s floor-to-hat transfer. It still missed the
+pair margin by 12.35 mm around 8.140 s and failed the full-phase fit. Only the
+conditioning change is adopted. The remaining Studio and public Interpretation
+paths and owner visual review keep the import-model handoff open.
+
 ## Fresh UI checkpoint — 2026-11-03
 
 The next immutable candidate is `.local/common-motion-v22-candidate/source/`,
