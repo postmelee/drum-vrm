@@ -5,6 +5,38 @@ own measured results and publication evidence.
 
 ## Current review and next work
 
+The kit/grip batch on `codex/kit-grip-refinement` remains **draft, not published**.
+The owner authorized pushing the branch and continuing the common motion work
+before broader VRM 0.0/FBX validation. The [current v22 evidence](verification/coupled-hand-path-and-preparation.md)
+continues the [v21 record](verification/shaft-count-in-and-path-followup.md).
+
+The candidate retains the reviewed reference kit, forward left instruments,
+larger shaft-middle wrist count-in and ordinary semantic body cores. It now
+couples elbow, wrist and actual tool orientation over fixed routed tips; selected impact poses stay fixed within phase refinement, and original
+MIDI times and both real arm lengths are preserved. Source-safe anchors
+rank before finite path/style cost. Contact pitch boundary refinement avoids
+coarse-sampling false failures, and radial queries prove the caller's actual
+margin. Exact query reuse reduces repeated preparation work. Internal prepared
+format 9 validates canonical per-hand curves and their shared sampling lattice.
+No avatar-name rules, bone stretching or MIDI retiming are introduced.
+
+All four native/public profiles retain assignment, contact, source facts, seek
+and prepared restoration in the latest short-demo runs. These invariants are
+separate from temporal acceptance. Final whole-catalog physical/posture scans,
+actual adapter/skin inspection and owner visual review are still in progress;
+do not call the candidate collision-free or ready for import-model handoff yet.
+The [current evidence](verification/coupled-hand-path-and-preparation.md) separates
+intermediate failures from later corrections. Keep body/costume advisory findings
+distinct from ordinary-core, anatomical and physical-tool failures.
+
+Next finish those scans and the remaining common phase failures, check the
+larger count-in and elbow motion with the owner, then hand the exact candidate
+and reproducible acceptance record to the import chat. Do not restart isolated
+avatar-specific angle sweeps or infer natural movement from marker accuracy.
+Fast-fill explanations and broader model coverage remain separate work; do not
+force paradiddles into every fill. The [ergonomics/sticking research](research/ergonomics-and-sticking.md)
+preserves the rationale.
+
 [PR #64](https://github.com/postmelee/drum-vrm/pull/64) carries the reviewed
 common-fitting/motion checkpoint on top of PR #58's FBX/VRM 0.0 work. The owner
 approved merging this known-incomplete candidate and publishing it to Pages on
@@ -39,18 +71,12 @@ startup. These UI integrations do not establish new motion acceptance.
   is advisory; structural lower-limb cores and actual pedal reach remain required.
   Report measured lower-body warnings separately from fit completion. Extreme
   costume clearance is outside this batch; character scaling is not implemented.
-- **Next acceptance:** preserve the successful fits and complete 53/53 posture,
-  82/82 interpretation assignments while repairing common tool trajectories and
-  final evaluated posture, including the retained impact-pitch failure. Do not
-  restart layout search to hide these diagnostics. Marker and ordered/reversed
-  checks passed; they do not
-  certify intervening motion. The new 45 textured ready/groove-entry/tom/dual-crash/
-  ending captures cover front/top/left views of all three models; tom transitions
-  still show excessive arm elevation, especially Seed-san. A final diagnostic-build
-  smoke check confirmed B playback to end and native seat restoration; Seed-san
-  and Twist continuous playback on that build remain unverified. Missing motion or tool
-  measurements cannot count as acceptance. The earlier 36 captures remain a
-  separate failed baseline.
+- **Next acceptance:** preserve current successful fit/assignment/contact and
+  prepared-format-9 restoration checks while repairing the remaining tool paths,
+  wrist limits and excessive arm elevation. Marker precision, palm direction and
+  seek equality do not certify intervening motion. Exact branch-jump regressions
+  now pass, but sampled tool speeds and interior poses still fail natural-motion review.
+  Keep earlier captures/measurements distinct from the final candidate evidence.
 - **Integration:** the other import chat has been notified to avoid duplicate
   solver edits. [PR #58](https://github.com/postmelee/drum-vrm/pull/58) and its
   [integration record](verification/shared-fit-integration.md) preserve their
@@ -65,10 +91,11 @@ layout checkpoint, not proof of this candidate's public-model acceptance.
 [ergonomics/sticking](research/ergonomics-and-sticking.md) retain the rationale.
 
 Record subsequent checks and browser evidence against the exact candidate in the
-[common-motion review](verification/common-motion-fit.md); preserve the older
+[current coupled-path record](verification/coupled-hand-path-and-preparation.md); preserve the older
 [public VRM review](verification/public-vrm-fit.md) as its own measurement.
-The owner's request covers this fitting/review Pages batch, not a Release/tag or
-unrelated changes; follow the [release policy](release-policy.md).
+The earlier Pages authorization covers the published PR #64 batch. A subsequent
+candidate needs its own reviewed scope and approval under the
+[release policy](release-policy.md); no Release/tag is implied.
 
 ## Earlier evidence and provenance
 

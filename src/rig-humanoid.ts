@@ -1,6 +1,6 @@
 import { msg } from './i18n';
 import { fitThumbToShaft } from './shaft-grip';
-import { createStickGeometry } from './stick-geometry';
+import { createStickGeometry, STICK_PROFILE } from './stick-geometry';
 import { DEFAULT_KIT, DEFAULT_PEDALS, NATIVE_REFERENCE_SEAT } from './kit-default';
 import { pedalForwardDirection, pedalToolRotation } from './pedal-frame';
 import * as THREE from 'three';
@@ -28,6 +28,10 @@ export interface RigContactSample {
   wristSwingDegrees?: number;
   upperArmElevationDegrees?: number;
   elbowInteriorDegrees?: number;
+  /** Measured raw-hand palm normal in renderer world coordinates (+Y up). */
+  palmNormal?: Vec3;
+  /** Actual rendered full butt-to-tip shaft, for paired-tool contact. */
+  shaftMidpoint?: Vec3; shaftDirection?: Vec3;
 }
 export interface HumanoidRigAdapter extends RigAdapter {
   getProfile(): RigProfile;
@@ -383,7 +387,13 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     return this.chains.map((chain, limb) => {
       const actual = chain.contact.getWorldPosition(new THREE.Vector3());
       let wristSwingDegrees: number | undefined, upperArmElevationDegrees: number | undefined, elbowInteriorDegrees: number | undefined;
+      let palmNormal: Vec3 | undefined;
+      let shaftMidpoint: Vec3 | undefined, shaftDirection: Vec3 | undefined;
       if (limb < 2) {
+        const tipLength = new THREE.Vector3(...this.profile.tipOffsets[limb]).length();
+        const shaft = chain.stick!;
+        shaftMidpoint = tuple(shaft.localToWorld(new THREE.Vector3(0, 0, (tipLength - STICK_PROFILE.buttLength) * .5)));
+        shaftDirection = tuple(new THREE.Vector3(0, 0, 1).transformDirection(shaft.matrixWorld));
         const hand = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][2])!;
         const lower = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][1])!;
         const upper = this.humanoid.getRawBoneNode(CHAIN_NAMES[limb][0])!;
@@ -393,10 +403,11 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
         elbowInteriorDegrees = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(-downArm.dot(forearm), -1, 1)));
         const forward = this.handFrames[limb].forward.clone().applyQuaternion(chain.rawRestInverse).applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion()));
         wristSwingDegrees = THREE.MathUtils.radToDeg(Math.acos(THREE.MathUtils.clamp(forward.dot(forearm), -1, 1)));
+        palmNormal = tuple(this.handFrames[limb].palm.clone().applyQuaternion(chain.rawRestInverse).applyQuaternion(hand.getWorldQuaternion(new THREE.Quaternion())).normalize());
       }
       return { limb, expected: tuple(this.expected[limb]), actual: tuple(actual), errorMeters: actual.distanceTo(this.expected[limb]),
         source: limb < 2 ? 'hand-local-stick-tip' as const : 'foot-local-sole-contact' as const,
-        ...(wristSwingDegrees === undefined ? {} : { wristSwingDegrees, upperArmElevationDegrees, elbowInteriorDegrees }),
+        ...(wristSwingDegrees === undefined ? {} : { wristSwingDegrees, upperArmElevationDegrees, elbowInteriorDegrees, palmNormal, shaftMidpoint, shaftDirection }),
       };
     });
   }
@@ -423,7 +434,7 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
   }
   private handOrientation(limb: number, root: THREE.Vector3, wrist: THREE.Vector3, lengths: [number, number], pole: THREE.Vector3, mode: PalmOrientation) {
     const frame = this.handFrames[limb], forward = wrist.clone().sub(referenceElbow(root, wrist, lengths, pole)).normalize();
-    const palm = mode === 'natural' ? new THREE.Vector3(limb === 0 ? -1 : 1, -1, 0).normalize() : mode === 'up' ? new THREE.Vector3(0, 1, 0) : mode === 'down' ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(limb === 0 ? -1 : 1, 0, 0);
+    const palm = mode === 'up' ? new THREE.Vector3(0, 1, 0) : mode === 'down' ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(limb === 0 ? -1 : 1, 0, 0);
     const hand = directionFrame(forward, palm).multiply(directionFrame(frame.forward, frame.palm).invert());
     const shaft = frame.shaft.clone().applyQuaternion(hand), y = new THREE.Vector3(0, 1, 0).addScaledVector(shaft, -shaft.y).normalize();
     if (y.lengthSq() < 1e-10) y.set(0, 0, 1).addScaledVector(shaft, -shaft.z).normalize();
@@ -432,7 +443,12 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
     const controlFrame: HandControlFrame = {
       forearm: legacyPositionToNative(forward.toArray()),
       palm: legacyPositionToNative(frame.palm.clone().applyQuaternion(hand).toArray()),
-      desiredPalm: legacyPositionToNative(palm.toArray()),
+      // Natural matched grip starts thumb-up/inward. Pronation toward palm-down
+      // is available to the common arm solve; target names/heights do not select
+      // another grip. Explicit preferences retain a small symmetric allowance.
+      desiredPalm: legacyPositionToNative(mode === 'natural' ? [limb === 0 ? -1 : 1, 0, 0] : palm.toArray()),
+      palmRollRange: mode === 'natural' ? (limb === 0 ? [-Math.PI / 2, 0] : [0, Math.PI / 2]) : [-.15, .15],
+      ...(mode === 'natural' ? {palmReference: 'shaftHeading' as const} : {}),
     };
     return { rotation, mount, grip: frame.grip.clone().applyQuaternion(mount.clone().invert()), controlFrame };
   }
@@ -461,7 +477,13 @@ export class NormalizedHumanoidRigAdapter implements HumanoidRigAdapter {
         across.addScaledVector(forward, -across.dot(forward)).normalize();
       }
       const palm = forward.clone().cross(across).multiplyScalar(side === 'left' ? 1 : -1).normalize();
-      const shaft = forward.clone().add(across).normalize();
+      // A shallow diagonal leaves room for a thumb-up strike with a nearly
+      // straight wrist. The former fixed 45-degree diagonal itself exceeded
+      // the planner's wrist-swing bound for a horizontal inward-palm strike.
+      // This is one shared authored grip, not an anatomical universal. Fingers,
+      // thumb, mount and measured tool offsets all use this same physical shaft.
+      const gripAngle = Math.PI / 6;
+      const shaft = forward.clone().multiplyScalar(Math.cos(gripAngle)).addScaledVector(across, Math.sin(gripAngle)).normalize();
       const fingerLength = points.length ? points.reduce((sum, p) => sum + p[0].distanceTo(p[1]) + p[1].distanceTo(p[2]), 0) / points.length : .054;
       const grip = points.length ? points.reduce((sum, p) => sum.add(p[0]), new THREE.Vector3()).divideScalar(points.length) : forward.clone().multiplyScalar(.06);
       grip.addScaledVector(palm, fingerLength * .5).addScaledVector(forward, -fingerLength * .08);

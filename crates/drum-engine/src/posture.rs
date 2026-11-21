@@ -9,7 +9,24 @@ use serde::Serialize;
 pub const MARGIN: f64 = 0.002;
 /// Common measured hand-to-forearm swing bound (34.4 degrees).
 pub const MAX_WRIST_SWING: f64 = 0.6;
+/// Common elbow extension bound; pi would be a straight arm.
+pub const MAX_ELBOW_ANGLE: f64 = 165_f64.to_radians();
+/// Shared numerical tolerance for the norm of angular / bone-normalized posture
+/// deficits. The bounded optimizer converges at residual norm 1e-12; this leaves
+/// a 100x arithmetic reserve for reconstruction without changing the measured
+/// deficit or any geometric limit (1e-10 rad is about 5.7e-9 degrees).
+const ANATOMICAL_NUMERIC_TOLERANCE: f64 = 1e-10;
 pub const SWIVELS: [f64; 5] = [0.0, -0.4, 0.4, -0.8, 0.8];
+
+/// Try every existing approach that preserves the ordinary arm before allowing
+/// an orientation fallback to move its joints. This changes priority, not the
+/// numeric pitch/swivel family or any physical acceptance bound.
+#[derive(Clone, Copy)]
+pub(crate) enum HandSearch {
+    PreserveArm,
+    Full,
+}
+pub(crate) const HAND_SEARCHES: [HandSearch; 2] = [HandSearch::PreserveArm, HandSearch::Full];
 
 /// Common geometric posture measures, independent of the avatar's bone axes.
 /// These are animation priors, not clinical limits or proof of skin clearance.
@@ -42,6 +59,18 @@ fn elevation_allowance(profile: &RigProfile, limb: usize, target: Vec3) -> f64 {
 /// Shared by layout, ready pose, equipment routing, torso and elbow planning.
 /// Bounded below 0.4 per arm so a relaxed pose cannot buy a collision clearance.
 pub fn comfort_cost(profile: &RigProfile, limb: usize, target: Vec3, hand: &HandSolution) -> f64 {
+    (arm_comfort_cost(profile, limb, target, hand)
+        + profile.hand_grip_preference_cost(limb, hand.rotation))
+    .min(0.39)
+}
+/// Body-only term used by the static wrist solver, which ranks the same grip
+/// objective directly beside wrist comfort and arm displacement.
+pub(crate) fn arm_comfort_cost(
+    profile: &RigProfile,
+    limb: usize,
+    target: Vec3,
+    hand: &HandSolution,
+) -> f64 {
     let p = arm_posture(profile, limb, hand);
     let allowance = elevation_allowance(profile, limb, target);
     let excess = (p.elevation - (35.0 + 55.0 * allowance).to_radians()).max(0.0);
@@ -67,13 +96,21 @@ pub fn anatomical_violation(
     let root = profile.roots[limb];
     let [upper, lower] = profile.lengths[limb];
     let posture = arm_posture(profile, limb, hand);
+    let forward = clearance::body_axes(profile)[1];
+    let ahead = |point| {
+        crate::motion::sub(point, root)
+            .iter()
+            .zip(forward)
+            .map(|(a, b)| a * b)
+            .sum::<f64>()
+    };
     let values = [
         profile.wrist_deviation(limb, hand) - MAX_WRIST_SWING,
         posture.elevation - (70.0 + 45.0 * elevation_allowance(profile, limb, target)).to_radians(),
         55_f64.to_radians() - posture.elbow,
-        posture.elbow - 165_f64.to_radians(),
-        (root[2] - upper * 0.35 - hand.middle[2]) / upper,
-        (root[2] + lower * 0.15 - hand.end[2]) / lower,
+        posture.elbow - MAX_ELBOW_ANGLE,
+        (-upper * 0.35 - ahead(hand.middle)) / upper,
+        (lower * 0.15 - ahead(hand.end)) / lower,
     ];
     if values.iter().any(|v| !v.is_finite()) {
         return f64::INFINITY;
@@ -82,7 +119,12 @@ pub fn anatomical_violation(
         + if hand.reachable { 0. } else { 1. }
 }
 pub fn anatomical(profile: &RigProfile, limb: usize, target: Vec3, hand: &HandSolution) -> bool {
-    anatomical_violation(profile, limb, target, hand) == 0.
+    anatomical_violation_valid(anatomical_violation(profile, limb, target, hand))
+}
+/// Cached posture deficits use the same acceptance as an actual evaluated pose.
+/// Keep the original squared magnitude for diagnostics and continuous ranking.
+pub(crate) fn anatomical_violation_valid(violation: f64) -> bool {
+    violation >= 0. && violation <= ANATOMICAL_NUMERIC_TOLERANCE.powi(2)
 }
 
 fn hand_candidate(
@@ -91,33 +133,69 @@ fn hand_candidate(
     target: Vec3,
     pitch: f64,
     angle: f64,
+    search: HandSearch,
+    environment: crate::equipment_motion::HandEnvironment<'_>,
 ) -> Option<HandSolution> {
-    profile
-        .solve_hand_with_swivel(limb, target, pitch, angle)
-        .filter(|hand| anatomical(profile, limb, target, hand))
+    let hand = environment.solve(
+        profile,
+        limb,
+        target,
+        pitch,
+        angle,
+        matches!(search, HandSearch::PreserveArm),
+    );
+    hand.filter(|hand| anatomical(profile, limb, target, hand))
 }
-/// Lazy enumeration lets feasibility checks stop at their first witness.
+/// Test-side enumeration without equipment; production binds the environment.
+#[cfg(test)]
 pub fn hand_candidates(
     profile: &RigProfile,
     limb: usize,
     target: Vec3,
     pitch: f64,
 ) -> impl Iterator<Item = HandSolution> + '_ {
-    SWIVELS
-        .iter()
-        .filter_map(move |&angle| hand_candidate(profile, limb, target, pitch, angle))
+    hand_candidates_in(
+        profile,
+        limb,
+        target,
+        pitch,
+        HandSearch::Full,
+        Default::default(),
+    )
 }
-/// Refine the existing swivel interval on the temporal solver's 0.05-radian
-/// grid only after coarse feasibility fails. No joint limit or margin changes.
-pub fn refined_hand_candidates(
-    profile: &RigProfile,
+pub(crate) fn hand_candidates_in<'a>(
+    profile: &'a RigProfile,
     limb: usize,
     target: Vec3,
     pitch: f64,
-) -> impl Iterator<Item = HandSolution> + '_ {
-    (-15_i32..=15)
-        .filter(|i| i % 8 != 0)
-        .filter_map(move |i| hand_candidate(profile, limb, target, pitch, i as f64 * 0.05))
+    search: HandSearch,
+    environment: crate::equipment_motion::HandEnvironment<'a>,
+) -> impl Iterator<Item = HandSolution> + 'a {
+    SWIVELS.iter().filter_map(move |&angle| {
+        hand_candidate(profile, limb, target, pitch, angle, search, environment)
+    })
+}
+/// Refine the existing swivel interval on the temporal solver's 0.05-radian
+/// grid only after coarse feasibility fails. No joint limit or margin changes.
+pub(crate) fn refined_hand_candidates_in<'a>(
+    profile: &'a RigProfile,
+    limb: usize,
+    target: Vec3,
+    pitch: f64,
+    search: HandSearch,
+    environment: crate::equipment_motion::HandEnvironment<'a>,
+) -> impl Iterator<Item = HandSolution> + 'a {
+    (-15_i32..=15).filter(|i| i % 8 != 0).filter_map(move |i| {
+        hand_candidate(
+            profile,
+            limb,
+            target,
+            pitch,
+            i as f64 * 0.05,
+            search,
+            environment,
+        )
+    })
 }
 pub fn pair_solution_with_equipment(
     profile: &RigProfile,
@@ -136,12 +214,31 @@ pub(crate) fn pair_solution_mode(
     intended_ids: [Option<&str>; 2],
     refine: bool,
 ) -> Option<[HandSolution; 2]> {
-    pair_search(profile, tips, pitches, equipment, intended_ids, false).or_else(|| {
-        if refine {
-            pair_search(profile, tips, pitches, equipment, intended_ids, true)
-        } else {
-            None
-        }
+    HAND_SEARCHES.into_iter().find_map(|search| {
+        pair_search(
+            profile,
+            tips,
+            pitches,
+            equipment,
+            intended_ids,
+            false,
+            search,
+        )
+        .or_else(|| {
+            if refine {
+                pair_search(
+                    profile,
+                    tips,
+                    pitches,
+                    equipment,
+                    intended_ids,
+                    true,
+                    search,
+                )
+            } else {
+                None
+            }
+        })
     })
 }
 fn pair_search(
@@ -151,13 +248,33 @@ fn pair_search(
     equipment: Option<&crate::equipment_motion::EquipmentContext>,
     intended_ids: [Option<&str>; 2],
     refine: bool,
+    search: HandSearch,
 ) -> Option<[HandSolution; 2]> {
     let candidates = |limb: usize| {
         let mut choices = Vec::new();
+        let environment = crate::equipment_motion::HandEnvironment {
+            equipment,
+            intended_piece: intended_ids[limb],
+        };
         for delta in crate::equipment_motion::PITCH_OFFSETS {
-            for hand in hand_candidates(profile, limb, tips[limb], pitches[limb] + delta).chain(
-                refined_hand_candidates(profile, limb, tips[limb], pitches[limb] + delta)
-                    .take(if refine { 28 } else { 0 }),
+            for hand in hand_candidates_in(
+                profile,
+                limb,
+                tips[limb],
+                pitches[limb] + delta,
+                search,
+                environment,
+            )
+            .chain(
+                refined_hand_candidates_in(
+                    profile,
+                    limb,
+                    tips[limb],
+                    pitches[limb] + delta,
+                    search,
+                    environment,
+                )
+                .take(if refine { 28 } else { 0 }),
             ) {
                 let assessment = equipment.map(|ctx| {
                     crate::equipment_motion::assess_hand(
@@ -469,6 +586,175 @@ pub fn ready_pose(profile: &RigProfile, kit: &[KitPiece]) -> Result<Vec<f32>, St
 mod tests {
     use super::*;
     #[test]
+    fn exact_posture_boundaries_survive_roundoff_but_reject_real_excess() {
+        let mut profile = RigProfile::primitive();
+        profile.roots[0] = [-0.18, 1.2, 0.];
+        profile.roots[1] = [0.18, 1.2, 0.];
+        profile.lengths[0] = [0.30, 0.27];
+        let frame = crate::rig::HandControlFrame {
+            forearm: [0., 0., 1.],
+            palm: [1., 0., 0.],
+            desired_palm: [1., 0., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
+        };
+        profile.hand_frames = Some([frame.clone(), frame]);
+        let hand_at = |angle: f64, rearward_excess: f64| {
+            let back = -profile.lengths[0][0] * 0.35 - rearward_excess;
+            let middle = [
+                -0.18,
+                1.2 - (profile.lengths[0][0].powi(2) - back * back).sqrt(),
+                back,
+            ];
+            let end = crate::motion::add(middle, [0., 0., profile.lengths[0][1]]);
+            let rotation = [(angle * 0.5).sin(), 0., 0., (angle * 0.5).cos()];
+            // Exercise the same numeric representation as a stored source pose.
+            let rotation =
+                serde_json::from_str::<[f64; 4]>(&serde_json::to_string(&rotation).unwrap())
+                    .unwrap();
+            HandSolution {
+                middle,
+                end,
+                tip: crate::motion::add(end, profile.offset(0, rotation)),
+                rotation,
+                reachable: true,
+            }
+        };
+        for hand in [
+            hand_at(MAX_WRIST_SWING, 0.),
+            hand_at(MAX_WRIST_SWING + 2. * f64::EPSILON, 0.),
+            hand_at(MAX_WRIST_SWING + 1e-12, 0.),
+            hand_at(0., 1e-15),
+        ] {
+            assert!(anatomical(&profile, 0, hand.tip, &hand));
+            let cached = anatomical_violation(&profile, 0, hand.tip, &hand);
+            assert!(cached < 1e-20);
+            assert!(anatomical_violation_valid(cached));
+        }
+        for excess in [1e-9, 1e-6] {
+            for hand in [hand_at(MAX_WRIST_SWING + excess, 0.), hand_at(0., excess)] {
+                assert!(!anatomical(&profile, 0, hand.tip, &hand));
+                let cached = anatomical_violation(&profile, 0, hand.tip, &hand);
+                assert!(cached > 0.);
+                assert!(!anatomical_violation_valid(cached));
+            }
+        }
+        let unreachable = HandSolution {
+            reachable: false,
+            ..hand_at(0., 0.)
+        };
+        assert!(!anatomical(&profile, 0, unreachable.tip, &unreachable));
+        let nonfinite = HandSolution {
+            middle: [f64::NAN, 0., 0.],
+            ..hand_at(0., 0.)
+        };
+        assert!(!anatomical(&profile, 0, nonfinite.tip, &nonfinite));
+        for malformed in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY, -1.] {
+            assert!(!anatomical_violation_valid(malformed));
+        }
+    }
+    #[test]
+    fn anatomical_forward_limits_follow_the_body_instead_of_world_z() {
+        let mut p = RigProfile::primitive();
+        p.torso_pivot = Some([0., 1., 0.]);
+        p.roots[0] = [-0.18, 1.2, 0.];
+        p.roots[1] = [0.18, 1.2, 0.];
+        p.lengths[0] = [0.30, 0.27];
+        let neutral = HandSolution {
+            middle: [-0.23, 0.905, 0.02],
+            end: [-0.15, 0.93, 0.29],
+            tip: [-0.15, 0.93, 0.60],
+            rotation: [0., 0., 0., 1.],
+            reachable: true,
+        };
+        assert!(anatomical(&p, 0, neutral.tip, &neutral));
+        let rear = HandSolution {
+            end: [-0.15, 0.93, -0.10],
+            tip: [-0.15, 0.93, 0.21],
+            ..neutral
+        };
+        assert!(!anatomical(&p, 0, rear.tip, &rear));
+        for h in [neutral, rear] {
+            let expected = anatomical_violation(&p, 0, h.tip, &h);
+            for yaw in [-2.4_f64, -1.4, 0.6, 1.4, 2.4] {
+                let q = [0., (yaw * 0.5).sin(), 0., (yaw * 0.5).cos()];
+                let pivot = p.torso_pivot.unwrap();
+                let turn = |v| {
+                    crate::motion::add(pivot, crate::rig::rotate(q, crate::motion::sub(v, pivot)))
+                };
+                let turned = p.turned(yaw);
+                let hand = HandSolution {
+                    middle: turn(h.middle),
+                    end: turn(h.end),
+                    tip: turn(h.tip),
+                    rotation: q,
+                    ..h
+                };
+                let got = anatomical_violation(&turned, 0, hand.tip, &hand);
+                assert!(
+                    (got - expected).abs() < 1e-10,
+                    "yaw {yaw}: {got} vs {expected}"
+                );
+            }
+        }
+    }
+    #[test]
+    fn dual_crash_retains_full_fallback_when_arm_preserving_pair_is_unavailable() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+        let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        let kit: Vec<KitPiece> = serde_json::from_value(fixture["kit"].clone()).unwrap();
+        let ctx = crate::equipment_motion::EquipmentContext::for_kit(&kit).unwrap();
+        let crashes: Vec<_> = kit
+            .iter()
+            .filter(|piece| piece.instrument == crate::model::Instrument::Crash)
+            .collect();
+        let ready = ready_pair(&profile, crashes[0], crashes[1]);
+        let ids = [Some(crashes[0].id.as_str()), Some(crashes[1].id.as_str())];
+        let mut needed_fallback = 0;
+        for lower in [0.035, 0.] {
+            let tips = ready.map(|tip| crate::motion::sub(tip, [0., lower, 0.]));
+            let preserving = pair_search(
+                &profile,
+                tips,
+                [0.; 2],
+                Some(&ctx),
+                ids,
+                true,
+                HandSearch::PreserveArm,
+            );
+            let full = pair_search(
+                &profile,
+                tips,
+                [0.; 2],
+                Some(&ctx),
+                ids,
+                true,
+                HandSearch::Full,
+            );
+            let selected = pair_solution_with_equipment(&profile, tips, [0.; 2], Some(&ctx), ids);
+            if preserving.is_none() && full.is_some() {
+                needed_fallback += 1;
+                let hands =
+                    selected.expect("the arm-first priority must retain the existing fallback");
+                for (limb, hand) in hands.iter().enumerate() {
+                    assert!(anatomical(&profile, limb, tips[limb], hand));
+                    assert!(profile.hand_orientation_policy_valid(limb, hand.rotation));
+                    assert!(
+                        crate::equipment_motion::tool_clearance(
+                            &profile, limb, hand, &ctx, ids[limb]
+                        ) >= MARGIN
+                    );
+                }
+                assert!(clearance::tool_pair_clearance(&profile, &hands[0], &hands[1]) >= MARGIN);
+            }
+        }
+        assert!(
+            needed_fallback > 0,
+            "the fixture must exercise the second frontier"
+        );
+    }
+    #[test]
     fn measured_clothing_does_not_remove_anatomical_contact_candidates() {
         let mut p = RigProfile::primitive();
         for i in 0..2 {
@@ -482,6 +768,8 @@ mod tests {
             forearm: [0., 0., 1.],
             palm: [0., 1., 0.],
             desired_palm: [0., 1., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         p.hand_frames = Some([frame.clone(), frame]);
         let target = [-0.2, 0.95, 0.55];
@@ -514,6 +802,7 @@ mod tests {
     fn relaxed_low_target_is_preferred_without_banning_high_accents() {
         let mut p = RigProfile::primitive();
         p.roots[0] = [0.0, 1.2, 0.0];
+        p.roots[1] = [0.38, 1.2, 0.0];
         p.lengths[0] = [0.3, 0.27];
         let low = HandSolution {
             middle: [0.0, 0.9, 0.0],

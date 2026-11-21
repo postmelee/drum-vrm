@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { KINEMATIC_HALF_WINDOW_SECONDS as h, motionValidity, summarizeMotionSamples } from './review-motion-metrics.mjs';
+import { KINEMATIC_HALF_WINDOW_SECONDS as h, motionValidity, sampledToolPathsPassed, sampledUpperBodyPathsPassed, summarizeMotionSamples } from './review-motion-metrics.mjs';
+import { POSE_CLEARANCE_TOLERANCE_METERS } from '../../src/review-clearance.ts';
 
 const cuePlan = () => ({
   sourceEvents: [{ id: 'count', timeUs: 1000000, message: { kind: 'noteOn', velocity: 80 } }],
@@ -35,7 +36,7 @@ test('same contact count cannot conceal duplicate limbs, shifted cues or unknown
   assert.equal(motionValidity(plan).passed, true);
 });
 test('posture, pitch and unavailable cues block validity while advisory body overlap does not', () => {
-  for (const code of ['POSTURE_LIMIT', 'CONTACT_PITCH_LIMIT', 'COUNT_IN_GESTURE_UNAVAILABLE']) {
+  for (const code of ['POSTURE_LIMIT', 'CONTACT_PITCH_LIMIT', 'COUNT_IN_GESTURE_UNAVAILABLE', 'UPPER_BODY_PATH_CLEARANCE']) {
     const plan = cuePlan(); plan.diagnostics.push({ code, time: 1 });
     assert.equal(motionValidity(plan).passed, false);
   }
@@ -53,6 +54,52 @@ test('planner-only physical failures remain blocking when ordinary review sample
     assert.equal(result.passed, false);
     assert.deepEqual(result.blockingDiagnostics, plan.diagnostics);
   }
+});
+
+test('ordinary torso review requires complete measured evidence and rejects external-only crossings', () => {
+  const sequence = () => ({ samples: 3, proxy: {
+    upperBodyCoreSamples: 3, upperBodyCoreIntersectingSamples: 0, upperBodyCoreMinimumMeters: .01,
+  } });
+  assert.equal(sampledUpperBodyPathsPassed(sequence()), true);
+  assert.equal(sampledUpperBodyPathsPassed({ samples: 3, proxy: {} }), false);
+  for (const change of [
+    value => { value.proxy.upperBodyCoreSamples = 2; },
+    value => { delete value.proxy.upperBodyCoreSamples; },
+    value => { delete value.proxy.upperBodyCoreMinimumMeters; },
+    value => { value.proxy.upperBodyCoreMinimumMeters = NaN; },
+    value => { value.proxy.upperBodyCoreMinimumMeters = -.001; },
+    value => { value.proxy.upperBodyCoreIntersectingSamples = 1; },
+    value => { value.samples = 0; value.proxy.upperBodyCoreSamples = 0; },
+  ]) {
+    const value = sequence(); change(value);
+    assert.equal(sampledUpperBodyPathsPassed(value), false);
+  }
+  const packed = sequence(); packed.proxy.upperBodyCoreMinimumMeters = -.5e-6;
+  assert.equal(sampledUpperBodyPathsPassed(packed), true, 'same f32 packing tolerance as the engine');
+});
+
+test('physical-tool review tolerates only packed-pose roundoff and still requires both measured boundaries', () => {
+  const tangent = 1.2 - Math.fround(1.2);
+  const sequence = () => ({ samples: 3, proxy: {
+    toolSamples: 3, toolIntersectingSamples: 0,
+    toolEquipmentMinimumMeters: tangent, toolPairMinimumMeters: -POSE_CLEARANCE_TOLERANCE_METERS,
+  } });
+  assert.equal(sampledToolPathsPassed(sequence()), true);
+  for (const change of [
+    value => { value.proxy.toolSamples = 2; },
+    value => { delete value.proxy.toolEquipmentMinimumMeters; },
+    value => { delete value.proxy.toolPairMinimumMeters; },
+    value => { value.proxy.toolEquipmentMinimumMeters = NaN; },
+    value => { value.proxy.toolPairMinimumMeters = Infinity; },
+    value => { value.proxy.toolEquipmentMinimumMeters = -4e-6; },
+    value => { value.proxy.toolPairMinimumMeters = -.001; },
+    value => { value.proxy.toolIntersectingSamples = 1; },
+    value => { value.samples = 0; value.proxy.toolSamples = 0; },
+  ]) {
+    const value = sequence(); change(value);
+    assert.equal(sampledToolPathsPassed(value), false);
+  }
+  assert.equal(sampledToolPathsPassed({ samples: 3, proxy: {} }), false);
 });
 
 function poseAt(time) {
@@ -94,4 +141,13 @@ test('posture reports measured ranges and distinguishes absent measurements from
   assert.deepEqual(result.hands[0].wristSwingDegrees, { samples: 2, minimum: 0, maximum: 20 });
   assert.deepEqual(result.hands[0].upperArmElevationDegrees, { samples: 2, minimum: 30, maximum: 40 });
   assert.deepEqual(result.hands[1].wristSwingDegrees, { samples: 0, minimum: null, maximum: null });
+});
+
+test('palm evidence preserves upward, inward and downward normals and exposes missing/invalid data', () => {
+  const samples = [[0,1,0], [1,0,0], [0,-1,0], undefined, [0,2,0], [NaN,0,0]].map((palmNormal,time) => ({
+    ...sampleAt(time), markers: [{limb: 0, palmNormal}],
+  }));
+  const hands = summarizeMotionSamples(samples).posture.hands;
+  assert.deepEqual(hands[0].palmUpComponent, { samples: 3, minimum: -1, maximum: 1, missing: 1, invalid: 2 });
+  assert.deepEqual(hands[1].palmUpComponent, { samples: 0, minimum: null, maximum: null, missing: 6, invalid: 0 });
 });

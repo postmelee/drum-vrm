@@ -6,13 +6,13 @@ This is the numeric and selected browser review of the common-solver worktree fo
 to fix automatic fitting before another Pages review. It does not replace the
 [`f2d3b87` baseline](public-vrm-fit.md), which measured a different implementation.
 
-**All four static fits and all study hit assignments succeeded; none of the four
+For the original checkpoint below, **all four static fits and all study hit assignments succeeded; none of the four
 models passed complete temporal acceptance.** Whole-stick/equipment or
 whole-stick/stick intersections remain. Marker contact and deterministic seeking
 do not make those failures acceptable. The textured browser review covered 45
 paused views and still found unnatural tom-transfer arm elevation; continuous
-playback remains unverified.
-This record establishes neither merge nor public deployment.
+playback was not verified at that checkpoint. Its measurements alone establish
+neither merge nor public deployment; later publication and v13 records are separate.
 
 ## Measured identity
 
@@ -269,3 +269,213 @@ The [PR #64 publication record](https://github.com/postmelee/drum-vrm/pull/64)
 owns the final integrated/merged commit, CI and Pages run, deployed artifact
 identity and public smoke checks. This local verification does not itself
 establish deployment, resolve #18/#23, or authorize a Release/tag.
+
+## Rack tilt and bounded grip candidate — 2026-10-29
+
+This subsequent candidate is on `codex/kit-grip-refinement`, based on published
+`6dea42f043f5d7c1d1bf9c880a6556a3356183d6`. It is **not published and does not pass
+temporal motion acceptance**. The owner requested player-facing rack toms and
+inward/thumb-up to palm-down grip, coordinated with the elbow. Related physical
+layout adjustments follow the accepted bounded baseline work, not another
+avatar-specific fitting system.
+
+### Implementation and bounded scope
+
+- Rack heads tilt 12° toward the player, previously 8°. Their heights remain near
+  the published heights; lowering both by 6 cm was rejected after reach checks.
+  The left crash is only 1 cm closer; the right crash is 17 cm lower. Nominal
+  radii are unchanged. The floor tom moves toward the kick with a saved 1.2 rad
+  leg/bracket phase, and the ride moves 5 cm right. The accepted native fit is
+  adopted as the fixed default, including its linked hi-hat/pedal assembly.
+- The actual common post/T-yoke, two ball joints and L-arms remain supported and
+  measured. Removing a blanket 2D head-disc-overlap rejection allows tilted rim
+  overhang; 3D access corridors, bodies, supports and whole tools still gate it.
+- Natural grip has a shaft-heading reference and a side-signed inward-to-down
+  roll interval. Four analytic refinements and the exact elbow circle preserve
+  measured bone lengths and tool attachment. Explicit preferences and old
+  profiles retain their documented behavior; there are no avatar-name branches.
+- Count-in reuses the existing refined swivel candidates if a hand has no valid
+  coarse candidate. Unsupported impact schedules rank reach and physical tool
+  deficit before anatomical deficit; identical contact queries share a cache.
+  The elbow graph distinguishes missed contact from lesser posture failures.
+  These are diagnosed fallbacks, not relaxed acceptance limits.
+- A floating-point envelope update could overwrite locked zero impact lift by
+  about `1e-16` m and fail strict Worker restoration. The lock now preserves the
+  exact value. The review harness checks serialized restoration and primary poses.
+
+The existing sticking vocabulary is retained. In the reviewed public MIDI, the
+four high-tom notes at 20.438182–20.682307 s previously excluded the opposite hand's
+exact contact. With the accepted native geometry/profile their assignment changes
+`LLLL` → `LRLL`, while six simultaneous snare/floor pairs at 43.212412–44.050402 s
+retain L/R roles. All 1,720 source hits/times/velocities are preserved in this
+assignment-only check; this is not full-song temporal acceptance. Independently
+authored regressions cover both cases. Private uploads are not committed.
+
+### First checkpoint measurements
+
+These results precede the prepared-roll implementation below.
+Private output: `.local/reference-layout/kit-grip-corrected-review/`, produced by
+`node scripts/reference-layout-review.mjs --mode review --output <new-directory>`.
+Node 24.15.0, Darwin arm64; source manifest SHA-256
+`b253936d9176c378ca2dc8789acdb92587b5f0db830cb4d319047a2ec23813b8`, WASM
+`ee5b7e873103860a5c07501ce0832350616951f43a596a6aa502b7820eb152cb`, harness
+`b6f52c9266e6cf2c5e4d1c76ded3e331fa64d85c55c0d2cd3f8c20a26b07db28`.
+The subsequent source-manifest delta is removal of a trailing blank line in
+`hand_solver_tests.rs`; runtime sources and WASM are unchanged. The harness
+verifies public model hashes against their existing provenance records.
+
+| Rig | Kit scale | Fit / repeatable adopted layout | Posture / Interpretation assignments | Maximum actual contact error, mm | Worker restoration |
+| --- | --- | --- | --- | --- | --- |
+| Native | 100% | pass / pass | 53/53 · 82/82 | 0.000099 | pass |
+| AvatarSample B | 84% | pass / pass | 53/53 · 82/82 | 0.000165 | pass |
+| Seed-san | 88% | pass / pass | 53/53 · 82/82 | 0.000496 | pass |
+| Twist | 76% | pass / pass | 53/53 · 82/82 | 0.000093 | pass |
+
+All studies retain their count-in cues, source events, deterministic preparation,
+ordered/reversed/shuffled primary poses and bone lengths. Actual rendered palm
+normal Y never exceeds `5.74e-7` (numeric noise) over the sampled studies; missing
+or invalid normals are zero. This supports the directional grip correction,
+not a universal natural-posture claim. Native's explicit fit check takes 156 ms;
+imported fits take roughly 30–43 s here under concurrent checks. Startup skips
+native fitting. These measurements do not establish a loading-speed improvement.
+
+### Remaining failures and next boundary
+
+The strict review exits 1: every rig still has temporal tool/posture failures.
+No study's complete hit coverage, palm direction or marker precision overrides them.
+
+| Rig / study | Equipment-path samples / deepest overlap mm | Tool-pair samples / deepest overlap mm | Posture-limit samples |
+| --- | --- | --- | --- |
+| Native / Posture | 31 / 34.8 | 12 / 10.5 | 1087 |
+| Native / Interpretation | 3 / 1.1 | 153 / 11.1 | 2279 |
+| B / Posture | 35 / 29.9 | 2 / 6.4 | 843 |
+| B / Interpretation | 1 / 0.5 | 4 / 8.3 | 1054 |
+| Seed / Posture | 65 / 21.4 | 8 / 9.0 | 813 |
+| Seed / Interpretation | — | 29 / 11.4 | 1220 |
+| Twist / Posture | 88 / 18.1 | 2 / 5.3 | 640 |
+| Twist / Interpretation | 87 / 29.4 | — | 2001 |
+
+Native/Interpretation, Seed/Posture and Twist/Posture each retain one
+`CONTACT_PITCH_LIMIT`. The earlier trial's missing B/Seed cues and Twist's 14.3 mm
+reach miss are repaired, but evaluated wrist/arm posture is **not improved overall
+against the published checkpoint**. For example native/Posture maximum wrist
+angles are 60.7°/54.3° and arm elevations 93.1°/107.4°, versus 45.5°/34.4° and
+66.1°/84.0° in the earlier diagnostic baseline. Keeping palms in the chosen family
+does not by itself resolve the coupled wrist/elbow solve. Do not merge
+this as a finished natural-motion fix or close #18/#23. Next work must preserve
+this evidence while solving preparation/recovery trajectories with the same grip,
+time, reach and whole-tool constraints; no new broad fitting grid is justified.
+
+Automated checks passed: 231 Rust tests, 326 web tests in 44 files, 10 review-helper
+tests, Clippy with warnings denied, formatting, WASM rebuild, typecheck/production
+build and documentation checks. Passing regression checks does not certify the
+remaining physical paths. Browser evidence and the exact review PR own the
+textured validation scope; broader private VRM 0.0/FBX full-song review is deferred.
+
+The focused diagnosis reused the same fitted profiles and targets. At Seed's
+Interpretation preparation time 0.919999 s, the prior solver returned 144.78° arm
+elevation / 46.19° wrist swing. The same target, shaft pitch and elbow swivel have
+an allowed roll witness with 60.73° / 11.35°. Changing the musical path is therefore
+not necessary for that frame: refinement was evaluating forearm agreement against
+the previous elbow before recomputing the final elbow. Narrow 240 Hz baseline
+windows also expose actual solver branch jumps, not just high static angles.
+These observations motivate final-pose roll scoring; they do not certify its
+subsequent implementation or continuity. The checkpoint above remains unchanged.
+
+The checkpoint's textured browser review includes B, Seed-san and Twist at ready,
+groove, tom, crash and ending, with complete Posture Study playback for each and
+additional Twist front/top captures. Files remain private under
+`.local/kit-grip-corrected-visual/`. The 12.766 s end state is observed for all three;
+warning/error console logs are empty. These captures show the revised palm family
+but retain visible excessive arm elevation and do not override numeric failures.
+
+### Rejected pointwise refinements
+
+Final-pose roll scoring repaired the extreme angles but exposed discontinuities
+between valid minima. A conditional scalar-search shortcut added larger jumps;
+removing it fixed those exact pairs, but other 11–13 cm elbow jumps remained over
+about 1 microsecond. Repeated seek equality alone did not detect this defect.
+A fixed continuous-gradient alternative removed the sampled jumps, but lost
+previously assigned closed-hi-hat contacts (Native 16, Seed-san 12) by choosing
+slightly infeasible compromises. It is rejected, not an acceptable trade-off.
+The preserved private comparisons are `kit-grip-continuity-after-refinement/`
+and `kit-grip-smooth-continuity/` under `.local/reference-layout/`. The full review
+of the intermediate optimizer and the gradient's native fit were stopped after
+these blockers; neither stopped run is a passing acceptance result.
+
+
+### Prepared-roll review candidate — final v13 boundary
+
+The final implementation stores each hand's selected roll alongside the existing
+elbow-swivel controls. Graph edge checks and replay interpolate the same saved
+roll; replay does not independently optimize it on every frame. The existing
+33×33 graph and source control times remain unchanged, with a soft roll-variation
+cost and at most about 6 MiB of extra witness cache. A valid analytic static solve
+returns after five wrist solves; otherwise the bounded search uses at most 21.
+Fixed-roll replay uses one. This changes prepared format to 3 and planner to v13;
+checksums, policy/range validation and Worker restoration cover the new controls.
+It is not a new hard angular-speed guarantee or relaxed physical acceptance.
+
+Final output: `.local/reference-layout/kit-grip-final-review-v13/`; same command,
+Node/platform and harness hash as above. Source manifest SHA-256
+`11b0a0fe7de09ce867b7f8cb2c953c6ad81b0ed90daf4c86db829696c2465260`, WASM
+`22f94f2ca45d38071e55a17ba0a3c977ba5af133500e330851f4bd9df9dcff8e`.
+Subsequent edits are verification/handoff documentation only. All four fits,
+repeated/adopted layout checks, original events, 53/53 Posture and 82/82
+Interpretation assignments, three count-in pairs per study, marker contacts,
+bone lengths, ordered/reversed/shuffled poses and actual format-3 restoration pass.
+
+| Rig | Kit scale | Maximum actual contact error, mm | Fit / Posture / Interpretation preparation, s |
+| --- | --- | --- | --- |
+| Native | 100% | 0.000099 | 0.8 / 5.3 / 2.2 |
+| AvatarSample B | 76% | 0.000196 | 79.6 / 20.6 / 7.7 |
+| Seed-san | 92% | 0.000378 | 106.5 / 8.1 / 4.5 |
+| Twist | 76% | 0.000092 | 42.3 / 9.1 / 4.2 |
+
+Timings include concurrent validation/build load, not a controlled performance
+comparison. No loading-speed improvement is claimed. Sampled rendered palm Y is
+at most `5.9e-7`, with no missing/invalid normals; visible palms stay in the
+inward-to-down family. **All eight studies still fail temporal acceptance**:
+
+| Rig / study | Equipment-path samples / overlap mm | Tool-pair samples / overlap mm | Posture-limit samples |
+| --- | --- | --- | --- |
+| Native / Posture | 29 / 14.7 | — | 304 |
+| Native / Interpretation | 1 / 1.1 | 7 / 4.9 | 210 |
+| B / Posture | 57 / 23.9 | 2 / 5.8 | 395 |
+| B / Interpretation | 1 / 1.4 | 13 / 10.0 | 271 |
+| Seed / Posture | 27 / 24.8 | 2 / 5.3 | 222 |
+| Seed / Interpretation | — | 6 / 7.4 | 223 |
+| Twist / Posture | 72 / 18.1 | — | 96 |
+| Twist / Interpretation | 20 / 11.4 | 2 / 7.8 | 118 |
+
+The strict run exits 1. Native/Interpretation and Twist/Posture each retain one
+impact-pitch limit. Posture failures decrease against the first checkpoint, but
+maximum wrist swing still reaches 58.12° and arm elevation 114.46°. Re-fitted
+layouts also differ: B/Interpretation stick-pair overlap increases 8.3→10.0 mm,
+Seed/Posture equipment overlap 21.4→24.8 mm, and Twist/Interpretation gains two
+stick-pair failures. These are not isolated solver comparisons, but prevent a
+claim of regression-free motion or completed #18/#23.
+
+Focused regression output `.local/reference-layout/kit-grip-final-roll-continuity/`
+reuses the earlier fixed profiles/layouts at four 240 Hz windows (243 samples).
+The former microsecond branch-jump pairs now differ by only 3.1–24.1 µm at the
+elbow, and reverse evaluation is exact. Seed's old cue overlap becomes +1.961 mm
+clearance. That evidence is input-specific, not the newly fitted full-study
+result above. Stored roll speed still reaches 68.39 rad/s; fast continuous
+rotation and remaining interior posture violations need trajectory work.
+
+Final automated checks: 237 Rust tests, 326 web tests/44 files, 10 review-helper
+tests, formatting, warnings-denied Clippy, rebuilt WASM, typecheck/production
+build and docs checks. Local browser evidence is recorded separately below.
+The next task is bounded preparation/recovery path repair with these saved grip
+controls, keeping exact impacts and physical-tool diagnostics. Broader private
+VRM 0.0/FBX full-song acceptance remains deferred. This candidate is local/draft,
+not a published Pages update or a complete natural-motion solution.
+
+
+Final textured review at `http://127.0.0.1:5195/drum-vrm/?lang=ko` covers B,
+Seed-san and Twist at ready/groove/tom/crash/ending. All three complete the
+12.766 s Posture Study; Twist also has front/top and EN/KO views. Screenshots
+remain private in `.local/kit-grip-final-v13-visual/`; warning/error console logs
+are empty. These views confirm the inward/down palm family, but still show
+raised arms at high instruments. They do not certify collision-free motion.

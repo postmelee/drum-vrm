@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { contactFeedbackEvents, latestContactEvent, measurePlannedContact, resolveContactEvent, sampleHihatOpening } from '../src/contact-events';
+import { contactFeedbackEvents, latestContactEvent, measurePlannedContact, pairedShaftContact, resolveContactEvent, sampleHihatOpening } from '../src/contact-events';
 import { applyHitResponse, bindHitResponse, createContactResponseTrack, evaluateHitResponse, placeContactMarker } from '../src/hit-response';
 import type { ContactEvent, HihatMotionTrack, KitPiece, PerformancePlan } from '../src/types';
 
@@ -84,5 +84,45 @@ describe('shared upper hi-hat time track', () => {
     const moving = event({ ...fixed, localPoint: [0, .003, .004], mechanismOffset: [0, .0024, .0032] });
     expect(resolveContactEvent(moving, [hat], track, .12)!.position).toEqual(hat.position);
     resolveContactEvent(moving, [hat], track)!.position.forEach((value, axis) => expect(value).toBeCloseTo(hat.position[axis] + [0, .0024, .0032][axis], 12));
+  });
+});
+
+
+describe('actual crossed-shaft contact markers', () => {
+  const samples = () => [
+    { limb: 0, shaftMidpoint: [0, -.0060005, 0] as [number, number, number], shaftDirection: [1, 0, 1] as [number, number, number] },
+    { limb: 1, shaftMidpoint: [0, .0060005, 0] as [number, number, number], shaftDirection: [-1, 0, 1] as [number, number, number] },
+  ];
+  it('measures both cylinder surfaces at the physical midpoint, not the tip or plan', () => {
+    expect(pairedShaftContact(samples(), 0)![1]).toBeCloseTo(-.0000005, 12);
+    expect(pairedShaftContact(samples(), 1)![1]).toBeCloseTo(.0000005, 12);
+    const moved = samples(); moved[1].shaftMidpoint[1] += .01;
+    expect(pairedShaftContact(moved, 1)![1]).toBeCloseTo(.0100005, 12);
+  });
+  it('follows actual shaft rotation and translation in either reflected coordinate basis', () => {
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(.25, .7, -.3));
+    const transform = (v: number[], point: boolean) => {
+      const r = new THREE.Vector3(...v).applyQuaternion(q);
+      if (point) r.add(new THREE.Vector3(.4, 1.1, -.3));
+      return r.toArray() as [number, number, number];
+    };
+    for (const reflect of [false, true]) {
+      const input = samples().map(s => ({ ...s, shaftMidpoint: transform(s.shaftMidpoint, true), shaftDirection: transform(s.shaftDirection, false) }));
+      if (reflect) for (const sample of input) { sample.shaftMidpoint[0] *= -1; sample.shaftDirection[0] *= -1; }
+      for (const limb of [0, 1]) {
+        const expected = transform(pairedShaftContact(samples(), limb)!, true);
+        if (reflect) expected[0] *= -1;
+        pairedShaftContact(input, limb)!.forEach((value, axis) => expect(value).toBeCloseTo(expected[axis], 12));
+      }
+    }
+  });
+  it('reports unavailable markers for missing or near-parallel shafts', () => {
+    expect(pairedShaftContact(samples().slice(0, 1), 0)).toBeNull();
+    expect(pairedShaftContact([{ limb: 0 }, { limb: 1 }], 0)).toBeNull();
+    const parallel = samples(); parallel[1].shaftDirection = [...parallel[0].shaftDirection];
+    expect(pairedShaftContact(parallel, 0)).toBeNull();
+    parallel[1].shaftDirection[1] = 1e-12;
+    expect(pairedShaftContact(parallel, 0)).toBeNull();
+    expect(pairedShaftContact(samples(), 2)).toBeNull();
   });
 });

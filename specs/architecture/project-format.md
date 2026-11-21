@@ -45,7 +45,7 @@ The source/mapping/intent boundary remains in [MIDI interpretation](midi-interpr
 WAV alignment remains in [audio/export](audio-export-contract.md).
 
 
-Saved profiles include optional numeric body envelopes, not mesh vertices. The browser validates their bounds and compares the restored measured profile; reopening does not rerun automatic layout fitting. Old files without geometry retain their original schema interpretation, but exact engine-hash compatibility is still required.
+Saved profiles include optional numeric body envelopes, not mesh vertices. The browser validates their bounds and compares the restored measured profile; reopening does not rerun automatic layout fitting. Optional equipment body rotations round-trip with their local half-extents and planning-relative centres; omitted rotation keeps the legacy identity interpretation rather than being inferred from appearance. Old files without geometry retain their original schema interpretation, but exact engine-hash compatibility is still required.
 
 ## FBX project settings
 

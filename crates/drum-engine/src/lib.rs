@@ -17,6 +17,7 @@ pub mod interpretation;
 mod midi;
 pub mod model;
 pub mod motion;
+mod physical_hand_path;
 mod posture;
 pub mod rig;
 pub mod stick_geometry;

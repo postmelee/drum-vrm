@@ -69,12 +69,12 @@ below are design concepts, not a shipped JSON schema.
 The implemented subset now includes common static fit and target-dependent neutral
 wrists (T01–T02), instrument-relative ready poses and velocity-scaled lift/pitch (T03),
 explicit short open/close hi-hat control (T06), and a bounded phrase beam that can
-alternate available hands during rapid snare repetitions (T07/T09). The
+alternate available hands during rapid snare/tom repetitions and mixed fills (T07/T09). The
 [engine](engine-contract.md), [calibration](calibration.md) and
 [MIDI interpretation](midi-interpretation.md) contracts own their precise behavior.
 
 [Equipment/contact](equipment-contact.md) adds deterministic articulation regions,
-whole-stick equipment checks and an explicit tip-to-tip count-in gesture. These
+whole-stick equipment checks and an explicit mid-shaft count-in gesture. These
 are bounded contact approximations, not complete T08 shaft/rim mechanics or the
 proposed expression budget. [Primary contact research](../../docs/research/articulation-and-tool-contact.md)
 explains why a relaxed setup and region-specific approach take precedence over

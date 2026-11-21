@@ -5,9 +5,9 @@ use super::{validate_plan, Motion, PLANNER_VERSION};
 use crate::{
     body_motion, equipment_motion::PathSample, hand_coordination, model::*, rig::RigProfile,
 };
-use hand_coordination::SwivelSample;
+use hand_coordination::{OrientationSample, SwivelSample};
 use serde::{Deserialize, Serialize};
-const FORMAT_VERSION: u32 = 2;
+const FORMAT_VERSION: u32 = 9;
 const MAX_BYTES: usize = 128 * 1024 * 1024;
 pub(super) const MAX_EQUIPMENT_SAMPLES: usize = 16_000;
 
@@ -23,6 +23,10 @@ struct Prepared {
     body_turns: Vec<f64>,
     #[serde(deserialize_with = "bounded_track")]
     hand_swivels: Vec<SwivelSample>,
+    #[serde(deserialize_with = "bounded_track")]
+    hand_orientations: Vec<OrientationSample>,
+    #[serde(deserialize_with = "bounded_physical_track")]
+    hand_pose_segments: Vec<crate::physical_hand_path::Segment>,
     #[serde(deserialize_with = "bounded_equipment_track")]
     equipment_path: Vec<PathSample>,
 }
@@ -32,6 +36,18 @@ where
     T: Deserialize<'de>,
 {
     bounded_values::<D, T, { hand_coordination::MAX_CONTROL_KNOTS }>(deserializer)
+}
+fn bounded_physical_track<'de, D>(
+    deserializer: D,
+) -> Result<Vec<crate::physical_hand_path::Segment>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    bounded_values::<
+        D,
+        crate::physical_hand_path::Segment,
+        { crate::physical_hand_path::MAX_SEGMENTS },
+    >(deserializer)
 }
 fn bounded_equipment_track<'de, D>(deserializer: D) -> Result<Vec<PathSample>, D::Error>
 where
@@ -83,6 +99,8 @@ impl Prepared {
             &self.profile,
             &self.body_turns,
             &self.hand_swivels,
+            &self.hand_orientations,
+            &self.hand_pose_segments,
             &self.equipment_path,
         ))
     }
@@ -119,7 +137,10 @@ pub(super) fn equipment_times(plan: &PerformancePlan) -> Result<Vec<f64>, String
     }
     Ok(times)
 }
-pub(super) fn control_times(plan: &PerformancePlan) -> Result<Vec<f64>, String> {
+pub(super) fn control_times(
+    plan: &PerformancePlan,
+    cue_transitions: &[f64],
+) -> Result<Vec<f64>, String> {
     let count = ((plan.duration + PRE_ROLL + TAIL) / hand_coordination::STEP).ceil() as usize + 1;
     let mut samples: Vec<_> = (0..count)
         .map(|i| (i as f64 * hand_coordination::STEP - PRE_ROLL, 0))
@@ -135,6 +156,7 @@ pub(super) fn control_times(plan: &PerformancePlan) -> Result<Vec<f64>, String> 
             .into_iter()
             .map(|t| (t, 1)),
     );
+    samples.extend(cue_transitions.iter().copied().map(|time| (time, 1)));
     let times = merge_times(samples);
     hand_coordination::check_control_budget(times.len())?;
     Ok(times)
@@ -149,6 +171,8 @@ impl Motion {
             profile: self.profile.clone(),
             body_turns: self.body_turns.clone(),
             hand_swivels: self.hand_swivels.clone(),
+            hand_orientations: self.hand_orientations.clone(),
+            hand_pose_segments: self.hand_pose_segments.clone(),
             equipment_path: self.equipment_path.clone(),
         };
         prepared.checksum = prepared.checksum();
@@ -224,37 +248,71 @@ impl Motion {
         {
             return Err("준비된 연주의 몸통 경로가 유효하지 않습니다.".into());
         }
-        let times = if p
-            .profile
-            .as_ref()
-            .is_some_and(|profile| profile.hand_frames.is_some())
-        {
-            control_times(&p.plan)?
-        } else {
-            Vec::new()
-        };
-        if p.hand_swivels.len() != times.len()
-            || p.hand_swivels.iter().zip(times).any(|(s, time)| {
-                !s.time.is_finite()
-                    || s.time.to_bits() != time.to_bits()
-                    || s.angles.iter().any(|a| {
-                        !a.is_finite()
-                            || a.abs() > hand_coordination::MAX_SWIVEL + 1e-9
-                            || (a / hand_coordination::ANGLE_STEP
-                                - (a / hand_coordination::ANGLE_STEP).round())
-                            .abs()
-                                > 1e-8
-                    })
-            })
-            || p.hand_swivels.windows(2).any(|w| {
-                w[1].time <= w[0].time
-                    || (0..2).any(|i| {
-                        (w[1].angles[i] - w[0].angles[i]).abs()
-                            > hand_coordination::MAX_SAMPLE_RATE * (w[1].time - w[0].time) + 1e-9
-                    })
-            })
-        {
+        if p.hand_swivels.iter().any(|s| {
+            !s.time.is_finite()
+                || s.angles.iter().any(|a| {
+                    !a.is_finite()
+                        || a.abs() > hand_coordination::MAX_SWIVEL + 1e-9
+                        || (a / hand_coordination::ANGLE_STEP
+                            - (a / hand_coordination::ANGLE_STEP).round())
+                        .abs()
+                            > 1e-8
+                })
+                || (0..2).any(|limb| {
+                    let range = p
+                        .profile
+                        .as_ref()
+                        .and_then(|profile| profile.hand_frames.as_ref())
+                        .and_then(|frames| frames[limb].palm_roll_range);
+                    match (s.orientations[limb], range) {
+                        (None, None) => false,
+                        (Some(q), Some(_)) => !crate::rig::valid_orientation(q, 1e-8),
+                        _ => true,
+                    }
+                })
+        }) || p.hand_swivels.windows(2).any(|w| {
+            w[1].time <= w[0].time
+                || (0..2).any(|i| {
+                    (w[1].angles[i] - w[0].angles[i]).abs()
+                        > hand_coordination::MAX_SAMPLE_RATE * (w[1].time - w[0].time) + 1e-9
+                })
+        }) {
             return Err("준비된 연주의 양손 경로가 유효하지 않습니다.".into());
+        }
+        if (p.hand_swivels.is_empty() && !p.hand_orientations.is_empty())
+            || p.hand_orientations.len() < p.hand_swivels.len()
+            || p.hand_orientations.len() > hand_coordination::MAX_CONTROL_KNOTS
+            || p.hand_orientations
+                .windows(2)
+                .any(|w| w[1].time <= w[0].time)
+            || p.hand_orientations.iter().any(|s| {
+                !s.time.is_finite()
+                    || p.hand_swivels
+                        .first()
+                        .is_none_or(|first| s.time < first.time)
+                    || p.hand_swivels.last().is_none_or(|last| s.time > last.time)
+                    || (0..2).any(|limb| {
+                        let bounded = p
+                            .profile
+                            .as_ref()
+                            .and_then(|p| p.hand_frames.as_ref())
+                            .is_some_and(|frames| frames[limb].palm_roll_range.is_some());
+                        match (s.orientations[limb], bounded) {
+                            (None, false) => false,
+                            (Some(q), true) => !crate::rig::valid_orientation(q, 1e-8),
+                            _ => true,
+                        }
+                    })
+            })
+            || p.hand_swivels.iter().any(|original| {
+                p.hand_orientations
+                    .binary_search_by(|s| s.time.total_cmp(&original.time))
+                    .map_or(true, |i| {
+                        p.hand_orientations[i].orientations != original.orientations
+                    })
+            })
+        {
+            return Err("준비된 연주의 손 방향 제어점이 유효하지 않습니다.".into());
         }
         let equipment_times =
             if p.profile.is_some() && p.plan.kit.iter().any(|piece| piece.geometry.is_some()) {
@@ -275,9 +333,9 @@ impl Motion {
                 !s.time.is_finite()
                     || equipment_times.first().is_none_or(|start| s.time < *start)
                     || equipment_times.last().is_none_or(|end| s.time > *end)
-                    || s.lift
-                        .iter()
-                        .any(|v| !v.is_finite() || *v < 0.0 || *v > 0.20 + 1e-9)
+                    || s.lift.iter().any(|v| {
+                        !v.is_finite() || *v < 0.0 || *v > crate::equipment_motion::MAX_LIFT + 1e-9
+                    })
                     || s.pitch
                         .iter()
                         .any(|v| !v.is_finite() || v.abs() > 0.60 + 1e-9)
@@ -309,16 +367,29 @@ impl Motion {
                     let pitch =
                         crate::equipment_motion::sample(&p.equipment_path, hit.time, limb).1;
                     let turned = profile.turned(body_motion::at(&p.body_turns, hit.time));
-                    let swivel = hand_coordination::at(&p.hand_swivels, hit.time)[limb];
+                    let hands = hand_coordination::at_with_orientations(
+                        &p.hand_swivels,
+                        &p.hand_orientations,
+                        hit.time,
+                    );
                     let reachable = turned
-                        .solve_hand_with_swivel(limb, hit.target, pitch, swivel)
+                        .solve_hand_with_swivel_and_orientation(
+                            limb,
+                            hit.target,
+                            pitch,
+                            hands.angles[limb],
+                            hands.orientations[limb],
+                        )
                         .map_or_else(
-                            || turned.reachable_at_pitch(limb, hit.target, pitch),
-                            |hand| hand.reachable,
+                            || {
+                                turned.hand_frames.is_none()
+                                    && turned.reachable_at_pitch(limb, hit.target, pitch)
+                            },
+                            |hand| hand.reachable && super::distance(hand.tip, hit.target) < 1e-5,
                         );
                     if !reachable {
                         return Err(
-                            "준비된 연주의 몸통 회전이 원본 타격 접촉을 보존하지 않습니다.".into(),
+                            "준비된 연주의 양손 경로가 원본 타격 접촉을 보존하지 않습니다.".into(),
                         );
                     }
                 }
@@ -326,16 +397,141 @@ impl Motion {
         }
         // Reuse the complete plan/assignment/index validation path. Only expensive
         // torso/DP planning is skipped, using the already validated numeric tracks.
-        Self::assemble_with_tracks(
+        if p.hand_pose_segments.len() > p.hand_swivels.len().saturating_mul(6) {
+            return Err("준비된 연주의 물리 팔 경로가 유효하지 않습니다.".into());
+        }
+        let hand_pose_segments = p.hand_pose_segments;
+        let mut motion = Self::assemble_with_tracks(
             p.plan,
             p.profile,
-            Some((p.body_turns, p.hand_swivels, p.equipment_path)),
-        )
+            Some((
+                p.body_turns,
+                p.hand_swivels,
+                p.hand_orientations,
+                p.equipment_path,
+            )),
+        )?;
+        // Rebuild cue timing from the same ready poses exactly once, then
+        // validate required source and transition knots. Structural/rate checks
+        // above still precede any replay; no serialized cue timing is trusted.
+        let times = if motion
+            .profile
+            .as_ref()
+            .is_some_and(|profile| profile.hand_frames.is_some())
+        {
+            control_times(&motion.plan, &motion.count_in.transition_times())?
+        } else {
+            Vec::new()
+        };
+        if motion.hand_swivels.len() != times.len()
+            || motion
+                .hand_swivels
+                .iter()
+                .zip(times)
+                .any(|(sample, time)| sample.time.to_bits() != time.to_bits())
+        {
+            return Err("준비된 연주의 양손 경로가 유효하지 않습니다.".into());
+        }
+        let mut reserved_body = motion.body_turns.clone();
+        body_motion::reserve_neutral(&mut reserved_body, &motion.count_in.held_intervals());
+        if reserved_body != motion.body_turns {
+            return Err("준비된 연주의 몸통 경로가 유효하지 않습니다.".into());
+        }
+        if motion.hand_swivels.iter().any(|sample| {
+            motion.count_in.orientation(sample.time).is_some_and(|cue| {
+                cue.weight == 1.
+                    && (0..2).any(|limb| (sample.angles[limb] - cue.swivels[limb]).abs() > 1e-9)
+            })
+        }) {
+            return Err("준비된 연주의 양손 경로가 유효하지 않습니다.".into());
+        }
+        if !hand_pose_segments.is_empty() {
+            if motion
+                .profile
+                .as_ref()
+                .is_none_or(|p| p.hand_frames.is_none())
+            {
+                return Err("준비된 연주의 물리 팔 경로가 유효하지 않습니다.".into());
+            }
+            crate::physical_hand_path::validate(
+                &hand_pose_segments,
+                &motion.hand_swivels,
+                &motion.hand_orientations,
+                &motion.hand_path_spans(),
+                &motion.hand_source_times(),
+                &motion.inspection_times(),
+                |time| motion.hand_coordination_input(time),
+            )?;
+        }
+        motion.hand_pose_segments = hand_pose_segments;
+        // Paired-tool cues are source contacts too, although they are not Hits.
+        if let Some(profile) = &motion.profile {
+            for sample in &motion.hand_orientations {
+                let controls = hand_coordination::at_with_orientations(
+                    &motion.hand_swivels,
+                    &motion.hand_orientations,
+                    sample.time,
+                );
+                let turned = profile.turned(body_motion::at(&motion.body_turns, sample.time));
+                for limb in 0..2 {
+                    let (tip, pitch) = motion.stroke_at(limb, controls.time);
+                    if controls.orientations[limb].is_some()
+                        && motion
+                            .hand_solution_at(sample.time, limb, &turned, &controls, tip, pitch)
+                            .is_none_or(|hand| {
+                                !turned.hand_orientation_policy_valid(limb, hand.rotation)
+                            })
+                    {
+                        return Err("준비된 연주의 손 방향이 그립 정책과 일치하지 않습니다.".into());
+                    }
+                }
+            }
+            for cue in &motion.count_in.cues {
+                let turned = profile.turned(body_motion::at(&motion.body_turns, cue.time));
+                let controls = hand_coordination::at_with_orientations(
+                    &motion.hand_swivels,
+                    &motion.hand_orientations,
+                    cue.time,
+                );
+                let hands = std::array::from_fn::<_, 2, _>(|limb| {
+                    let (tip, pitch) = motion.stroke_at(limb, cue.time);
+                    turned
+                        .solve_hand_with_swivel_and_orientation(
+                            limb,
+                            tip,
+                            -pitch,
+                            controls.angles[limb],
+                            controls.orientations[limb],
+                        )
+                        .map(|hand| {
+                            motion.count_in.orientation(cue.time).map_or(hand, |cue| {
+                                cue.apply(&turned, limb, tip, controls.angles[limb], hand)
+                            })
+                        })
+                });
+                let [Some(left), Some(right)] = hands else {
+                    return Err("준비된 연주의 카운트인 접촉이 보존되지 않았습니다.".into());
+                };
+                if !left.reachable
+                    || !right.reachable
+                    || crate::count_in::shaft_contact_points(&turned, &[left, right])
+                        .iter()
+                        .any(|point| super::distance(*point, cue.contact_point) > 1e-5)
+                    || crate::count_in::contact_tool_clearance(&turned, &left, &right, true) < 0.
+                {
+                    return Err("준비된 연주의 카운트인 접촉이 보존되지 않았습니다.".into());
+                }
+            }
+        }
+        Ok(motion)
     }
 }
 
 #[cfg(test)]
 mod tests {
+    fn control(arm: crate::rig::Quat) -> crate::rig::OrientationControl {
+        arm
+    }
     use super::*;
     use crate::{build_plan, rig::HandControlFrame};
     fn sample(with_profile: bool) -> Motion {
@@ -362,6 +558,8 @@ mod tests {
             forearm: [0., 0., 1.],
             palm: [0., 1., 0.],
             desired_palm: [0., 1., 0.],
+            palm_roll_range: None,
+            palm_reference: None,
         };
         profile.hand_frames = Some([frame.clone(), frame]);
         Motion::with_profile(plan, profile).unwrap()
@@ -370,6 +568,58 @@ mod tests {
         m.profile
             .as_ref()
             .map_or(String::new(), |p| serde_json::to_string(p).unwrap())
+    }
+    #[test]
+    fn transfer_rejects_changed_count_in_body_and_elbow_witnesses() {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-natural-grip30.json")).unwrap();
+        let profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        let track = [
+            0, 0x99, 75, 100, 0x83, 0x60, 0x99, 75, 100, 0x83, 0x60, 0x99, 36, 100, 0x83, 0x60,
+            0xff, 0x2f, 0,
+        ];
+        let mut bytes = b"MThd\0\0\0\x06\0\0\0\x01\x01\xe0MTrk".to_vec();
+        bytes.extend((track.len() as u32).to_be_bytes());
+        bytes.extend(track);
+        let mut plan = build_plan(
+            &bytes,
+            &Selection {
+                tracks: vec![0],
+                count_in_note75: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        plan.kit.retain(|piece| piece.id == "kick");
+        let motion = Motion::with_profile(plan, profile).unwrap();
+        assert_eq!(motion.count_in.cues.len(), 2);
+        let prepared: Prepared = serde_json::from_str(&motion.prepared_json()).unwrap();
+        for body in [true, false] {
+            let mut edited = prepared.clone();
+            if body {
+                edited.body_turns.iter_mut().for_each(|yaw| *yaw += 0.001);
+            } else {
+                edited.hand_swivels.iter_mut().for_each(|sample| {
+                    sample.angles[0] = (sample.angles[0] + 0.05).min(hand_coordination::MAX_SWIVEL)
+                });
+            }
+            edited.checksum = edited.checksum();
+            let error = Motion::from_prepared_json(
+                &serde_json::to_string(&edited).unwrap(),
+                &motion.plan.midi_hash,
+                &profile_json(&motion),
+            )
+            .err()
+            .unwrap();
+            assert_eq!(
+                error,
+                if body {
+                    "준비된 연주의 몸통 경로가 유효하지 않습니다."
+                } else {
+                    "준비된 연주의 양손 경로가 유효하지 않습니다."
+                }
+            );
+        }
     }
     fn sample_equipment() -> Motion {
         let original = sample(true);
@@ -380,6 +630,141 @@ mod tests {
         }
         Motion::with_profile(plan, original.profile.unwrap()).unwrap()
     }
+    fn sample_orientations(mixed: bool) -> Motion {
+        let fixture: serde_json::Value =
+            serde_json::from_str(include_str!("fixtures/native-reference.json")).unwrap();
+        let mut profile: RigProfile = serde_json::from_value(fixture["profile"].clone()).unwrap();
+        if mixed {
+            profile.hand_frames.as_mut().unwrap()[1].palm_roll_range = None;
+        }
+        let mut plan = sample(false).plan;
+        crate::contact::apply(&mut plan, &profile);
+        Motion::with_profile(plan, profile).unwrap()
+    }
+    #[test]
+    fn worker_transfer_rejects_unbound_physical_controls_even_with_valid_checksum() {
+        let original = sample_orientations(false);
+        let text = original.prepared_json();
+        let baseline: Prepared = serde_json::from_str(&text).unwrap();
+        let profile = profile_json(&original);
+        let hash = &original.plan.midi_hash;
+        assert!(Motion::from_prepared_json(&text, hash, &profile).is_ok());
+        let key = serde_json::json!({
+            "forearm": [0.,0.,1.], "forearm_rate": [0.,0.,0.],
+            "plane": 0., "plane_rate": 0., "rotation": [0.,0.,0.,1.],
+            "rotation_rate": [0.,0.,0.,0.], "source": false
+        });
+        let record = serde_json::json!({
+            "limb": 0, "start": baseline.hand_swivels[0].time,
+            "end": baseline.hand_swivels[1].time,
+            "from": key, "to": key, "parameters": [0.,0.,0.,0.,0.,0.,0.,0.]
+        });
+        for case in 0..6 {
+            let mut edited = baseline.clone();
+            let mut record = record.clone();
+            match case {
+                0 => record["start"] = serde_json::json!(-999.),
+                1 => record["from"]["forearm"] = serde_json::json!([0., -2., 0.]),
+                2 => record["to"]["rotation"] = serde_json::json!([0., 1., 0., 0.]),
+                3 => record["limb"] = serde_json::json!(2),
+                4 => record["parameters"][0] = serde_json::json!(4.),
+                _ => (),
+            }
+            edited.hand_pose_segments = vec![serde_json::from_value(record).unwrap()];
+            if case != 5 {
+                edited.checksum = edited.checksum();
+            }
+            assert!(Motion::from_prepared_json(
+                &serde_json::to_string(&edited).unwrap(),
+                hash,
+                &profile
+            )
+            .is_err());
+        }
+    }
+    #[test]
+    fn worker_orientation_track_roundtrip_and_policy_validation() {
+        for mixed in [false, true] {
+            let original = sample_orientations(mixed);
+            let text = original.prepared_json();
+            let profile = profile_json(&original);
+            let hash = &original.plan.midi_hash;
+            let restored = Motion::from_prepared_json(&text, hash, &profile).unwrap();
+            for time in [0.417, -0.5, 0., 0.25, 0.125, 0.75, -0.1, 0.417] {
+                assert_eq!(original.evaluate_rig(time), restored.evaluate_rig(time));
+            }
+            let prepared: Prepared = serde_json::from_str(&text).unwrap();
+            assert_eq!(original.hand_orientations, restored.hand_orientations);
+            for case in 0..6 {
+                let mut edited = prepared.clone();
+                match case {
+                    0 => {
+                        edited.hand_orientations.remove(0);
+                    }
+                    1 => edited.hand_orientations[1].time = edited.hand_orientations[0].time,
+                    2 => edited.hand_orientations[0].orientations[0] = None,
+                    3 => {
+                        edited.hand_orientations[0].orientations[0] =
+                            Some(control([0., 0., 0., 2.]))
+                    }
+                    4 => edited.hand_orientations[0].orientations[0] = Some([0.; 4]),
+                    _ => edited.hand_orientations.last_mut().unwrap().time += 1.,
+                }
+                edited.checksum = edited.checksum();
+                assert!(Motion::from_prepared_json(
+                    &serde_json::to_string(&edited).unwrap(),
+                    hash,
+                    &profile
+                )
+                .is_err());
+            }
+            assert!(prepared
+                .hand_swivels
+                .iter()
+                .all(|s| s.orientations[0].is_some() && s.orientations[1].is_none() == mixed));
+            let mut stale = prepared.clone();
+            stale.hand_swivels[0].orientations[0] = Some(control([0.12345, 0., 0., 1.]));
+            assert_ne!(stale.checksum(), prepared.checksum);
+            assert!(Motion::from_prepared_json(
+                &serde_json::to_string(&stale).unwrap(),
+                hash,
+                &profile
+            )
+            .is_err());
+            for orientation in [
+                None,
+                Some(control([0., 0., 0., 10.])),
+                Some(control([f64::NAN, 0., 0., 1.])),
+            ] {
+                let mut edited = prepared.clone();
+                edited.hand_swivels[0].orientations[0] = orientation;
+                edited.checksum = edited.checksum();
+                assert!(Motion::from_prepared_json(
+                    &serde_json::to_string(&edited).unwrap(),
+                    hash,
+                    &profile
+                )
+                .is_err());
+            }
+            if mixed {
+                let mut edited = prepared.clone();
+                edited.hand_swivels[0].orientations[1] = Some(control([0., 0., 0., 1.]));
+                edited.checksum = edited.checksum();
+                assert!(Motion::from_prepared_json(
+                    &serde_json::to_string(&edited).unwrap(),
+                    hash,
+                    &profile
+                )
+                .is_err());
+            }
+            let mut missing: serde_json::Value = serde_json::from_str(&text).unwrap();
+            missing["handSwivels"][0]
+                .as_object_mut()
+                .unwrap()
+                .remove("orientations");
+            assert!(Motion::from_prepared_json(&missing.to_string(), hash, &profile).is_err());
+        }
+    }
     #[test]
     fn exact_source_times_take_priority_over_nearby_sampling_grid() {
         let mut plan = sample(false).plan;
@@ -388,7 +773,7 @@ mod tests {
         assert_ne!(18.0f64 / 30.0 - PRE_ROLL, plan.hits[0].time);
         for times in [
             equipment_times(&plan).unwrap(),
-            control_times(&plan).unwrap(),
+            control_times(&plan, &[]).unwrap(),
         ] {
             assert!(times
                 .iter()
@@ -529,6 +914,19 @@ mod tests {
         assert!(Motion::from_prepared_json(&text, "wrong-source", &profile).is_err());
         assert!(Motion::from_prepared_json(&text, hash, "").is_err());
         let prepared: Prepared = serde_json::from_str(&text).unwrap();
+        // Neither earlier quaternion interpretation may be restored as the
+        // new independent arm/grip control, even with a recomputed checksum.
+        for version in [4, 5, 6, 7, 8] {
+            let mut old_frame = prepared.clone();
+            old_frame.format_version = version;
+            old_frame.checksum = old_frame.checksum();
+            assert!(Motion::from_prepared_json(
+                &serde_json::to_string(&old_frame).unwrap(),
+                hash,
+                &profile
+            )
+            .is_err());
+        }
         let mut edited = prepared.clone();
         edited.hand_swivels[0].angles[0] += 0.05;
         assert!(Motion::from_prepared_json(

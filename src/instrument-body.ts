@@ -109,7 +109,6 @@ export function measureInstrumentGeometry(root: THREE.Object3D, piece: KitPiece,
   const referenceRadius = piece.geometry?.referenceRadius ?? piece.radius, ratio = piece.radius / referenceRadius;
   const origin = new THREE.Vector3(...piece.position);
   const offset = (value: THREE.Vector3): Vec3 => value.sub(origin).divideScalar(ratio).toArray() as Vec3;
-  const size = bounds.getSize(new THREE.Vector3());
   const playing = surfaceBounds.isEmpty() ? bounds : surfaceBounds;
   const playingCenter = playing.getCenter(new THREE.Vector3()), playingSize = playing.getSize(new THREE.Vector3());
   playingCenter.y = piece.position[1];
@@ -143,16 +142,70 @@ export function measureInstrumentGeometry(root: THREE.Object3D, piece: KitPiece,
       points: (profileMesh.userData.radialProfile as [number, number][]).map(([radius, height]) => [radius * Math.abs(scale.x) / ratio, height * scale.y / ratio]),
       ...(typeof profileMesh.userData.bellRadius === 'number' ? { bellRadius: profileMesh.userData.bellRadius * Math.abs(scale.x) / ratio } : {}) };
   }
-    const measured: PieceGeometry = {
+  // A playable radius belongs to the surface, not its foreshortened world box.
+  // Preserve the existing approximate fallback for imports without a semantic
+  // surface. Authored flat surfaces use axes transported with their mesh, so a
+  // rigid tilt/yaw cannot shrink or enlarge the same local playing region.
+  let playingRadius = Math.min(playingSize.x, playingSize.z) / 2 / ratio;
+  if (radialProfile) playingRadius = radialProfile.points.at(-1)![0];
+  else if (!kick && surfaces.length) {
+    const surfaceTransform = new THREE.Matrix4().multiplyMatrices(frame, surfaces[0].matrixWorld);
+    const tangent = new THREE.Vector3(1, 0, 0).transformDirection(surfaceTransform);
+    tangent.addScaledVector(normal, -tangent.dot(normal));
+    if (tangent.lengthSq() < 1e-12) {
+      tangent.set(0, 0, 1).transformDirection(surfaceTransform);
+      tangent.addScaledVector(normal, -tangent.dot(normal));
+    }
+    tangent.normalize();
+    const across = new THREE.Vector3().crossVectors(tangent, normal).normalize();
+    const projected = new THREE.Box2(), planar = new THREE.Vector2();
+    for (const mesh of surfaces) {
+      const position = mesh.geometry.getAttribute('position'), index = mesh.geometry.index;
+      const count = index?.count ?? position.count;
+      const start = Math.max(0, mesh.geometry.drawRange.start), end = Math.min(count, start + mesh.geometry.drawRange.count);
+      transform.multiplyMatrices(frame, mesh.matrixWorld);
+      for (let i = start; i < end; i++) {
+        point.fromBufferAttribute(position, index ? index.getX(i) : i).applyMatrix4(transform);
+        projected.expandByPoint(planar.set(point.dot(tangent), point.dot(across)));
+      }
+    }
+    const size = projected.getSize(new THREE.Vector2());
+    playingRadius = Math.min(size.x, size.y) / 2 / ratio;
+  }
+  // A tilted shell's world AABB includes empty corners above/below its rim.
+  // Keep a conservative box around every drawn vertex, but express its extents
+  // in the actual playing frame. Curved radial surfaces already have their
+  // exact rotated profile; retaining their tight world box avoids introducing
+  // raised rectangular corners around a thin bow. A kick's contact is its
+  // separate foot pedal, so its shell also keeps the world frame. Imports use the measured
+  // contact normal (or identity when no surface was found), never guessed size.
+  const bodyRotation = kick || radialProfile ? new THREE.Quaternion()
+    : new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+  bodyRotation.normalize();
+  const inverseBodyRotation = bodyRotation.clone().invert(), localBounds = new THREE.Box3();
+  for (const mesh of bodies) {
+    const position = mesh.geometry.getAttribute('position'), index = mesh.geometry.index;
+    const count = index?.count ?? position.count;
+    const start = Math.max(0, mesh.geometry.drawRange.start), end = Math.min(count, start + mesh.geometry.drawRange.count);
+    transform.multiplyMatrices(frame, mesh.matrixWorld);
+    for (let i = start; i < end; i++) {
+      point.fromBufferAttribute(position, index ? index.getX(i) : i).applyMatrix4(transform).applyQuaternion(inverseBodyRotation);
+      localBounds.expandByPoint(point);
+    }
+  }
+  const rotated = Math.abs(bodyRotation.x) + Math.abs(bodyRotation.y) + Math.abs(bodyRotation.z) > 1e-10;
+  const measured: PieceGeometry = {
     version: 1, referenceRadius, source,
-    body: { center: offset(bounds.getCenter(new THREE.Vector3())), halfExtents: size.multiplyScalar(.5 / ratio).toArray().map(value => Math.max(value, .001)) as Vec3 },
+    body: { center: offset(localBounds.getCenter(new THREE.Vector3()).applyQuaternion(bodyRotation)),
+      halfExtents: localBounds.getSize(new THREE.Vector3()).multiplyScalar(.5 / ratio).toArray().map(value => Math.max(value, .001)) as Vec3,
+      ...(rotated ? { rotation: bodyRotation.toArray() } : {}) },
     surface: kick ? structuredClone(piece.geometry?.surface ?? { center: [0, 0, -.02], normal: [0, 1, 0], radius: .05 })
-      : { center: offset(playingCenter), normal: normal.toArray() as Vec3, radius: Math.min(playingSize.x, playingSize.z) / 2 / ratio, ...(radialProfile ? { radialProfile } : {}), ...(motion ? { motion } : {}) },
+      : { center: offset(playingCenter), normal: normal.toArray() as Vec3, radius: playingRadius, ...(radialProfile ? { radialProfile } : {}), ...(motion ? { motion } : {}) },
   };
   // Rebuilding the same appearance after a fitted radius change must retain its
   // serialized reference shape instead of accumulating floating-point drift.
   const previous = piece.geometry;
-  const numbers = (value: PieceGeometry) => [value.referenceRadius, ...value.body.center, ...value.body.halfExtents, ...value.surface.center, ...value.surface.normal, value.surface.radius, ...(value.surface.radialProfile ? [...value.surface.radialProfile.origin, ...value.surface.radialProfile.rotation, ...value.surface.radialProfile.points.flat(), ...(value.surface.radialProfile.bellRadius === undefined ? [] : [value.surface.radialProfile.bellRadius])] : []), ...(value.surface.motion ? [...value.surface.motion.axis, value.surface.motion.travelMeters] : [])];
+  const numbers = (value: PieceGeometry) => [value.referenceRadius, ...value.body.center, ...value.body.halfExtents, ...(value.body.rotation ?? [0, 0, 0, 1]), ...value.surface.center, ...value.surface.normal, value.surface.radius, ...(value.surface.radialProfile ? [...value.surface.radialProfile.origin, ...value.surface.radialProfile.rotation, ...value.surface.radialProfile.points.flat(), ...(value.surface.radialProfile.bellRadius === undefined ? [] : [value.surface.radialProfile.bellRadius])] : []), ...(value.surface.motion ? [...value.surface.motion.axis, value.surface.motion.travelMeters] : [])];
   if (previous?.source === source && numbers(previous).length === numbers(measured).length && numbers(previous).every((value, index) => Math.abs(value - numbers(measured)[index]) < 1e-6)) return structuredClone(previous);
   return measured;
 }

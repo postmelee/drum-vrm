@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "camelCase")]
 pub enum ToolPart {
     StickTip,
+    StickShaft,
     Sole,
     Beater,
 }
@@ -181,10 +182,10 @@ pub fn append_count_in_events(plan: &mut PerformancePlan, cues: &[CountInCue]) {
                     .map_or_else(|| (cue.time * 1_000_000.).round() as u64, |s| s.time_us),
                 velocity,
                 limb: Some(limb),
-                tool_part: ToolPart::StickTip,
+                tool_part: ToolPart::StickShaft,
                 role: ContactRole::PairedTool,
                 piece_id: None,
-                surface_id: "stickTip".into(),
+                surface_id: "stickShaft".into(),
                 frame: ContactFrame::World,
                 local_point: cue.contact_point,
                 local_normal: None,

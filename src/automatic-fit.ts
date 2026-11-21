@@ -14,6 +14,8 @@ export function layoutViolationMessage(code: string): string {
   if (messages[code]) return messages[code];
   if (code.endsWith('-ahead-of-snare')) return msg('Rack toms must stay ahead of the snare', '랙 탐이 스네어 앞쪽에 있어야 합니다');
   if (code.endsWith('-outer-sector')) return msg('Crashes need their outer left/right sectors', '크래시는 좌우 바깥 영역에 있어야 합니다');
+  const approach = /^head-approach:([^:]+):([^:]+)$/.exec(code);
+  if (approach) return msg('{0} has limited space above its head near {1}', '{0} 위쪽 공간이 {1} 근처에서 좁습니다', approach[1], approach[2]);
   const leg = /^(left|right)-leg-(unreachable|clearance)(?::(.+))?$/.exec(code);
   if (leg) {
     const side = leg[1] === 'left' ? msg('Left leg', '왼쪽 다리') : msg('Right leg', '오른쪽 다리');

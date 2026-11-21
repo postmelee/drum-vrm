@@ -3,7 +3,8 @@ export type { EquipmentMechanism } from './equipment-types';
 export type Vec3 = [number, number, number];
 export type Quat = [number, number, number, number];
 /** Numeric Rust contract. Geometry is reflected only at the native VRM adapter boundary. */
-export interface HandControlFrame { forearm: Vec3; palm: Vec3; desiredPalm: Vec3; }
+export interface HandControlFrame { forearm: Vec3; palm: Vec3; desiredPalm: Vec3; palmRollRange?: [number, number];
+  palmReference?: 'shaftHeading'; }
 /** Bounded sampled envelopes, never a skin/clothing collision certificate. */
 export interface BodyBox { center: Vec3; halfExtents: Vec3; }
 export interface BodyGeometry {
@@ -60,7 +61,8 @@ export interface PieceGeometry {
   version: 1;
   referenceRadius: number;
   source: 'mesh-bounds' | 'procedural';
-  body: { center: Vec3; halfExtents: Vec3 };
+  /** Center remains in planning axes; optional rotation maps local box axes to planning axes. */
+  body: { center: Vec3; halfExtents: Vec3; rotation?: Quat };
   surface: { center: Vec3; normal: Vec3; radius: number;
     radialProfile?: { origin: Vec3; rotation: Quat; points: [number, number][]; bellRadius?: number };
     motion?: { kind: 'translation'; axis: Vec3; travelMeters: number } };
@@ -69,7 +71,7 @@ export interface PieceGeometry {
 export interface KitGeometry {
   version: 1;
   mechanisms?: EquipmentMechanism[];
-  bodies: { pieceId: string; center: Vec3; halfExtents: Vec3 }[];
+  bodies: { pieceId: string; center: Vec3; halfExtents: Vec3; rotation?: Quat }[];
   supports: { pieceId: string; start: Vec3; end: Vec3; radius: number; role?: string }[];
   pedals: { pieceId: string; kind: 'board' | 'base'; center: Vec3; halfExtents: Vec3; rotation?: Quat }[];
   unresolvedPieceIds: string[];
@@ -98,7 +100,7 @@ export interface HihatControl { kind: 'hihatClose'; sourceEventId: string; openS
 export interface ContactEvent {
   version: 1; id: string; sourceEventId: string; hitId: number | null;
   time: number; timeUs: number; velocity: number; limb: number | null;
-  toolPart: 'stickTip' | 'sole' | 'beater'; role: 'primary' | 'mechanism' | 'pairedTool';
+  toolPart: 'stickTip' | 'stickShaft' | 'sole' | 'beater'; role: 'primary' | 'mechanism' | 'pairedTool';
   pieceId: string | null; surfaceId: string; frame: 'pieceReference' | 'world';
   localPoint: Vec3; localNormal: Vec3 | null; mechanismOffset: Vec3;
   status: 'planned' | 'unassigned';
@@ -117,4 +119,4 @@ export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export const outputFrameCount = (plan: PerformancePlan) => Math.ceil((PRE_ROLL + plan.duration + TAIL) * FPS);
 export const outputDuration = (plan: PerformancePlan) => outputFrameCount(plan) / FPS;
 
-export interface PoseInspection { equipmentClearanceMeters?:number; toolEquipmentClearanceMeters?:number; toolPairClearanceMeters?:number; intentionalStickContact?:boolean; countIn?:{sourceEventId:string;time:number;contactPoint:Vec3}; scope: "skeletal-proxies"; torsoClearanceMeters: number; armClearanceMeters: number; stickClearanceMeters: number; crossClearanceMeters?: number; geometrySource?: string; boneLengthErrorMeters: number; poseFloats: number; }
+export interface PoseInspection { equipmentClearanceMeters?:number; toolEquipmentClearanceMeters?:number; toolPairClearanceMeters?:number; intentionalStickContact?:boolean; countIn?:{sourceEventId:string;time:number;contactPoint:Vec3}; scope: "skeletal-proxies"; torsoClearanceMeters: number; upperBodyCoreClearanceMeters?: number; armClearanceMeters: number; stickClearanceMeters: number; crossClearanceMeters?: number; geometrySource?: string; boneLengthErrorMeters: number; poseFloats: number; }

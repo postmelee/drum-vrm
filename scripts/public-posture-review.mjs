@@ -94,7 +94,10 @@ try {
       const impactMeasurements = [];
       for (const event of plan.contactEvents.filter(event => event.status === 'planned' && event.toolPart !== 'beater')) {
         rig.applyPose(run.evaluate_rig_at(event.time));
-        const actual = rig.getContactSamples().find(sample => sample.limb === event.limb)?.actual;
+        const markers = rig.getContactSamples();
+        const actual = event.toolPart === 'stickShaft'
+          ? contacts.pairedShaftContact(markers, event.limb)
+          : markers.find(sample => sample.limb === event.limb)?.actual;
         if (actual) impactMeasurements.push(contacts.measurePlannedContact(event, plan.kit, [-actual[0], actual[1], actual[2]], plan.hihatMotion));
       }
       const sourceFactsPreserved = JSON.stringify(plan.sourceEvents) === JSON.stringify(source.sourceEvents);

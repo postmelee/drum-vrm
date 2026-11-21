@@ -6,7 +6,7 @@ import { disposeModel, resolvePieceVisual } from '../src/model-procedural';
 import { sampleHihatOpening, resolveContactEvent } from '../src/contact-events';
 import { fittedCalibration } from '../src/automatic-fit';
 import { DEFAULT_KIT } from '../src/kit-default';
-import { fit_kit, initSync, inspect_midi, Performance } from '../src/wasm/drum_engine';
+import { fit_kit, initSync, inspect_midi, plan_midi, Performance } from '../src/wasm/drum_engine';
 import { createRestRigPose, legacyPositionToNative, NativeHumanoidRigAdapter } from '../src/rig-humanoid';
 import { outputFrameCount, type Hit, type KitFitProposal, type MidiInfo, type PerformancePlan, type Selection } from '../src/types';
 
@@ -85,7 +85,10 @@ function measuredNativeFit(rig: NativeHumanoidRigAdapter, kit: PerformancePlan['
     finally { disposeModel(built.root); }
   }
   measured.find(piece => piece.id === 'openHat')!.geometry = structuredClone(measured.find(piece => piece.id === 'hihat')!.geometry);
-  const seat = rig.getAutomaticCalibration(measured), initialProfile = rig.setCalibration(seat, measured);
+  // Native startup retains its authored reference seat. Imported avatars have
+  // a separate automatic-seat path; silently lowering the native fixture here
+  // would exercise a different performance from the browser's reference rig.
+  const seat = rig.getCalibration(), initialProfile = rig.setCalibration(seat, measured);
   const profile = JSON.stringify(initialProfile);
   const key = JSON.stringify([profile, measured]);
   let proposal = nativeFits.get(key);
@@ -122,9 +125,10 @@ function measuredNativeFit(rig: NativeHumanoidRigAdapter, kit: PerformancePlan['
 }
 
 function prepareNative(bytes: Uint8Array, selection: Selection, fitted = true) {
-  const source = new Performance(bytes, JSON.stringify(selection));
-  const original = JSON.parse(source.plan_json()) as PerformancePlan;
-  source.free();
+  // Match the browser worker: parse first, then prepare once with the measured
+  // rig. The legacy constructor has separate coverage above; constructing it
+  // here would also solve an unused unmeasured performance before the real one.
+  const original = JSON.parse(plan_midi(bytes, JSON.stringify(selection))) as PerformancePlan;
   const rig = new NativeHumanoidRigAdapter();
   let profile = JSON.stringify(rig.getProfile());
   const input = structuredClone(original);
@@ -169,9 +173,16 @@ function prepareNative(bytes: Uint8Array, selection: Selection, fitted = true) {
     }
   }
   if (fitted) {
-    const repeated = Performance.from_json_with_profile(JSON.stringify(input), profile);
-    try { expect((JSON.parse(repeated.plan_json()) as PerformancePlan).hits).toEqual(plan.hits); }
-    finally { repeated.free(); }
+    // The worker prepares once, then the main thread restores the prepared
+    // motion. Check that boundary instead of solving an unused second song.
+    if (!plan.midiHash) throw new Error('Parsed MIDI must retain its source hash');
+    const restored = Performance.from_prepared_json(performance.prepared_json(), plan.midiHash, profile);
+    try {
+      expect((JSON.parse(restored.plan_json()) as PerformancePlan).hits).toEqual(plan.hits);
+      for (const time of [plan.duration, 0, plan.duration / 2]) {
+        expect(Array.from(restored.evaluate_rig_at(time))).toEqual(Array.from(performance.evaluate_rig_at(time)));
+      }
+    } finally { restored.free(); }
   }
   expect(plan.sourceEvents).toEqual(original.sourceEvents);
   if (fitted) expect(plan.hits.filter(hit => hit.limb === null)).toHaveLength(0);
@@ -214,7 +225,7 @@ it('candidate seat and pedal measurements restore the accepted rig and equal the
   } finally { rig.dispose(); }
 });
 
-it('the automatically fitted browser demo keeps right-hand hats and left-hand backbeats with the actual native rig', () => {
+it('the browser reference demo keeps right-hand hats and left-hand backbeats with the actual native rig', () => {
   const session = prepareNative(makeDemo(), { tracks: [1], channel: 9 });
   try {
     const { rig, performance, plan } = session;
@@ -260,7 +271,7 @@ it('the automatically fitted browser demo keeps right-hand hats and left-hand ba
       expect(inspection.toolPairClearanceMeters).toBeGreaterThanOrEqual(-1e-5);
     }
   } finally { session.close(); }
-},60_000); // Includes two complete WASM equipment/joint plans, not just pose evaluation.
+},60_000); // Includes actual WASM preparation and worker-to-main restoration.
 
 it('an explicitly out-of-reach snare preserves source events and reports unavailable contacts', () => {
   // The product default may become playable as fitting improves. Use a real

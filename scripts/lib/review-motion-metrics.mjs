@@ -1,10 +1,12 @@
 /** Review evidence, not another planner or a continuous motion certificate. */
+import { inspectedClearancePassed } from '../../src/review-clearance.ts';
 export const KINEMATIC_HALF_WINDOW_SECONDS = 1 / 240;
 const blockingCodes = new Set([
   'POSTURE_LIMIT', 'CONTACT_PITCH_LIMIT', 'COUNT_IN_GESTURE_UNAVAILABLE',
   // The planner also inspects refined times absent from the review grid.
   // A clear outer sample cannot erase a measured physical failure there.
   'TOOL_EQUIPMENT_PATH_CLEARANCE', 'TOOL_PAIR_PATH_CLEARANCE',
+  'UPPER_BODY_PATH_CLEARANCE',
 ]);
 
 /** Count-in has no ordinary Hit: compare source intent to both planned contacts. */
@@ -40,6 +42,27 @@ export function motionValidity(plan) {
   return { passed: blockingDiagnostics.length === 0 && countIn.passed, blockingDiagnostics, countIn };
 }
 
+/** Legacy or mixed inspection results cannot certify an unmeasured torso core.
+ * External review times can also expose a crossing between planner samples. */
+export function sampledUpperBodyPathsPassed(sequence) {
+  const proxy = sequence?.proxy;
+  return Number.isInteger(sequence?.samples) && sequence.samples > 0
+    && proxy?.upperBodyCoreSamples === sequence.samples
+    && proxy.upperBodyCoreIntersectingSamples === 0
+    && inspectedClearancePassed(proxy.upperBodyCoreMinimumMeters);
+}
+
+/** Physical-tool review requires both measured boundaries at every sample.
+ * The same packed-pose tolerance as UI aggregation leaves raw minima intact. */
+export function sampledToolPathsPassed(sequence) {
+  const proxy = sequence?.proxy;
+  return Number.isInteger(sequence?.samples) && sequence.samples > 0
+    && proxy?.toolSamples === sequence.samples
+    && proxy.toolIntersectingSamples === 0
+    && inspectedClearancePassed(proxy.toolEquipmentMinimumMeters)
+    && inspectedClearancePassed(proxy.toolPairMinimumMeters);
+}
+
 const peak = () => ({ value: null, time: null, limb: null });
 function updatePeak(result, value, time, limb) {
   if (result.value === null || value > result.value) Object.assign(result, { value, time, limb });
@@ -69,6 +92,8 @@ export function summarizeMotionSamples(samples, halfWindow = KINEMATIC_HALF_WIND
     limb, wristSwingDegrees: { samples: 0, minimum: null, maximum: null },
     upperArmElevationDegrees: { samples: 0, minimum: null, maximum: null },
     elbowInteriorDegrees: { samples: 0, minimum: null, maximum: null },
+    // Orientation evidence, not a universal technique/anatomy acceptance gate.
+    palmUpComponent: { samples: 0, minimum: null, maximum: null, missing: 0, invalid: 0 },
   })) };
   for (const sample of samples) {
     const { time, before, pose, after } = sample;
@@ -87,6 +112,14 @@ export function summarizeMotionSamples(samples, halfWindow = KINEMATIC_HALF_WIND
     if (invalid) kinematics.invalidObservations++;
     for (const hand of posture.hands) {
       const marker = (sample.markers ?? []).find(marker => marker.limb === hand.limb);
+      const palm = marker?.palmNormal, up = hand.palmUpComponent;
+      if (palm === undefined) up.missing++;
+      else if (!Array.isArray(palm) || palm.length !== 3 || !palm.every(Number.isFinite) || Math.abs(Math.hypot(...palm) - 1) > 1e-4) up.invalid++;
+      else {
+        up.samples++;
+        up.minimum = up.minimum === null ? palm[1] : Math.min(up.minimum, palm[1]);
+        up.maximum = up.maximum === null ? palm[1] : Math.max(up.maximum, palm[1]);
+      }
       for (const field of ['wristSwingDegrees', 'upperArmElevationDegrees', 'elbowInteriorDegrees']) {
         const value = marker?.[field], metric = hand[field];
         if (!Number.isFinite(value)) continue;

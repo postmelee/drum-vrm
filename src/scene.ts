@@ -11,7 +11,7 @@ import { KitMechanismLayer } from './kit-mechanisms';
 import { createStickGeometry } from './stick-geometry';
 import { DEFAULT_KIT } from './kit-default';
 export { DEFAULT_KIT } from './kit-default';
-import { contactFeedbackEvents, latestContactEvent, measurePlannedContact, resolveContactEvent, sampleHihatOpening } from './contact-events';
+import { contactFeedbackEvents, latestContactEvent, measurePlannedContact, pairedShaftContact, resolveContactEvent, sampleHihatOpening } from './contact-events';
 import { createContactResponseTrack, placeContactMarker } from './hit-response';
 import type { ContactEvent } from './types';
 import { KitHardwareLayer, solveKitGeometry } from './kit-hardware';
@@ -424,7 +424,7 @@ export class DrumScene {
     return (this.plan?.contactEvents ?? []).filter(event => event.status === 'planned' && Math.abs(event.time - this.songTime) < .002).flatMap(event => {
       const marker = event.toolPart === 'beater'
         ? this.mechanisms?.actualContact(event.pieceId ?? '')
-        : samples.find(sample => sample.limb === event.limb)?.actual;
+        : event.toolPart === 'stickShaft' ? pairedShaftContact(samples, event.limb ?? -1) : samples.find(sample => sample.limb === event.limb)?.actual;
       if (!marker) return [];
       const actual = event.toolPart === 'beater' ? marker : legacyPointToDisplay(marker);
       const measured = measurePlannedContact(event, this.kit, actual, this.plan?.hihatMotion);

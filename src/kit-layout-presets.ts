@@ -12,7 +12,10 @@ export function kitHardwarePreset(kit: readonly KitPiece[]): KitHardwarePresetId
 export function applyKitHardwarePreset(kit: readonly KitPiece[], preset: KitHardwarePresetId): KitPiece[] {
   if (preset !== 'floor-legs' && preset !== 'suspended-floor') throw new Error('Unknown hardware layout');
   const next = validateKitLayout(kit), floor = next.find(piece => piece.id === 'tomLow')!;
-  if (preset === 'suspended-floor') floor.mount = {kind: 'standClamp', supportPieceId: 'ride'};
+  if (preset === 'suspended-floor') {
+    floor.mount = {kind: 'standClamp', supportPieceId: 'ride'};
+    delete floor.standRotation;
+  }
   else delete floor.mount;
   return validateKitLayout(next);
 }
