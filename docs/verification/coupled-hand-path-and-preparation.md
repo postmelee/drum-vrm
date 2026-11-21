@@ -40,8 +40,22 @@ Evidence directories are `.local/reference-layout/v22-taper-current-ui-fit/`,
 334 Rust tests in release mode, the WASM/web builds, and 338 web tests across
 44 files with one worker (244.16 s). The earlier concurrent web timeouts did not
 recur; no timeout thresholds changed. Review-helper targeted checks also pass.
-Actual adapter validation and remaining whole-catalog phase repairs continue.
-This checkpoint is not ready for broader import-model handoff or publication.
+The actual-adapter repeat then remeasures all three unchanged licensed public
+VRMs at those fresh fitted seats/kits. Profiles match exactly; each retains
+59 contacts including six shaft contacts, with maximum marker error
+0.547 µm (B), 0.495 µm (Seed) and 0.525 µm (Twist). Reverse seeking and prepared
+restoration are exact. The 120 Hz/source/diagnostic scan has no material ordinary
+core, physical equipment or pair penetration for any Posture phase under the
+documented packing reserve. Source facts remain unchanged. Evidence is
+`.local/reference-layout/v22-taper-actual-ui-public/`.
+
+The matching textured Twist browser view confirms the contact/raised count-in
+poses and exposes only the separate combined-body/equipment advisories. Owner
+feedback on snap size/strength was requested with the local preview. These
+measurements do not certify naturalness or the other demos' failed transitions.
+Whole-catalog phase repairs continue; this checkpoint is not ready for broader
+import-model handoff or publication. Commit `b76a88e` preserves the checkpoint
+before subsequent phase-conditioning experiments.
 
 ## Earlier fresh UI caveat
 
